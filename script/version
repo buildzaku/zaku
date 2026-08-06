@@ -80,16 +80,11 @@ if [[ -n "$(git status --porcelain)" ]]; then
   echo "Working tree must be clean before updating Zaku version" >&2
   exit 1
 fi
-if ! remote_branch=$(git ls-remote origin "refs/heads/$branch"); then
+if ! remote_branch_sha=$(git ls-remote --exit-code origin "refs/heads/$branch" | cut -f1); then
   echo "Could not resolve origin/$branch" >&2
   exit 1
 fi
-remote_branch_sha=${remote_branch%%$'\t'*}
 local_sha=$(git rev-parse HEAD)
-if [[ -z "$remote_branch_sha" ]]; then
-  echo "Release branch does not exist on origin: $branch" >&2
-  exit 1
-fi
 if [[ "$local_sha" != "$remote_branch_sha" ]]; then
   echo "Local $branch must match origin/$branch before updating Zaku version" >&2
   exit 1
@@ -108,8 +103,7 @@ if [[ -z "$published_version" ]]; then
   echo "There is no active release for the $source_channel channel" >&2
   exit 1
 fi
-published_branch=$(cargo app-version show "$published_version" --branch)
-if [[ "$published_branch" != "$branch" || "$published_version" != "$current_version" ]]; then
+if [[ "$published_version" != "$current_version" ]]; then
   echo "$branch is not the latest $source_channel release branch" >&2
   exit 1
 fi

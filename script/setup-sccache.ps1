@@ -99,7 +99,7 @@ function Install-Sccache {
     }
 }
 
-function Initialize-SccacheEnv {
+function Test-R2Configuration {
     $missing = @()
 
     foreach ($name in @("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_SCCACHE_BUCKET")) {
@@ -110,9 +110,13 @@ function Initialize-SccacheEnv {
 
     if ($missing.Length -gt 0) {
         Write-Information "Missing $($missing -join ' '); skipping sccache configuration" -InformationAction Continue
-        return
+        return $false
     }
 
+    return $true
+}
+
+function Initialize-SccacheEnv {
     $sccacheCmd = Get-Command sccache -ErrorAction SilentlyContinue
     if (-not $sccacheCmd) {
         throw "Could not find sccache in PATH while configuring RUSTC_WRAPPER"
@@ -169,9 +173,10 @@ function Show-SccacheConfig {
     else {
         Write-Output "AWS_SECRET_ACCESS_KEY: <not set>"
     }
+}
 
-    Write-Output "=== sccache stats ==="
-    sccache --show-stats
+if (-not (Test-R2Configuration)) {
+    exit 0
 }
 
 Install-Sccache

@@ -2,14 +2,12 @@ name: "Run Clippy"
 
 on:
   pull_request:
-    branches:
-      - "**"
   push:
     branches:
       - main
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name == 'main' && github.sha || github.head_ref }}
+  group: ${{ github.workflow }}-${{ github.ref_name == 'main' && github.sha || github.ref_name }}
   cancel-in-progress: true
 
 env:
@@ -56,7 +54,7 @@ jobs:
         shell: bash
 
       - name: "Show sccache stats"
-        run: sccache --show-stats
+        run: if [[ -n "${RUSTC_WRAPPER:-}" ]]; then "$RUSTC_WRAPPER" --show-stats; fi
         shell: bash
 
   run_clippy_macos:
@@ -98,7 +96,7 @@ jobs:
         shell: bash
 
       - name: "Show sccache stats"
-        run: sccache --show-stats
+        run: if [[ -n "${RUSTC_WRAPPER:-}" ]]; then "$RUSTC_WRAPPER" --show-stats; fi
         shell: bash
 
   run_clippy_windows:

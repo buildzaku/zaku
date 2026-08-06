@@ -1,6 +1,6 @@
 use anyhow::Context as _;
 use clap::{Parser, Subcommand};
-use std::{cmp::Ordering, process::ExitCode};
+use std::process::ExitCode;
 
 use app_version::{AppVersion, Bump, ReleaseChannel, ReleaseSnapshot};
 
@@ -33,11 +33,6 @@ enum Command {
     Promote {
         version: AppVersion,
         channel: ReleaseChannel,
-    },
-    /// Compare two versions.
-    Compare {
-        version: AppVersion,
-        other: AppVersion,
     },
     /// Inspect the latest release for a channel.
     Latest {
@@ -88,12 +83,6 @@ fn execute(arguments: Args) -> anyhow::Result<String> {
         }
         Command::Bump { version, bump } => Ok(version.bump(bump)?.to_string()),
         Command::Promote { version, channel } => Ok(version.promote(channel)?.to_string()),
-        Command::Compare { version, other } => Ok(match version.cmp(&other) {
-            Ordering::Less => "less",
-            Ordering::Equal => "equal",
-            Ordering::Greater => "greater",
-        }
-        .to_string()),
         Command::Latest {
             channel,
             active,
@@ -185,13 +174,5 @@ mod tests {
             "stable"
         );
         run_command(&["show", "26.1", "--long", "--channel"]).unwrap_err();
-    }
-
-    #[test]
-    fn test_compare_command() {
-        assert_eq!(
-            run_command(&["compare", "26.1", "26.0.1"]).unwrap(),
-            "greater"
-        );
     }
 }

@@ -133,11 +133,9 @@ main() {
     set +e
 
     if [ "$committed" -eq 0 ]; then
-      if [ "$desktop_installed" -eq 1 ]; then
-        if ! rm -f "$desktop_path"; then
-          echo "Could not remove desktop entry during rollback: $desktop_path" >&2
-          rollback_failed=1
-        fi
+      if [ "$desktop_installed" -eq 1 ] && ! rm -f "$desktop_path"; then
+        echo "Could not remove desktop entry during rollback: $desktop_path" >&2
+        rollback_failed=1
       fi
       if [ "$has_desktop_backup" -eq 1 ]; then
         if [ -e "$desktop_backup" ] || [ -L "$desktop_backup" ]; then
@@ -150,11 +148,9 @@ main() {
           rollback_failed=1
         fi
       fi
-      if [ "$binary_installed" -eq 1 ]; then
-        if ! rm -f "$binary_path"; then
-          echo "Could not remove binary during rollback: $binary_path" >&2
-          rollback_failed=1
-        fi
+      if [ "$binary_installed" -eq 1 ] && ! rm -f "$binary_path"; then
+        echo "Could not remove binary during rollback: $binary_path" >&2
+        rollback_failed=1
       fi
       if [ "$has_binary_backup" -eq 1 ]; then
         if [ -e "$binary_backup" ] || [ -L "$binary_backup" ]; then
@@ -167,11 +163,9 @@ main() {
           rollback_failed=1
         fi
       fi
-      if [ "$application_installed" -eq 1 ]; then
-        if ! rm -rf "$application_path"; then
-          echo "Could not remove application during rollback: $application_path" >&2
-          rollback_failed=1
-        fi
+      if [ "$application_installed" -eq 1 ] && ! rm -rf "$application_path"; then
+        echo "Could not remove application during rollback: $application_path" >&2
+        rollback_failed=1
       fi
       if [ "$has_application_backup" -eq 1 ]; then
         if [ -e "$application_backup" ] || [ -L "$application_backup" ]; then
@@ -186,10 +180,8 @@ main() {
       fi
     fi
 
-    if [ -n "$temporary_directory" ]; then
-      if ! rm -rf "$temporary_directory"; then
-        echo "Could not remove temporary directory: $temporary_directory" >&2
-      fi
+    if [ -n "$temporary_directory" ] && ! rm -rf "$temporary_directory"; then
+      echo "Could not remove temporary directory: $temporary_directory" >&2
     fi
     if [ -n "$transaction_directory" ]; then
       if [ "$rollback_failed" -eq 1 ]; then

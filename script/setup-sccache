@@ -20,11 +20,9 @@ install_sccache() {
 
   local expected_version="sccache ${SCCACHE_VERSION}"
   local installed_version=""
-  if [[ -x "${SCCACHE_DIR}/sccache" ]]; then
-    if ! installed_version="$("${SCCACHE_DIR}/sccache" --version 2>/dev/null)"; then
-      echo "Reinstalling invalid sccache binary"
-      installed_version=""
-    fi
+  if [[ -x "${SCCACHE_DIR}/sccache" ]] && ! installed_version="$("${SCCACHE_DIR}/sccache" --version 2>/dev/null)"; then
+    echo "Reinstalling invalid sccache binary"
+    installed_version=""
   fi
 
   if [[ "$installed_version" == "$expected_version" ]]; then
@@ -89,7 +87,7 @@ install_sccache() {
   export PATH="${SCCACHE_DIR}:${PATH}"
 }
 
-check_missing_r2_configuration() {
+has_r2_configuration() {
   local missing=()
 
   for name in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_SCCACHE_BUCKET; do
@@ -100,17 +98,13 @@ check_missing_r2_configuration() {
 
   if ((${#missing[@]} > 0)); then
     echo "Missing ${missing[*]}; skipping sccache configuration"
-    return 0
+    return 1
   fi
 
-  return 1
+  return 0
 }
 
 initialize_sccache_env() {
-  if check_missing_r2_configuration; then
-    return
-  fi
-
   echo "Configuring sccache with Cloudflare R2"
 
   local base_dir="${GITHUB_WORKSPACE:-$(pwd)}"
@@ -158,9 +152,11 @@ show_sccache_config() {
   else
     echo "AWS_SECRET_ACCESS_KEY: <not set>"
   fi
-  echo "=== sccache stats ==="
-  sccache --show-stats
 }
+
+if ! has_r2_configuration; then
+  exit 0
+fi
 
 install_sccache
 initialize_sccache_env

@@ -17,7 +17,7 @@ if [[ $(uname -s) != "Linux" ]]; then
   exit 1
 fi
 
-for cmd in cargo rustc rustup; do
+for cmd in cargo rustc; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
     echo "Run ./script/linux" >&2

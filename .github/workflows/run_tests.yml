@@ -2,14 +2,12 @@ name: "Run Tests"
 
 on:
   pull_request:
-    branches:
-      - "**"
   push:
     branches:
       - main
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name == 'main' && github.sha || github.head_ref }}
+  group: ${{ github.workflow }}-${{ github.ref_name == 'main' && github.sha || github.ref_name }}
   cancel-in-progress: true
 
 env:
@@ -43,7 +41,9 @@ jobs:
           shared-key: linux-arm64
 
       - name: "Install Nextest"
-        uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
+        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
+        with:
+          tool: nextest
 
       - name: "Setup sccache"
         run: ./script/setup-sccache
@@ -58,7 +58,7 @@ jobs:
         run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: "Show sccache stats"
-        run: sccache --show-stats
+        run: if [[ -n "${RUSTC_WRAPPER:-}" ]]; then "$RUSTC_WRAPPER" --show-stats; fi
         shell: bash
 
   run_tests_linux_x86_64:
@@ -86,7 +86,9 @@ jobs:
           shared-key: linux-x86_64
 
       - name: "Install Nextest"
-        uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
+        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
+        with:
+          tool: nextest
 
       - name: "Setup sccache"
         run: ./script/setup-sccache
@@ -101,7 +103,7 @@ jobs:
         run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: "Show sccache stats"
-        run: sccache --show-stats
+        run: if [[ -n "${RUSTC_WRAPPER:-}" ]]; then "$RUSTC_WRAPPER" --show-stats; fi
         shell: bash
 
   run_tests_macos_arm64:
@@ -130,7 +132,9 @@ jobs:
           shared-key: macos-arm64
 
       - name: "Install Nextest"
-        uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
+        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
+        with:
+          tool: nextest
 
       - name: "Setup sccache"
         run: ./script/setup-sccache
@@ -145,7 +149,7 @@ jobs:
         run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: "Show sccache stats"
-        run: sccache --show-stats
+        run: if [[ -n "${RUSTC_WRAPPER:-}" ]]; then "$RUSTC_WRAPPER" --show-stats; fi
         shell: bash
 
   run_tests_macos_x86_64:
@@ -174,7 +178,9 @@ jobs:
           shared-key: macos-x86_64
 
       - name: "Install Nextest"
-        uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
+        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
+        with:
+          tool: nextest
 
       - name: "Setup sccache"
         run: ./script/setup-sccache
@@ -189,7 +195,7 @@ jobs:
         run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: "Show sccache stats"
-        run: sccache --show-stats
+        run: if [[ -n "${RUSTC_WRAPPER:-}" ]]; then "$RUSTC_WRAPPER" --show-stats; fi
         shell: bash
 
   run_tests_windows_arm64:
@@ -214,7 +220,9 @@ jobs:
           shared-key: windows-arm64
 
       - name: "Install Nextest"
-        uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
+        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
+        with:
+          tool: nextest
 
       - name: "Setup sccache"
         run: ./script/setup-sccache.ps1
@@ -254,7 +262,9 @@ jobs:
           shared-key: windows-x86_64
 
       - name: "Install Nextest"
-        uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
+        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
+        with:
+          tool: nextest
 
       - name: "Setup sccache"
         run: ./script/setup-sccache.ps1

@@ -90,10 +90,10 @@ jobs:
 
           git config user.name "$ACTOR_LOGIN"
           git config user.email "${ACTOR_ID}+${ACTOR_LOGIN}@users.noreply.github.com"
-          expected_version_files=$(printf '%s\n' Cargo.toml Cargo.lock | sort)
 
           git switch --create "$release_branch" "$SOURCE_SHA"
           cargo set-version --workspace "$release_long_version"
+          expected_version_files=$(printf '%s\n' Cargo.toml Cargo.lock | sort)
           changed_version_files=$(git diff --name-only | sort)
           if [[ "$changed_version_files" != "$expected_version_files" ]]; then
             echo "::error::Unexpected file changes on $release_branch"

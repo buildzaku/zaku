@@ -76,10 +76,8 @@ fi
 
 target="${arch}-apple-darwin"
 version=$(cargo app-version show)
-short_version="${version%%-*}"
-if [[ "$short_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
-  short_version="${short_version}.0"
-fi
+long_version=$(cargo app-version show --long)
+long_version_without_prerelease="${long_version%%-*}"
 cargo_bundle_version=$(cargo bundle --version 2>/dev/null || true)
 if [[ "$cargo_bundle_version" != "cargo-bundle v${CARGO_BUNDLE_VERSION}" ]]; then
   cargo install cargo-bundle --version "=${CARGO_BUNDLE_VERSION}" --locked
@@ -101,7 +99,7 @@ if [[ ! -d "$app_path" ]]; then
   exit 1
 fi
 
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${short_version}" "${app_path}/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${long_version_without_prerelease}" "${app_path}/Contents/Info.plist"
 if [[ -n "${GITHUB_RUN_NUMBER:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}" "${app_path}/Contents/Info.plist"
 fi

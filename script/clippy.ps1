@@ -13,7 +13,3 @@ if ($shouldAddWorkspace) {
 else {
     cargo clippy @args --release --all-targets --all-features -- --deny warnings
 }
-
-if (Get-Command typos -ErrorAction Ignore) {
-    & typos
-}

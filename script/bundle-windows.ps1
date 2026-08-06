@@ -105,12 +105,11 @@ try {
     if ($LASTEXITCODE -ne 0 -or -not $version) {
         throw "Could not read the Zaku package version"
     }
-    $versionCore = ($version -split "-", 2)[0]
-    $versionInfoVersion = switch ($versionCore.Split(".").Length) {
-        2 { "$versionCore.0.0" }
-        3 { "$versionCore.0" }
-        default { throw "Invalid Zaku version: $version" }
+    $longVersion = cargo app-version show --long
+    if ($LASTEXITCODE -ne 0 -or -not $longVersion) {
+        throw "Could not read the long Zaku package version"
     }
+    $versionInfoVersion = "$(($longVersion -split "-", 2)[0]).0"
 
     Write-Output "Compiling Zaku"
     rustup target add $target

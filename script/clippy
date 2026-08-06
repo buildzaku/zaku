@@ -14,6 +14,3 @@ fi
 set -x
 
 cargo clippy "$@" --release --all-targets --all-features -- --deny warnings
-
-command -v typos >/dev/null 2>&1 || exit 0
-typos

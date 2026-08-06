@@ -2,14 +2,12 @@ name: "Check Style"
 
 on:
   pull_request:
-    branches:
-      - "**"
   push:
     branches:
       - main
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name == 'main' && github.sha || github.head_ref }}
+  group: ${{ github.workflow }}-${{ github.ref_name == 'main' && github.sha || github.ref_name }}
   cancel-in-progress: true
 
 env:
