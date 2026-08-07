@@ -2,14 +2,17 @@
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-$shouldAddWorkspace = $false
-if ($args -cnotcontains "-p" -and $args -cnotcontains "--package") {
-    $shouldAddWorkspace = $true
+$clippyArguments = @($args)
+$packageSpecified = $false
+foreach ($argument in $clippyArguments) {
+    if ($argument -ceq "-p" -or $argument -ceq "--package" -or $argument -clike "--package=*") {
+        $packageSpecified = $true
+        break
+    }
 }
 
-if ($shouldAddWorkspace) {
-    cargo clippy @args --workspace --release --all-targets --all-features -- --deny warnings
+if (-not $packageSpecified) {
+    $clippyArguments += "--workspace"
 }
-else {
-    cargo clippy @args --release --all-targets --all-features -- --deny warnings
-}
+
+cargo clippy @clippyArguments --release --all-targets --all-features -- --deny warnings
