@@ -1,5 +1,5 @@
 #Requires -Version 7.4
-$SCCACHE_VERSION = "0.16.0"
+$SCCACHE_VERSION = "0.17.0"
 $SCCACHE_DIR = "./target/sccache"
 
 if ($args.Length -gt 0) {
@@ -131,6 +131,7 @@ function Initialize-SccacheEnv {
     $env:SCCACHE_BUCKET = $env:R2_SCCACHE_BUCKET
     $env:SCCACHE_REGION = "auto"
     $env:SCCACHE_BASEDIRS = $baseDir
+    $env:SCCACHE_CLIENT_SIDE = "1"
     $env:AWS_ACCESS_KEY_ID = $env:R2_ACCESS_KEY_ID
     $env:AWS_SECRET_ACCESS_KEY = $env:R2_SECRET_ACCESS_KEY
     $env:RUSTC_WRAPPER = $sccacheBin
@@ -141,6 +142,7 @@ function Initialize-SccacheEnv {
             "SCCACHE_BUCKET=$($env:SCCACHE_BUCKET)"
             "SCCACHE_REGION=$($env:SCCACHE_REGION)"
             "SCCACHE_BASEDIRS=$($env:SCCACHE_BASEDIRS)"
+            "SCCACHE_CLIENT_SIDE=$($env:SCCACHE_CLIENT_SIDE)"
             "AWS_ACCESS_KEY_ID=$($env:AWS_ACCESS_KEY_ID)"
             "AWS_SECRET_ACCESS_KEY=$($env:AWS_SECRET_ACCESS_KEY)"
             "RUSTC_WRAPPER=$($env:RUSTC_WRAPPER)"
@@ -159,6 +161,7 @@ function Show-SccacheConfig {
     Write-Output "SCCACHE_ENDPOINT: $($env:SCCACHE_ENDPOINT ?? '<not set>')"
     Write-Output "SCCACHE_REGION: $($env:SCCACHE_REGION ?? '<not set>')"
     Write-Output "SCCACHE_BASEDIRS: $($env:SCCACHE_BASEDIRS ?? '<not set>')"
+    Write-Output "SCCACHE_CLIENT_SIDE: $($env:SCCACHE_CLIENT_SIDE ?? '<not set>')"
 
     if ($env:AWS_ACCESS_KEY_ID) {
         Write-Output "AWS_ACCESS_KEY_ID: <set>"
