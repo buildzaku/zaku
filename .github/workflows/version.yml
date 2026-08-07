@@ -24,8 +24,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: version-${{ inputs.branch }}
+  group: release
   cancel-in-progress: false
+  queue: max
 
 jobs:
   update:
