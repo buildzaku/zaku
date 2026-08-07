@@ -1,0 +1,289 @@
+name: "Release"
+
+on:
+  push:
+    tags:
+      - "[0-9][0-9].[0-9]*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+  queue: max
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  github_release:
+    name: "Prepare GitHub release"
+    if: github.repository == 'buildzaku/zaku'
+    runs-on: ubuntu-24.04
+    outputs:
+      channel: ${{ steps.validate.outputs.channel }}
+      manifest_exists: ${{ steps.resolve_release_state.outputs.manifest_exists }}
+      release_state: ${{ steps.resolve_release_state.outputs.release_state }}
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - id: validate
+        name: "Validate release"
+        run: |
+          version=$(cargo app-version show)
+          if [[ "$GITHUB_REF_NAME" != "$version" ]]; then
+            echo "::error::Release tag $GITHUB_REF_NAME does not match workspace version $version"
+            exit 1
+          fi
+
+          channel=$(cargo app-version show "$version" --channel)
+          release_branch=$(cargo app-version show "$version" --branch)
+          case "$channel" in
+            beta) prerelease=true ;;
+            stable) prerelease=false ;;
+          esac
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$release_branch"; then
+            echo "::error::Release tag is not part of $release_branch: $version"
+            exit 1
+          fi
+
+          echo "channel=$channel" >>"${GITHUB_OUTPUT}"
+          echo "prerelease=$prerelease" >>"${GITHUB_OUTPUT}"
+          echo "version=$version" >>"${GITHUB_OUTPUT}"
+          echo "Valid $channel release $version on $release_branch"
+        shell: bash
+
+      - id: resolve_release_state
+        name: "Resolve release state"
+        env:
+          CHANNEL: ${{ steps.validate.outputs.channel }}
+          GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
+          PRERELEASE: ${{ steps.validate.outputs.prerelease }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ steps.validate.outputs.version }}
+        run: |
+          if release=$(gh release view "$VERSION" --json isDraft,isPrerelease --repo "$REPOSITORY" 2>/dev/null); then
+            if ! jq --exit-status --argjson prerelease "$PRERELEASE" '.isPrerelease == $prerelease' <<<"$release" >/dev/null; then
+              echo "::error::Existing GitHub Release does not match $VERSION"
+              exit 1
+            fi
+            if [[ "$(jq --raw-output '.isDraft' <<<"$release")" == "true" ]]; then
+              release_state=draft
+            else
+              release_state=published
+            fi
+            echo "Resuming GitHub Release for $VERSION"
+          else
+            release_state=missing
+          fi
+
+          response_file=$(mktemp)
+          status=$(curl -sS -o "$response_file" -w '%{http_code}' "https://api.zaku.dev/releases/${CHANNEL}/${VERSION}/linux-x86_64")
+          case "$status" in
+            200)
+              manifest_exists=true
+              ;;
+            404)
+              manifest_exists=false
+              ;;
+            *)
+              echo "::error::Could not inspect server manifest: HTTP $status"
+              cat "$response_file"
+              exit 1
+              ;;
+          esac
+          if [[ "$release_state" == "published" && "$manifest_exists" == "false" ]]; then
+            echo "::error::Published GitHub Release has no server manifest: $VERSION"
+            exit 1
+          fi
+          if [[ "$release_state" == "missing" && "$manifest_exists" == "true" ]]; then
+            echo "::error::Server manifest has no GitHub Release: $VERSION"
+            exit 1
+          fi
+          if [[ "$release_state" == "missing" ]]; then
+            gh release create "$VERSION" --draft --notes "" --prerelease="$PRERELEASE" --repo "$REPOSITORY" --title "Zaku $VERSION" --verify-tag
+            release_state=draft
+            echo "Created draft GitHub Release for $VERSION"
+          fi
+
+          echo "manifest_exists=$manifest_exists" >>"${GITHUB_OUTPUT}"
+          echo "release_state=$release_state" >>"${GITHUB_OUTPUT}"
+        shell: bash
+
+  build:
+    name: "Build ${{ matrix.name }}"
+    needs: github_release
+    if: needs.github_release.outputs.manifest_exists == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "Linux ARM64"
+            os: ubuntu-24.04-arm
+            platform: linux
+            arch: aarch64
+            target: aarch64-unknown-linux-gnu
+            extension: tar.gz
+          - name: "Linux x86_64"
+            os: ubuntu-24.04
+            platform: linux
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+            extension: tar.gz
+          - name: "macOS ARM64"
+            os: macos-26
+            platform: macos
+            arch: aarch64
+            target: aarch64-apple-darwin
+            extension: dmg
+          - name: "macOS x86_64"
+            os: macos-26-intel
+            platform: macos
+            arch: x86_64
+            target: x86_64-apple-darwin
+            extension: dmg
+          - name: "Windows ARM64"
+            os: windows-11-arm
+            platform: windows
+            arch: aarch64
+            target: aarch64-pc-windows-msvc
+            extension: exe
+          - name: "Windows x86_64"
+            os: windows-2025
+            platform: windows
+            arch: x86_64
+            target: x86_64-pc-windows-msvc
+            extension: exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: "Install Bash (macOS)"
+        if: runner.os == 'macOS'
+        run: brew install bash
+        shell: bash
+
+      - name: "Setup Cargo config (Linux and macOS)"
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p ./../.cargo
+          cp ./.cargo/workflow-config.toml ./../.cargo/config.toml
+        shell: bash
+
+      - name: "Setup Cargo config (Windows)"
+        if: runner.os == 'Windows'
+        run: |
+          New-Item -ItemType Directory -Path "./../.cargo" -Force
+          Copy-Item -Path "./.cargo/workflow-config.toml" -Destination "./../.cargo/config.toml"
+        shell: pwsh
+
+      - name: "Install dependencies (Linux)"
+        if: runner.os == 'Linux'
+        run: ./script/linux
+        shell: bash
+
+      - name: "Build bundle (Linux and macOS)"
+        if: runner.os != 'Windows'
+        env:
+          ARCH: ${{ matrix.arch }}
+          PLATFORM: ${{ matrix.platform }}
+        run: "./script/bundle-${PLATFORM} --arch ${ARCH}"
+        shell: bash
+
+      - name: "Build bundle (Windows)"
+        if: runner.os == 'Windows'
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: ./script/bundle-windows.ps1 -Arch $env:ARCH
+        shell: pwsh
+
+      - name: "Upload bundle"
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Zaku-${{ needs.github_release.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.extension }}
+          path: target/${{ matrix.target }}/release/Zaku-${{ needs.github_release.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.extension }}
+          if-no-files-found: error
+
+  publish_release:
+    name: "Publish release"
+    needs:
+      - github_release
+      - build
+    if: needs.github_release.outputs.manifest_exists == 'false'
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    env:
+      PUBLISH_ARTIFACTS: "true"
+    steps: &publish_steps
+      - name: "Download bundles"
+        if: env.PUBLISH_ARTIFACTS == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: "Upload release assets"
+        if: env.PUBLISH_ARTIFACTS == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.github_release.outputs.version }}
+        run: gh release upload "$VERSION" artifacts/* --clobber --repo "$REPOSITORY"
+        shell: bash
+
+      - name: "Register, publish and promote release"
+        env:
+          CHANNEL: ${{ needs.github_release.outputs.channel }}
+          GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
+          MANIFEST_EXISTS: ${{ needs.github_release.outputs.manifest_exists }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_STATE: ${{ needs.github_release.outputs.release_state }}
+          VERSION: ${{ needs.github_release.outputs.version }}
+        run: |
+          oidc_token=$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https://api.zaku.dev" | jq --exit-status --raw-output '.value')
+
+          if [[ "$MANIFEST_EXISTS" == "false" ]]; then
+            request_body=$(gh release view "$VERSION" --json assets --repo "$REPOSITORY" --jq '{
+              artifacts: [.assets[] | {
+                name,
+                size,
+                sha256: (.digest | ltrimstr("sha256:")),
+                download_url: .url
+              }]
+            }')
+            curl -fsS -X PUT -H "Authorization: Bearer ${oidc_token}" --json "$request_body" "https://api.zaku.dev/releases/${CHANNEL}/${VERSION}"
+          fi
+
+          if [[ "$RELEASE_STATE" == "draft" ]]; then
+            gh release edit "$VERSION" --draft=false --latest=false --repo "$REPOSITORY"
+          fi
+
+          curl -fsS -X PUT -H "Authorization: Bearer ${oidc_token}" --variable %VERSION --expand-json '{"version":"{{VERSION}}"}' "https://api.zaku.dev/releases/${CHANNEL}/latest"
+
+          if [[ "$CHANNEL" == "stable" ]]; then
+            gh release edit "$VERSION" --latest --repo "$REPOSITORY"
+          fi
+
+          echo "Released Zaku $VERSION"
+        shell: bash
+
+  resume_release:
+    name: "Resume release"
+    needs: github_release
+    if: needs.github_release.outputs.manifest_exists == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    env:
+      PUBLISH_ARTIFACTS: "false"
+    steps: *publish_steps
