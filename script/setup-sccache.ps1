@@ -125,7 +125,7 @@ function Initialize-SccacheEnv {
     Write-Information "Configuring sccache with Cloudflare R2" -InformationAction Continue
 
     $baseDir = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { (Get-Location).Path }
-    $sccacheBin = $sccacheCmd.Source
+    $sccachePath = $sccacheCmd.Source
 
     $env:SCCACHE_ENDPOINT = "https://$($env:R2_ACCOUNT_ID).r2.cloudflarestorage.com"
     $env:SCCACHE_BUCKET = $env:R2_SCCACHE_BUCKET
@@ -134,7 +134,7 @@ function Initialize-SccacheEnv {
     $env:SCCACHE_CLIENT_SIDE = "1"
     $env:AWS_ACCESS_KEY_ID = $env:R2_ACCESS_KEY_ID
     $env:AWS_SECRET_ACCESS_KEY = $env:R2_SECRET_ACCESS_KEY
-    $env:RUSTC_WRAPPER = $sccacheBin
+    $env:RUSTC_WRAPPER = $sccachePath
 
     if ($env:GITHUB_ENV) {
         @(
