@@ -16,9 +16,7 @@ env:
 jobs:
   cherry_pick:
     name: "Cherry Pick"
-    if: >-
-      github.event.issue.pull_request &&
-      (github.event.comment.body == '/cherry-pick beta' || github.event.comment.body == '/cherry-pick stable')
+    if: github.repository == 'buildzaku/zaku' && github.event.issue.pull_request && (github.event.comment.body == '/cherry-pick beta' || github.event.comment.body == '/cherry-pick stable')
     runs-on: ubuntu-24.04
     steps:
       - id: validate

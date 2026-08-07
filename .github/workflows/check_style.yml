@@ -7,7 +7,7 @@ on:
       - main
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name == 'main' && github.sha || github.ref_name }}
+  group: ${{ github.workflow }}-${{ case(github.ref_name == 'main', github.sha, github.ref_name) }}
   cancel-in-progress: true
 
 env:
@@ -27,31 +27,25 @@ jobs:
         shell: bash
 
       - name: "Install PSScriptAnalyzer"
-        run: Install-PSResource -Name PSScriptAnalyzer -Version 1.25.0 -Scope CurrentUser -TrustRepository -Reinstall
+        run: Install-PSResource -Name PSScriptAnalyzer -Version 1.25.0 -Scope CurrentUser -TrustRepository
         shell: pwsh
 
       - name: "Check PowerShell scripts"
         run: pwsh -File ./script/check.ps1 -Verbose
 
       - name: "Setup pnpm"
-        uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 10.33.2
 
       - name: "Install shfmt"
-        env:
-          SHFMT_VERSION: 3.13.1
-          SHFMT_SHA256: fb096c5d1ac6beabbdbaa2874d025badb03ee07929f0c9ff67563ce8c75398b1
-        run: |
-          curl -fsSL "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" -o "${RUNNER_TEMP}/shfmt"
-          printf '%s  %s\n' "${SHFMT_SHA256}" "${RUNNER_TEMP}/shfmt" | sha256sum --check
-          chmod +x "${RUNNER_TEMP}/shfmt"
-          echo "${RUNNER_TEMP}" >>"${GITHUB_PATH}"
-        shell: bash
+        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
+        with:
+          tool: shfmt@3.13.1
 
       - name: "Check formatting"
         run: ./script/fmt --check
         shell: bash
 
       - name: "Check for typos"
-        uses: crate-ci/typos@cf5f1c29a8ac336af8568821ec41919923b05a83 # v1.45.1
+        uses: crate-ci/typos@8a48f81b6c64dcfea44b3633223084c4be58ac5f # v1.49.0

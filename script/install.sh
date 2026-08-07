@@ -215,7 +215,7 @@ main() {
     cp "$ZAKU_BUNDLE_PATH" "$archive_path"
   else
     echo "Downloading Zaku $version"
-    curl -fL "https://api.zaku.dev/releases/$channel/$version/linux-$arch/download" -o "$archive_path"
+    curl -fsSL -o "$archive_path" "https://api.zaku.dev/releases/$channel/$version/linux-$arch/download"
   fi
 
   extracted_directory="$transaction_directory/extracted"
