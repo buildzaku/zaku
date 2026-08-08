@@ -1,9 +1,7 @@
 mod update_version;
 
 use anyhow::Context as _;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use futures::StreamExt;
-use futures::{AsyncReadExt, AsyncWriteExt};
+use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 #[cfg(target_os = "macos")]
 use gpui::BackgroundExecutor;
 #[cfg(target_os = "windows")]
@@ -18,13 +16,11 @@ use smol::fs::File;
 use std::io;
 #[cfg(target_os = "macos")]
 use std::mem;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::time::SystemTime;
 use std::{
     env::consts::{ARCH, OS},
     path::{Path, PathBuf},
     sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 #[cfg(target_os = "linux")]
 use std::{error, fmt};
@@ -54,7 +50,6 @@ impl error::Error for MissingDependencyError {}
 
 const SHOULD_SHOW_UPDATE_NOTIFICATION_KEY: &str = "updater-should-show-updated-notification";
 const POLL_INTERVAL: Duration = Duration::from_hours(1);
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 const INSTALLER_DIR_PREFIX: &str = "zaku-updater";
 
 #[cfg(target_os = "linux")]
@@ -329,10 +324,8 @@ pub fn check_for_updates(_: &actions::updater::Check, window: &mut Window, cx: &
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 struct InstallerDir(tempfile::TempDir);
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 impl InstallerDir {
     fn new(cache_dir: &Path) -> anyhow::Result<Self> {
         Ok(Self(
@@ -344,37 +337,6 @@ impl InstallerDir {
 
     fn path(&self) -> &Path {
         self.0.path()
-    }
-}
-
-#[cfg(target_os = "windows")]
-struct InstallerDir(PathBuf);
-
-#[cfg(target_os = "windows")]
-impl InstallerDir {
-    async fn new() -> anyhow::Result<Self> {
-        let installer_dir = std::env::current_exe()?
-            .parent()
-            .context("no parent directory for Zaku.exe")?
-            .join("updates");
-        match smol::fs::metadata(&installer_dir).await {
-            Ok(_) => smol::fs::remove_dir_all(&installer_dir).await?,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(error).with_context(|| {
-                    format!(
-                        "failed to read update directory metadata {}",
-                        installer_dir.display()
-                    )
-                });
-            }
-        }
-        smol::fs::create_dir(&installer_dir).await?;
-        Ok(Self(installer_dir))
-    }
-
-    fn path(&self) -> &Path {
-        self.0.as_path()
     }
 }
 
@@ -392,8 +354,7 @@ struct PlatformReleaseInstaller;
 impl ReleaseInstaller for PlatformReleaseInstaller {
     fn install(
         &self,
-        #[cfg(any(target_os = "linux", target_os = "macos"))] installer_dir: InstallerDir,
-        #[cfg(target_os = "windows")] _: InstallerDir,
+        installer_dir: InstallerDir,
         target_path: PathBuf,
         cx: &mut AsyncApp,
     ) -> anyhow::Result<Task<anyhow::Result<Option<PathBuf>>>> {
@@ -420,7 +381,11 @@ impl ReleaseInstaller for PlatformReleaseInstaller {
                     .await
                 }
                 #[cfg(target_os = "windows")]
-                "windows" => install_release_windows(&target_path).await,
+                "windows" => {
+                    let result = install_release_windows(&target_path).await;
+                    drop(installer_dir);
+                    result
+                }
                 unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
             }
         }))
@@ -443,7 +408,6 @@ pub struct Updater {
     status: UpdateStatus,
     current_version: AppVersion,
     client: Arc<dyn HttpClient>,
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
     cache_dir: PathBuf,
     installer: Arc<dyn ReleaseInstaller>,
     pending_poll: Option<Task<Option<()>>>,
@@ -464,8 +428,7 @@ impl Updater {
     fn new(
         current_version: AppVersion,
         client: Arc<dyn HttpClient>,
-        #[cfg(any(target_os = "linux", target_os = "macos"))] cache_dir: PathBuf,
-        #[cfg(target_os = "windows")] _: PathBuf,
+        cache_dir: PathBuf,
         installer: Arc<dyn ReleaseInstaller>,
         #[cfg(any(target_os = "linux", target_os = "macos"))] _: &mut Context<Self>,
         #[cfg(target_os = "windows")] cx: &mut Context<Self>,
@@ -483,7 +446,6 @@ impl Updater {
             status: UpdateStatus::Idle,
             current_version,
             client,
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
             cache_dir,
             installer,
             pending_poll: None,
@@ -495,7 +457,6 @@ impl Updater {
     }
 
     pub fn start_polling(&self, cx: &mut Context<Self>) -> Task<anyhow::Result<()>> {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
         cx.background_spawn(cleanup_stale_installer_dirs(self.cache_dir.clone()))
             .detach();
 
@@ -654,7 +615,6 @@ impl Updater {
                     this.installer.clone(),
                 )
             });
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let cache_dir = this.read_with(cx, |this, _| this.cache_dir.clone());
         let current_version = if let UpdateStatus::Updated { version } = &previous_status {
             version
@@ -718,13 +678,8 @@ impl Updater {
             cx.notify();
         });
 
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let installer_dir =
             InstallerDir::new(&cache_dir).context("failed to create installer dir")?;
-        #[cfg(target_os = "windows")]
-        let installer_dir = InstallerDir::new()
-            .await
-            .context("failed to create installer dir")?;
         let target_path = Self::target_path(&installer_dir)?;
         let progress_entity = this.clone();
         let mut progress_cx = cx.clone();
@@ -1124,7 +1079,6 @@ pub async fn finalize_update_on_quit() {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn cleanup_stale_installer_dirs(cache_dir: PathBuf) {
     const STALE_INSTALLER_DIR_AGE: Duration = Duration::from_hours(24);
 
@@ -1174,7 +1128,7 @@ async fn cleanup_stale_installer_dirs(cache_dir: PathBuf) {
 mod tests {
     use super::*;
 
-    use futures::channel::oneshot;
+    use futures::channel::{mpsc, oneshot};
     use gpui::{BorrowAppContext, TestAppContext};
     use parking_lot::Mutex;
     use serde_json::json;
@@ -1194,8 +1148,7 @@ mod tests {
     impl ReleaseInstaller for TestReleaseInstaller {
         fn install(
             &self,
-            #[cfg(any(target_os = "linux", target_os = "macos"))] installer_dir: InstallerDir,
-            #[cfg(target_os = "windows")] _: InstallerDir,
+            installer_dir: InstallerDir,
             target_path: PathBuf,
             cx: &mut AsyncApp,
         ) -> anyhow::Result<Task<anyhow::Result<Option<PathBuf>>>> {
@@ -1205,8 +1158,6 @@ mod tests {
             Ok(background_executor.spawn(async move {
                 let installed_path = installed_dir.path().join("zaku");
                 smol::fs::copy(target_path, &installed_path).await?;
-
-                #[cfg(any(target_os = "linux", target_os = "macos"))]
                 drop(installer_dir);
 
                 Ok(Some(installed_path))
@@ -1232,7 +1183,7 @@ mod tests {
         cx.background_executor.allow_parking();
 
         let release_available = Arc::new(AtomicBool::new(false));
-        let (download_tx, download_rx) = oneshot::channel::<Vec<u8>>();
+        let (tx, rx) = oneshot::channel::<Vec<u8>>();
         let cache_dir = tempdir().unwrap();
         let installed_dir = Arc::new(tempdir().unwrap());
         let update_contents = b"test-zaku-update".to_vec();
@@ -1248,12 +1199,12 @@ mod tests {
                     .unwrap();
             });
             let release_available = Arc::clone(&release_available);
-            let download_rx = Arc::new(Mutex::new(Some(download_rx)));
+            let rx = Arc::new(Mutex::new(Some(rx)));
             let beta_discovery_path = format!("/releases/beta/latest/{OS}-{ARCH}");
             let stable_discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
             let artifact_path = format!("/releases/stable/26.2/{OS}-{ARCH}/download");
             let http_client = FakeHttpClient::create(move |request| {
-                let download_rx = download_rx.clone();
+                let rx = rx.clone();
                 let beta_discovery_path = beta_discovery_path.clone();
                 let stable_discovery_path = stable_discovery_path.clone();
                 let artifact_path = artifact_path.clone();
@@ -1304,10 +1255,10 @@ mod tests {
                             )
                             .unwrap())
                     } else if path == artifact_path {
-                        let download_rx = download_rx.lock().take().unwrap();
+                        let rx = rx.lock().take().unwrap();
                         Ok(Response::builder()
                             .status(200)
-                            .body(download_rx.await.unwrap().into())
+                            .body(rx.await.unwrap().into())
                             .unwrap())
                     } else {
                         panic!("unexpected update request path: {path}");
@@ -1358,7 +1309,7 @@ mod tests {
             "status should be downloading without progress, got {status:?}"
         );
 
-        download_tx.send(update_contents.clone()).unwrap();
+        tx.send(update_contents.clone()).unwrap();
 
         loop {
             cx.run_until_parked();
@@ -1390,7 +1341,7 @@ mod tests {
         cx.background_executor.allow_parking();
 
         let request_count = Arc::new(AtomicUsize::new(0));
-        let (release_tx, release_rx) = oneshot::channel::<()>();
+        let (tx, rx) = oneshot::channel::<()>();
         let cache_dir = tempdir().unwrap();
 
         cx.update(|cx| {
@@ -1403,19 +1354,19 @@ mod tests {
             });
             metadata::init_test("26.0".parse().unwrap(), cx);
 
-            let release_rx = Arc::new(Mutex::new(Some(release_rx)));
+            let rx = Arc::new(Mutex::new(Some(rx)));
             let request_count = Arc::clone(&request_count);
             let discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
             let http_client = FakeHttpClient::create(move |request| {
-                let release_rx = release_rx.clone();
+                let rx = rx.clone();
                 let discovery_path = discovery_path.clone();
                 let request_count = request_count.clone();
                 async move {
                     let path = request.uri().path();
                     assert_eq!(path, discovery_path, "update request path should match");
                     request_count.fetch_add(1, Ordering::SeqCst);
-                    let release_rx = release_rx.lock().take().unwrap();
-                    release_rx.await.unwrap();
+                    let rx = rx.lock().take().unwrap();
+                    rx.await.unwrap();
                     let download_url =
                         format!("https://api.zaku.dev/releases/stable/26.0/{OS}-{ARCH}/download");
                     Ok(Response::builder()
@@ -1475,7 +1426,7 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        release_tx.send(()).unwrap();
+        tx.send(()).unwrap();
 
         loop {
             cx.run_until_parked();
@@ -1500,26 +1451,25 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_updater_watches_beta_setting(cx: &mut TestAppContext) {
+    async fn test_updater_watches_beta_setting(cx: &mut TestAppContext) {
         cx.background_executor.allow_parking();
 
-        let requests = Arc::new(Mutex::new(Vec::new()));
+        let (tx, mut rx) = mpsc::unbounded();
         let cache_dir = tempdir().unwrap();
 
-        cx.update(|cx| {
+        let updater = cx.update(|cx| {
             settings::init(cx);
             metadata::init_test("26.0".parse().unwrap(), cx);
 
-            let requests = requests.clone();
             let beta_discovery_path = format!("/releases/beta/latest/{OS}-{ARCH}");
             let stable_discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
             let http_client = FakeHttpClient::create(move |request| {
-                let requests = requests.clone();
+                let tx = tx.clone();
                 let beta_discovery_path = beta_discovery_path.clone();
                 let stable_discovery_path = stable_discovery_path.clone();
                 async move {
                     let path = request.uri().path().to_string();
-                    requests.lock().push(path.clone());
+                    tx.unbounded_send(path.clone()).unwrap();
                     let (channel, version) = if path == beta_discovery_path {
                         ("beta", "26.0-beta.1")
                     } else if path == stable_discovery_path {
@@ -1546,14 +1496,18 @@ mod tests {
                 }
             });
             crate::init(http_client, cache_dir.path().to_path_buf(), cx);
+            Updater::get(cx).unwrap()
         });
 
-        cx.background_executor.run_until_parked();
         assert_eq!(
-            requests.lock().as_slice(),
-            &[format!("/releases/stable/latest/{OS}-{ARCH}")],
+            futures::StreamExt::next(&mut rx).await.unwrap(),
+            format!("/releases/stable/latest/{OS}-{ARCH}"),
             "default update settings should check only stable releases"
         );
+        cx.condition(&updater, |updater, _| {
+            matches!(updater.status(), UpdateStatus::Idle)
+        })
+        .await;
 
         cx.update(|cx| {
             cx.update_global::<SettingsStore, _>(|store, cx| {
@@ -1563,17 +1517,21 @@ mod tests {
                     .unwrap();
             });
         });
-        cx.background_executor.run_until_parked();
 
         assert_eq!(
-            requests.lock().as_slice(),
-            &[
-                format!("/releases/stable/latest/{OS}-{ARCH}"),
-                format!("/releases/beta/latest/{OS}-{ARCH}"),
-                format!("/releases/stable/latest/{OS}-{ARCH}"),
-            ],
+            futures::StreamExt::next(&mut rx).await.unwrap(),
+            format!("/releases/beta/latest/{OS}-{ARCH}"),
+            "enabling beta updates should immediately check beta releases"
+        );
+        assert_eq!(
+            futures::StreamExt::next(&mut rx).await.unwrap(),
+            format!("/releases/stable/latest/{OS}-{ARCH}"),
             "enabling beta updates should immediately check beta and stable releases"
         );
+        cx.condition(&updater, |updater, _| {
+            matches!(updater.status(), UpdateStatus::Idle)
+        })
+        .await;
 
         cx.update(|cx| {
             cx.update_global::<SettingsStore, _>(|store, cx| {
@@ -1583,18 +1541,16 @@ mod tests {
                     .unwrap();
             });
         });
-        cx.background_executor.run_until_parked();
 
         assert_eq!(
-            requests.lock().as_slice(),
-            &[
-                format!("/releases/stable/latest/{OS}-{ARCH}"),
-                format!("/releases/beta/latest/{OS}-{ARCH}"),
-                format!("/releases/stable/latest/{OS}-{ARCH}"),
-                format!("/releases/stable/latest/{OS}-{ARCH}"),
-            ],
+            futures::StreamExt::next(&mut rx).await.unwrap(),
+            format!("/releases/stable/latest/{OS}-{ARCH}"),
             "disabling beta updates should immediately check only stable releases"
         );
+        cx.condition(&updater, |updater, _| {
+            matches!(updater.status(), UpdateStatus::Idle)
+        })
+        .await;
     }
 
     #[test]
