@@ -607,16 +607,19 @@ impl Buffer {
         }
     }
 
+    pub fn set_text<T>(&mut self, text: T, cx: &mut Context<Self>) -> Option<clock::Lamport>
+    where
+        T: Into<Arc<str>>,
+    {
+        self.edit([(0..self.len(), text)], cx)
+    }
+
     pub fn edit<I, S, T>(&mut self, edits_iter: I, cx: &mut Context<Self>) -> Option<clock::Lamport>
     where
         I: IntoIterator<Item = (Range<S>, T)>,
         S: ToOffset,
         T: Into<Arc<str>>,
     {
-        if self.read_only() {
-            return None;
-        }
-
         let mut edits: Vec<(Range<usize>, Arc<str>)> = Vec::new();
         for (range, new_text) in edits_iter {
             let mut range = range.start.to_offset(self)..range.end.to_offset(self);

@@ -16,15 +16,17 @@ use workspace::{
 };
 
 struct LogsView {
+    buffer: Entity<Buffer>,
     editor: Entity<Editor>,
     _editor_subscription: Subscription,
 }
 
 impl LogsView {
-    fn new(editor: Entity<Editor>, cx: &mut Context<Self>) -> Self {
+    fn new(buffer: Entity<Buffer>, editor: Entity<Editor>, cx: &mut Context<Self>) -> Self {
         let subscription = cx.subscribe(&editor, |_, _, event: &EditorEvent, cx| cx.emit(*event));
 
         Self {
+            buffer,
             editor,
             _editor_subscription: subscription,
         }
@@ -165,8 +167,10 @@ pub(crate) fn open_log_file(
 
             if let Some((index, logs_view)) = existing_logs_view {
                 logs_view.update(cx, |logs_view, cx| {
+                    logs_view
+                        .buffer
+                        .update(cx, |buffer, cx| buffer.set_text(log, cx));
                     logs_view.editor.update(cx, |editor, cx| {
-                        editor.set_text(&log, cx);
                         editor.move_selection_to_end(cx);
                     });
                 });
@@ -181,9 +185,10 @@ pub(crate) fn open_log_file(
                 buffer.set_capability(Capability::ReadOnly, cx);
                 buffer
             });
-            let buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx).with_title("Logs".into()));
+            let multi_buffer =
+                cx.new(|cx| MultiBuffer::singleton(buffer.clone(), cx).with_title("Logs".into()));
             let editor = cx.new(|cx| {
-                let mut editor = Editor::for_multibuffer(buffer, window, cx);
+                let mut editor = Editor::for_multibuffer(multi_buffer, window, cx);
                 editor.set_read_only(true);
                 editor.set_breadcrumb_header(format!(
                     "Last {MAX_LINES} lines in {}",
@@ -193,7 +198,7 @@ pub(crate) fn open_log_file(
                 editor
             });
             workspace.add_item_to_active_pane(
-                Box::new(cx.new(|cx| LogsView::new(editor, cx))),
+                Box::new(cx.new(|cx| LogsView::new(buffer, editor, cx))),
                 None,
                 true,
                 window,
