@@ -314,13 +314,24 @@ pub fn check_for_updates(_: &actions::updater::Check, window: &mut Window, cx: &
             });
         }
     } else {
-        drop(window.prompt(
+        log::error!("Cannot check for updates because updater is not initialized");
+        let prompt = window.prompt(
             PromptLevel::Warning,
             "Couldn't check for updates",
-            Some("Please check your internet connection or try again later."),
-            &["OK"],
+            Some("Check the logs for details or try again later."),
+            &["Open Logs", "OK"],
             cx,
-        ));
+        );
+        window
+            .spawn(cx, async move |cx| {
+                if prompt.await == Ok(0) {
+                    cx.update(|window, cx| {
+                        window.dispatch_action(Box::new(actions::zaku::OpenLogs), cx);
+                    })?;
+                }
+                anyhow::Ok(())
+            })
+            .detach_and_log_err(cx);
     }
 }
 

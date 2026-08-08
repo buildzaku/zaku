@@ -169,7 +169,7 @@ impl UpdateVersion {
         let prompt = window.prompt(
             PromptLevel::Warning,
             "Couldn't check for updates",
-            Some("Please check your internet connection or try again later."),
+            Some("Check the logs for details or try again later."),
             &["Open Logs", "OK"],
             cx,
         );
@@ -422,7 +422,7 @@ mod tests {
             cx.pending_prompt(),
             Some((
                 "Couldn't check for updates".to_string(),
-                "Please check your internet connection or try again later.".to_string(),
+                "Check the logs for details or try again later.".to_string(),
             )),
             "manual failure should show error prompt"
         );
@@ -486,7 +486,7 @@ mod tests {
             cx.pending_prompt(),
             Some((
                 "Couldn't check for updates".to_string(),
-                "Please check your internet connection or try again later.".to_string(),
+                "Check the logs for details or try again later.".to_string(),
             )),
             "a repeated error should complete the new manual check"
         );
