@@ -29,7 +29,7 @@ use std::{
 #[cfg(target_os = "linux")]
 use std::{error, fmt};
 
-use app_version::AppVersion;
+use app_version::{AppVersion, ReleaseChannel};
 use db::kv::KeyValueStore;
 use http_client::{AsyncBody, HttpClient, http::StatusCode};
 use metadata::ZAKU_SERVER_URL;
@@ -216,6 +216,7 @@ async fn unmount_disk_image(mount_path: &Path) {
 #[derive(Debug, Clone, Copy, RegisterSetting)]
 struct UpdateSettings {
     automatic: bool,
+    beta: bool,
 }
 
 impl Settings for UpdateSettings {
@@ -226,6 +227,9 @@ impl Settings for UpdateSettings {
             automatic: update
                 .and_then(|update| update.automatic)
                 .expect("update automatic should be defaulted"),
+            beta: update
+                .and_then(|update| update.beta)
+                .expect("update beta should be defaulted"),
         }
     }
 }
@@ -266,7 +270,9 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
     .detach();
 
     let version = metadata::version(cx);
-    let should_poll_for_updates = !Updater::eligible_channels_for(&version).is_empty();
+    let settings = *UpdateSettings::get_global(cx);
+    let should_poll_for_updates =
+        !Updater::eligible_channels_for(&version, settings.beta).is_empty();
     let updater = cx.new(|cx| {
         let updater = Updater::new(
             version,
@@ -276,18 +282,21 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
             cx,
         );
         if should_poll_for_updates {
-            let mut update_subscription = UpdateSettings::get_global(cx)
-                .automatic
-                .then(|| updater.start_polling(cx));
+            let mut beta_updates_enabled = settings.beta;
+            let mut update_subscription = settings.automatic.then(|| updater.start_polling(cx));
 
             cx.observe_global::<SettingsStore>(move |updater, cx| {
-                if UpdateSettings::get_global(cx).automatic {
+                let settings = *UpdateSettings::get_global(cx);
+                if settings.automatic {
                     if update_subscription.is_none() {
                         update_subscription = Some(updater.start_polling(cx));
+                    } else if beta_updates_enabled != settings.beta {
+                        updater.poll(UpdateCheckType::Automatic, cx);
                     }
                 } else {
                     update_subscription.take();
                 }
+                beta_updates_enabled = settings.beta;
             })
             .detach();
         }
@@ -300,8 +309,10 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
 
 pub fn check_for_updates(_: &actions::updater::Check, window: &mut Window, cx: &mut App) {
     if let Some(updater) = Updater::get(cx) {
+        let settings = *UpdateSettings::get_global(cx);
         let should_poll_for_updates =
-            !Updater::eligible_channels_for(&updater.read(cx).current_version).is_empty();
+            !Updater::eligible_channels_for(&updater.read(cx).current_version, settings.beta)
+                .is_empty();
         if should_poll_for_updates {
             updater.update(cx, |updater, cx| {
                 updater.poll(UpdateCheckType::Manual, cx);
@@ -586,12 +597,13 @@ impl Updater {
 
     async fn get_release_asset(
         this: &Entity<Self>,
-        channel: &str,
+        channel: ReleaseChannel,
         os: &str,
         arch: &str,
         cx: &mut AsyncApp,
     ) -> anyhow::Result<Option<ReleaseAsset>> {
         let client = this.read_with(cx, |this, _| this.client.clone());
+        let channel = channel.as_str();
         let url = format!("{ZAKU_SERVER_URL}/releases/{channel}/latest/{os}-{arch}");
 
         let mut response = client.get(&url, AsyncBody::default(), true).await?;
@@ -617,13 +629,18 @@ impl Updater {
         Ok(Some(release_asset))
     }
 
-    fn eligible_channels_for(version: &AppVersion) -> &'static [&'static str] {
-        if version.is_stable() {
-            &["stable"]
-        } else if version.is_beta() {
-            &["beta", "stable"]
+    fn eligible_channels_for(
+        version: &AppVersion,
+        beta_updates_enabled: bool,
+    ) -> &'static [ReleaseChannel] {
+        if !version.is_beta() && !version.is_stable() {
+            return &[];
+        }
+
+        if beta_updates_enabled {
+            &[ReleaseChannel::Beta, ReleaseChannel::Stable]
         } else {
-            &[]
+            &[ReleaseChannel::Stable]
         }
     }
 
@@ -644,11 +661,11 @@ impl Updater {
         } else {
             &installed_version
         };
-        let Some((primary_channel, optional_channels)) =
-            Self::eligible_channels_for(current_version).split_first()
-        else {
+        let beta_updates_enabled = cx.update(|cx| UpdateSettings::get_global(cx).beta);
+        let channels = Self::eligible_channels_for(current_version, beta_updates_enabled);
+        if channels.is_empty() {
             return Ok(());
-        };
+        }
 
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         Self::check_dependencies()?;
@@ -659,22 +676,26 @@ impl Updater {
             cx.notify();
         });
 
-        let mut release_asset = Self::get_release_asset(&this, primary_channel, OS, ARCH, cx)
-            .await?
-            .with_context(|| format!("{primary_channel} channel has no latest release"))?;
-        for channel in optional_channels {
-            let Some(candidate) = Self::get_release_asset(&this, channel, OS, ARCH, cx).await?
+        let mut release_asset: Option<ReleaseAsset> = None;
+        for channel in channels {
+            let Some(candidate) = Self::get_release_asset(&this, *channel, OS, ARCH, cx).await?
             else {
                 continue;
             };
-            if candidate.version > release_asset.version {
-                release_asset = candidate;
+            if release_asset
+                .as_ref()
+                .is_none_or(|release| candidate.version > release.version)
+            {
+                release_asset = Some(candidate);
             }
         }
+        let release_asset =
+            release_asset.context("no latest release for eligible update channels")?;
         let newer_version = Self::check_if_fetched_version_is_newer(
             installed_version,
             release_asset.version.clone(),
             previous_status.clone(),
+            beta_updates_enabled,
         )?;
 
         let Some(newer_version) = newer_version else {
@@ -753,6 +774,7 @@ impl Updater {
         installed_version: AppVersion,
         fetched_version: AppVersion,
         status: UpdateStatus,
+        beta_updates_enabled: bool,
     ) -> anyhow::Result<Option<AppVersion>> {
         let current_version = if let UpdateStatus::Updated { version } = status {
             version
@@ -760,7 +782,7 @@ impl Updater {
             installed_version
         };
         anyhow::ensure!(
-            fetched_version.is_stable() || current_version.is_beta() && fetched_version.is_beta(),
+            fetched_version.is_stable() || beta_updates_enabled && fetched_version.is_beta(),
             "{fetched_version} is not an eligible update for Zaku {current_version}",
         );
         Ok(Self::check_if_fetched_version_is_newer_stable(
@@ -1193,13 +1215,15 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_updater_defaults_to_true(cx: &mut TestAppContext) {
+    fn test_updater_settings_defaults(cx: &mut TestAppContext) {
         cx.update(|cx| {
             settings::init(cx);
+            let settings = UpdateSettings::get_global(cx);
             assert!(
-                UpdateSettings::get_global(cx).automatic,
+                settings.automatic,
                 "automatic updates should default to true"
             );
+            assert!(!settings.beta, "beta updates should default to false");
         });
     }
 
@@ -1216,6 +1240,13 @@ mod tests {
         let update_sha256 = hex::encode(Sha256::digest(&update_contents));
 
         let (updater, _polling) = cx.update(|cx| {
+            settings::init(cx);
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(r#"{ "update": { "beta": true } }"#, cx)
+                    .result()
+                    .unwrap();
+            });
             let release_available = Arc::clone(&release_available);
             let download_rx = Arc::new(Mutex::new(Some(download_rx)));
             let beta_discovery_path = format!("/releases/beta/latest/{OS}-{ARCH}");
@@ -1355,7 +1386,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_updater_watches_user_setting(cx: &mut TestAppContext) {
+    async fn test_updater_watches_automatic_setting(cx: &mut TestAppContext) {
         cx.background_executor.allow_parking();
 
         let request_count = Arc::new(AtomicUsize::new(0));
@@ -1468,112 +1499,187 @@ mod tests {
         );
     }
 
+    #[gpui::test]
+    fn test_updater_watches_beta_setting(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
+
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let cache_dir = tempdir().unwrap();
+
+        cx.update(|cx| {
+            settings::init(cx);
+            metadata::init_test("26.0".parse().unwrap(), cx);
+
+            let requests = requests.clone();
+            let beta_discovery_path = format!("/releases/beta/latest/{OS}-{ARCH}");
+            let stable_discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
+            let http_client = FakeHttpClient::create(move |request| {
+                let requests = requests.clone();
+                let beta_discovery_path = beta_discovery_path.clone();
+                let stable_discovery_path = stable_discovery_path.clone();
+                async move {
+                    let path = request.uri().path().to_string();
+                    requests.lock().push(path.clone());
+                    let (channel, version) = if path == beta_discovery_path {
+                        ("beta", "26.0-beta.1")
+                    } else if path == stable_discovery_path {
+                        ("stable", "26.0")
+                    } else {
+                        panic!("unexpected update request path: {path}");
+                    };
+                    let download_url = format!(
+                        "https://api.zaku.dev/releases/{channel}/{version}/{OS}-{ARCH}/download"
+                    );
+                    Ok(Response::builder()
+                        .status(200)
+                        .body(
+                            json!({
+                                "version": version,
+                                "size": 1,
+                                "sha256": hex::encode(Sha256::digest([0_u8])),
+                                "download_url": download_url,
+                            })
+                            .to_string()
+                            .into(),
+                        )
+                        .unwrap())
+                }
+            });
+            crate::init(http_client, cache_dir.path().to_path_buf(), cx);
+        });
+
+        cx.background_executor.run_until_parked();
+        assert_eq!(
+            requests.lock().as_slice(),
+            &[format!("/releases/stable/latest/{OS}-{ARCH}")],
+            "default update settings should check only stable releases"
+        );
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(r#"{ "update": { "beta": true } }"#, cx)
+                    .result()
+                    .unwrap();
+            });
+        });
+        cx.background_executor.run_until_parked();
+
+        assert_eq!(
+            requests.lock().as_slice(),
+            &[
+                format!("/releases/stable/latest/{OS}-{ARCH}"),
+                format!("/releases/beta/latest/{OS}-{ARCH}"),
+                format!("/releases/stable/latest/{OS}-{ARCH}"),
+            ],
+            "enabling beta updates should immediately check beta and stable releases"
+        );
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(r#"{ "update": { "beta": false } }"#, cx)
+                    .result()
+                    .unwrap();
+            });
+        });
+        cx.background_executor.run_until_parked();
+
+        assert_eq!(
+            requests.lock().as_slice(),
+            &[
+                format!("/releases/stable/latest/{OS}-{ARCH}"),
+                format!("/releases/beta/latest/{OS}-{ARCH}"),
+                format!("/releases/stable/latest/{OS}-{ARCH}"),
+                format!("/releases/stable/latest/{OS}-{ARCH}"),
+            ],
+            "disabling beta updates should immediately check only stable releases"
+        );
+    }
+
     #[test]
     fn test_eligible_channels_for_version() {
-        for (version, expected_channels) in [
-            ("26.0-beta.1", &["beta", "stable"][..]),
-            ("26.1", &["stable"][..]),
-            ("26.1-nightly.2026-08-02", &[][..]),
-            ("26.1-dev.1000.aaaaaaaa", &[][..]),
+        for (version, beta_updates_enabled, expected_channels) in [
+            (
+                "26.0-beta.1",
+                true,
+                &[ReleaseChannel::Beta, ReleaseChannel::Stable][..],
+            ),
+            ("26.1", false, &[ReleaseChannel::Stable][..]),
+            (
+                "26.1",
+                true,
+                &[ReleaseChannel::Beta, ReleaseChannel::Stable][..],
+            ),
+            ("26.1-beta.1", false, &[ReleaseChannel::Stable][..]),
+            ("26.1-nightly.2026-08-02", true, &[][..]),
+            ("26.1-dev.1000.aaaaaaaa", false, &[][..]),
         ] {
             let version = version.parse().unwrap();
-            assert_eq!(Updater::eligible_channels_for(&version), expected_channels);
-        }
-    }
-
-    #[test]
-    fn test_beta_updates_to_newer_beta_or_stable() {
-        let installed_version = "26.0-beta.1".parse::<AppVersion>().unwrap();
-
-        for fetched_version in ["26.0-beta.2", "26.0"] {
-            let fetched_version = fetched_version.parse::<AppVersion>().unwrap();
-            let newer_version = Updater::check_if_fetched_version_is_newer(
-                installed_version.clone(),
-                fetched_version.clone(),
-                UpdateStatus::Idle,
+            assert_eq!(
+                Updater::eligible_channels_for(&version, beta_updates_enabled),
+                expected_channels
             );
-
-            assert_eq!(newer_version.unwrap(), Some(fetched_version));
         }
     }
 
     #[test]
-    fn test_stable_does_not_update_when_fetched_version_is_not_higher() {
-        let installed_version = "26.1".parse::<AppVersion>().unwrap();
-
-        for fetched_version in ["26.0", "26.1"] {
-            let newer_version = Updater::check_if_fetched_version_is_newer(
-                installed_version.clone(),
+    fn test_fetched_version_selection() {
+        for (
+            installed_version,
+            fetched_version,
+            updated_version,
+            beta_updates_enabled,
+            expected_version,
+        ) in [
+            (
+                "26.0-beta.1",
+                "26.0-beta.2",
+                None,
+                true,
+                Some("26.0-beta.2"),
+            ),
+            ("26.0-beta.1", "26.0", None, true, Some("26.0")),
+            ("26.1", "26.2-beta.1", None, true, Some("26.2-beta.1")),
+            ("26.1", "26.0", None, false, None),
+            ("26.1", "26.1", None, false, None),
+            ("26.0", "26.1", None, false, Some("26.1")),
+            ("26.0", "26.1", Some("26.1"), false, None),
+            ("26.0", "26.1.1", Some("26.1"), false, Some("26.1.1")),
+        ] {
+            let status = match updated_version {
+                Some(version) => UpdateStatus::Updated {
+                    version: version.parse().unwrap(),
+                },
+                None => UpdateStatus::Idle,
+            };
+            let selected_version = Updater::check_if_fetched_version_is_newer(
+                installed_version.parse().unwrap(),
                 fetched_version.parse().unwrap(),
-                UpdateStatus::Idle,
+                status,
+                beta_updates_enabled,
             );
+            let expected_version =
+                expected_version.map(|version| version.parse::<AppVersion>().unwrap());
 
-            assert_eq!(newer_version.unwrap(), None);
+            assert_eq!(selected_version.unwrap(), expected_version);
         }
     }
 
     #[test]
-    fn test_stable_does_update_when_fetched_version_is_higher() {
-        let installed_version = "26.0".parse::<AppVersion>().unwrap();
-        let fetched_version = "26.1".parse::<AppVersion>().unwrap();
-
-        let newer_version = Updater::check_if_fetched_version_is_newer(
-            installed_version,
-            fetched_version.clone(),
-            UpdateStatus::Idle,
-        );
-
-        assert_eq!(newer_version.unwrap(), Some(fetched_version));
-    }
-
-    #[test]
-    fn test_stable_does_not_update_when_fetched_version_is_not_higher_than_cached() {
-        let installed_version = "26.0".parse::<AppVersion>().unwrap();
-        let status = UpdateStatus::Updated {
-            version: "26.1".parse().unwrap(),
-        };
-        let fetched_version = "26.1".parse::<AppVersion>().unwrap();
-
-        let newer_version =
-            Updater::check_if_fetched_version_is_newer(installed_version, fetched_version, status);
-
-        assert_eq!(newer_version.unwrap(), None);
-    }
-
-    #[test]
-    fn test_stable_does_update_when_fetched_version_is_higher_than_cached() {
-        let installed_version = "26.0".parse::<AppVersion>().unwrap();
-        let status = UpdateStatus::Updated {
-            version: "26.1".parse().unwrap(),
-        };
-        let fetched_version = "26.1.1".parse::<AppVersion>().unwrap();
-
-        let newer_version = Updater::check_if_fetched_version_is_newer(
-            installed_version,
-            fetched_version.clone(),
-            status,
-        );
-
-        assert_eq!(newer_version.unwrap(), Some(fetched_version));
-    }
-
-    #[test]
-    fn test_stable_update_rejects_prereleases() {
+    fn test_fetched_prerelease_rejection() {
         for fetched_version in [
             "26.1-beta.1",
             "26.1-nightly.2026-07-19",
             "26.1-dev.1000.aaaaaaaa",
         ] {
-            let result = Updater::check_if_fetched_version_is_newer(
+            Updater::check_if_fetched_version_is_newer(
                 "26.0".parse().unwrap(),
                 fetched_version.parse().unwrap(),
                 UpdateStatus::Idle,
-            );
-
-            assert!(
-                result.is_err(),
-                "{fetched_version} should be rejected for stable updates"
-            );
+                false,
+            )
+            .unwrap_err();
         }
     }
 
