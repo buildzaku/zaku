@@ -268,7 +268,7 @@ jobs:
             gh release edit "$VERSION" --draft=false --latest=false --repo "$REPOSITORY"
           fi
 
-          curl -fsS -X PUT -H "Authorization: Bearer ${oidc_token}" --variable %VERSION --expand-json '{"version":"{{VERSION}}"}' "https://api.zaku.dev/releases/${CHANNEL}/latest"
+          curl -fsS -X PUT -H "Authorization: Bearer ${oidc_token}" "https://api.zaku.dev/releases/${CHANNEL}/latest"
 
           if [[ "$CHANNEL" == "stable" ]]; then
             gh release edit "$VERSION" --latest --repo "$REPOSITORY"
