@@ -257,8 +257,7 @@ jobs:
               artifacts: [.assets[] | {
                 name,
                 size,
-                sha256: (.digest | ltrimstr("sha256:")),
-                download_url: .url
+                sha256: (.digest | ltrimstr("sha256:"))
               }]
             }')
             curl -fsS -X PUT -H "Authorization: Bearer ${oidc_token}" --json "$request_body" "https://api.zaku.dev/releases/${CHANNEL}/${VERSION}"
