@@ -151,7 +151,7 @@ impl PartialEq for UpdateStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReleaseAsset {
+pub struct ReleaseArtifact {
     pub version: AppVersion,
     pub size: u64,
     pub sha256: String,
@@ -567,13 +567,13 @@ impl Updater {
         true
     }
 
-    async fn get_release_asset(
+    async fn get_release_artifact(
         this: &Entity<Self>,
         channel: ReleaseChannel,
         os: &str,
         arch: &str,
         cx: &mut AsyncApp,
-    ) -> anyhow::Result<Option<ReleaseAsset>> {
+    ) -> anyhow::Result<Option<ReleaseArtifact>> {
         let client = this.read_with(cx, |this, _| this.client.clone());
         let channel = channel.as_str();
         let url = format!("{ZAKU_SERVER_URL}/releases/{channel}/latest/{os}-{arch}");
@@ -592,13 +592,13 @@ impl Updater {
             String::from_utf8_lossy(&body),
         );
 
-        let release_asset = serde_json::from_slice(&body).with_context(|| {
+        let release_artifact = serde_json::from_slice(&body).with_context(|| {
             format!(
                 "error deserializing release: {}",
                 String::from_utf8_lossy(&body),
             )
         })?;
-        Ok(Some(release_asset))
+        Ok(Some(release_artifact))
     }
 
     fn eligible_channels_for(
@@ -647,24 +647,24 @@ impl Updater {
             cx.notify();
         });
 
-        let mut release_asset: Option<ReleaseAsset> = None;
+        let mut release_artifact: Option<ReleaseArtifact> = None;
         for channel in channels {
-            let Some(candidate) = Self::get_release_asset(&this, *channel, OS, ARCH, cx).await?
+            let Some(candidate) = Self::get_release_artifact(&this, *channel, OS, ARCH, cx).await?
             else {
                 continue;
             };
-            if release_asset
+            if release_artifact
                 .as_ref()
                 .is_none_or(|release| candidate.version > release.version)
             {
-                release_asset = Some(candidate);
+                release_artifact = Some(candidate);
             }
         }
-        let release_asset =
-            release_asset.context("no latest release for eligible update channels")?;
+        let release_artifact =
+            release_artifact.context("no latest release for eligible update channels")?;
         let newer_version = Self::check_if_fetched_version_is_newer(
             installed_version,
-            release_asset.version.clone(),
+            release_artifact.version.clone(),
             previous_status.clone(),
             beta_updates_enabled,
         )?;
@@ -694,7 +694,7 @@ impl Updater {
         let target_path = Self::target_path(&installer_dir)?;
         let progress_entity = this.clone();
         let mut progress_cx = cx.clone();
-        download_release(&target_path, release_asset, client, move |progress| {
+        download_release(&target_path, release_artifact, client, move |progress| {
             progress_entity.update(&mut progress_cx, |this, cx| {
                 if let UpdateStatus::Downloading {
                     progress: current_progress,
@@ -830,7 +830,7 @@ impl Updater {
 
 async fn download_release(
     target_path: &Path,
-    release: ReleaseAsset,
+    release: ReleaseArtifact,
     client: Arc<dyn HttpClient>,
     mut on_progress: impl FnMut(Option<f32>),
 ) -> anyhow::Result<()> {
@@ -1655,7 +1655,7 @@ mod tests {
         cx.background_executor.allow_parking();
 
         let body = vec![0_u8; 20_000];
-        let release = ReleaseAsset {
+        let release = ReleaseArtifact {
             version: "26.1".parse().unwrap(),
             size: u64::try_from(body.len()).unwrap(),
             sha256: hex::encode(Sha256::digest(&body)),
@@ -1713,7 +1713,7 @@ mod tests {
         cx.background_executor.allow_parking();
 
         let body = b"test-zaku-update".to_vec();
-        let release = ReleaseAsset {
+        let release = ReleaseArtifact {
             version: "26.1".parse().unwrap(),
             size: u64::try_from(body.len()).unwrap(),
             sha256: hex::encode(Sha256::digest(b"different-update")),

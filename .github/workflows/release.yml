@@ -232,7 +232,7 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: "Upload release assets"
+      - name: "Upload release artifacts"
         if: env.PUBLISH_ARTIFACTS == 'true'
         env:
           GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
