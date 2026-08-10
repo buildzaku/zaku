@@ -223,7 +223,9 @@ impl FromStr for AppVersion {
         if !version.pre.is_empty() {
             let identifiers = version.pre.as_str().split('.').collect::<Vec<_>>();
             let supported = match identifiers.as_slice() {
-                ["beta", number] => number.parse::<u64>().is_ok_and(|number| number > 0),
+                ["beta", number] => {
+                    version.patch == 0 && number.parse::<u64>().is_ok_and(|number| number > 0)
+                }
                 ["nightly", date] => {
                     version.patch == 0
                         && Date::strptime("%Y-%m-%d", date)
@@ -314,6 +316,7 @@ mod tests {
             ("26", "minor version should be required"),
             ("26.1-alpha", "unknown prereleases should be rejected"),
             ("26.1-beta.0", "beta numbers should start at one"),
+            ("26.1.1-beta.1", "beta version should not contain a patch"),
             ("26.1-nightly.2026-02-30", "nightly date should be valid"),
             (
                 "26.1-nightly.2026-7-19",
