@@ -58,23 +58,22 @@ $releaseDirectory = Join-Path $targetDirectory "$target/release"
 $bundleDirectory = Join-Path $releaseDirectory "bundle/windows"
 $sourceDirectory = Join-Path $bundleDirectory "source"
 $outputDirectory = Join-Path $bundleDirectory "output"
-$iscc = if ($env:ISCC_PATH) {
+$minimumCompilerVersion = [version]"7.0.2"
+$compilerPath = if ($env:ISCC_PATH) {
     $env:ISCC_PATH
 }
 else {
-    $compiler = @(
+    @(
         (Join-Path $env:ProgramFiles "Inno Setup 7/ISCC.exe")
         (Join-Path $env:LOCALAPPDATA "Programs/Inno Setup 7/ISCC.exe")
-    ) | Where-Object { Test-Path $_ -PathType Leaf } | Select-Object -First 1
-    if ($compiler) {
-        $compiler
-    }
-    else {
-        (Get-Command "ISCC.exe" -ErrorAction SilentlyContinue).Source
-    }
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 }
-if (-not $iscc -or -not (Test-Path $iscc -PathType Leaf)) {
-    throw "Inno Setup 7 compiler was not found. Install Inno Setup 7 or set ISCC_PATH to ISCC.exe"
+if (-not $compilerPath -or -not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
+    throw "Inno Setup $minimumCompilerVersion or newer was not found. Install Inno Setup or set ISCC_PATH to ISCC.exe"
+}
+$compilerVersion = (Get-Item -LiteralPath $compilerPath).VersionInfo.FileVersionRaw
+if ($compilerVersion -lt $minimumCompilerVersion) {
+    throw "Inno Setup $minimumCompilerVersion or newer is required: $compilerVersion"
 }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio/Installer/vswhere.exe"
@@ -132,7 +131,7 @@ try {
     Copy-Item "crates/zaku/resources/windows/app-icon.ico" (Join-Path $sourceDirectory "app-icon.ico")
 
     Write-Output "Creating Windows installer"
-    $isccArguments = @(
+    $compilerArguments = @(
         "/DArchitecture=$Arch"
         "/DVersion=$version"
         "/DVersionInfoVersion=$versionInfoVersion"
@@ -140,7 +139,7 @@ try {
         "/DOutputDir=$outputDirectory"
         "crates/zaku/resources/windows/zaku.iss"
     )
-    & $iscc @isccArguments
+    & $compilerPath @compilerArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Could not create the Zaku installer"
     }

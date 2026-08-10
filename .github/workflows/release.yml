@@ -186,6 +186,30 @@ jobs:
           Copy-Item -Path "./.cargo/workflow-config.toml" -Destination "./../.cargo/config.toml"
         shell: pwsh
 
+      - name: "Install Inno Setup (Windows)"
+        if: runner.os == 'Windows'
+        env:
+          INNO_SETUP_SHA256: 5ad54ca3def786f8f4212552e54cc6d8d61329e2d24a1cfee0571d42c2684ff1
+          INNO_SETUP_URL: https://github.com/jrsoftware/issrc/releases/download/is-7_0_2/innosetup-7.0.2-x64.exe
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP "innosetup.exe"
+          $directory = Join-Path $env:RUNNER_TEMP "innosetup"
+
+          Invoke-WebRequest -Uri $env:INNO_SETUP_URL -OutFile $installer
+          $sha256 = (Get-FileHash -Algorithm SHA256 -Path $installer).Hash
+          if ($sha256 -ine $env:INNO_SETUP_SHA256) {
+            throw "Unexpected Inno Setup installer checksum: $sha256"
+          }
+
+          $arguments = "/SP- /CURRENTUSER /DIR=`"$directory`" /NORESTART /PORTABLE=1 /SUPPRESSMSGBOXES /VERYSILENT"
+          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Could not install Inno Setup: exit code $($process.ExitCode)"
+          }
+
+          "ISCC_PATH=$(Join-Path $directory 'ISCC.exe')" >> $env:GITHUB_ENV
+        shell: pwsh
+
       - name: "Install dependencies (Linux)"
         if: runner.os == 'Linux'
         run: ./script/linux
