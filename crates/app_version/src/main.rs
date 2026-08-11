@@ -76,7 +76,7 @@ fn execute(arguments: Args) -> anyhow::Result<String> {
             } else if branch {
                 Ok(version.release_branch())
             } else if channel {
-                Ok(version.release_channel()?.as_str().to_string())
+                Ok(version.release_channel()?.to_string())
             } else {
                 Ok(version.to_string())
             }

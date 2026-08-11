@@ -11,12 +11,12 @@ pub enum ReleaseChannel {
     Stable,
 }
 
-impl ReleaseChannel {
-    pub fn as_str(self) -> &'static str {
-        match self {
+impl fmt::Display for ReleaseChannel {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
             Self::Beta => "beta",
             Self::Stable => "stable",
-        }
+        })
     }
 }
 
