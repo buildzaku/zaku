@@ -335,8 +335,8 @@ jobs:
       - name: "Upload bundle"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Zaku-${{ needs.github_release.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.extension }}
           path: target/${{ matrix.target }}/release/Zaku-${{ needs.github_release.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.extension }}
+          archive: false
           if-no-files-found: error
           overwrite: true
 
