@@ -37,7 +37,7 @@ install_sccache() {
 
     echo "Installing sccache ${SCCACHE_VERSION}"
 
-    local os arch archive expected_sha256 basename temp_dir archive_path sha256
+    local os arch archive expected_sha256 basename temp_dir
     os="$(uname -s)"
     arch="$(uname -m)"
 
@@ -66,23 +66,24 @@ install_sccache() {
 
     basename="${archive%.tar.gz}"
     temp_dir=$(mktemp -d)
-    trap 'rm -rf "$temp_dir"' EXIT
-    archive_path="${temp_dir}/${archive}"
-    curl -fsSL -o "$archive_path" "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}"
-    if [[ "$os" == "Linux" ]]; then
-      sha256=$(sha256sum "$archive_path")
-    else
-      sha256=$(shasum -a 256 "$archive_path")
-    fi
-    sha256="${sha256%% *}"
-    if [[ "$sha256" != "$expected_sha256" ]]; then
-      echo "Unexpected sccache archive checksum: $sha256" >&2
-      exit 1
-    fi
-    tar xzf "$archive_path" -C "$temp_dir"
-    mv "${temp_dir}/${basename}/sccache" "${SCCACHE_DIR}/"
-    rm -rf "$temp_dir"
-    trap - EXIT
+    (
+      trap 'rm -rf "$temp_dir"' EXIT
+
+      archive_path="${temp_dir}/${archive}"
+      curl -fsSL -o "$archive_path" "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}"
+      if [[ "$os" == "Linux" ]]; then
+        sha256=$(sha256sum "$archive_path")
+      else
+        sha256=$(shasum -a 256 "$archive_path")
+      fi
+      sha256="${sha256%% *}"
+      if [[ "$sha256" != "$expected_sha256" ]]; then
+        echo "Unexpected sccache archive checksum: $sha256" >&2
+        exit 1
+      fi
+      tar xzf "$archive_path" -C "$temp_dir"
+      mv "${temp_dir}/${basename}/sccache" "${SCCACHE_DIR}/"
+    )
 
     if ! installed_version="$("${SCCACHE_DIR}/sccache" --version 2>/dev/null)"; then
       echo "Invalid sccache binary: ${SCCACHE_DIR}/sccache" >&2
