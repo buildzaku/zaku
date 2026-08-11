@@ -575,7 +575,6 @@ impl Updater {
         cx: &mut AsyncApp,
     ) -> anyhow::Result<Option<ReleaseArtifact>> {
         let client = this.read_with(cx, |this, _| this.client.clone());
-        let channel = channel.as_str();
         let url = format!("{ZAKU_SERVER_URL}/releases/{channel}/latest/{os}-{arch}");
 
         let mut response = client.get(&url, AsyncBody::default(), true).await?;
