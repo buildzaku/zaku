@@ -189,8 +189,7 @@ jobs:
             github_release_status=missing
           fi
 
-          response_file=$(mktemp)
-          status=$(curl -sS -o "$response_file" -w '%{http_code}' "https://api.zaku.dev/releases/${CHANNEL}/${VERSION}/linux-x86_64")
+          status=$(curl -sSI -o /dev/null -w '%{http_code}' "https://api.zaku.dev/releases/${CHANNEL}/${VERSION}")
           case "$status" in
             200)
               manifest_exists=true
@@ -200,7 +199,6 @@ jobs:
               ;;
             *)
               echo "::error::Could not inspect server manifest: HTTP $status"
-              cat "$response_file"
               exit 1
               ;;
           esac
