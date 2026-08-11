@@ -13,4 +13,4 @@ jobs:
     name: "Build"
     uses: ./.github/workflows/build.yml
     with:
-      version: 26.0.0-dev
+      version: 26.0-dev
