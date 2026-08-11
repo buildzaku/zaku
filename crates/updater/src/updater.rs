@@ -1,9 +1,7 @@
 mod update_version;
 
 use anyhow::Context as _;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use futures::StreamExt;
-use futures::{AsyncReadExt, AsyncWriteExt};
+use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 #[cfg(target_os = "macos")]
 use gpui::BackgroundExecutor;
 #[cfg(target_os = "windows")]
@@ -12,25 +10,25 @@ use gpui::{
     App, AppContext, AsyncApp, Context, Entity, Global, PromptLevel, Task, TaskExt, Window,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use smol::fs::File;
 #[cfg(target_os = "windows")]
 use std::io;
 #[cfg(target_os = "macos")]
 use std::mem;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::time::SystemTime;
 use std::{
     env::consts::{ARCH, OS},
     path::{Path, PathBuf},
     sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 #[cfg(target_os = "linux")]
 use std::{error, fmt};
 
+use app_version::{AppVersion, ReleaseChannel};
 use db::kv::KeyValueStore;
-use http_client::{AsyncBody, HttpClient};
-use metadata::{AppVersion, ZAKU_SERVER_URL};
+use http_client::{AsyncBody, HttpClient, http::StatusCode};
+use metadata::ZAKU_SERVER_URL;
 use settings::{RegisterSetting, Settings, SettingsStore};
 use workspace::Workspace;
 
@@ -52,7 +50,6 @@ impl error::Error for MissingDependencyError {}
 
 const SHOULD_SHOW_UPDATE_NOTIFICATION_KEY: &str = "updater-should-show-updated-notification";
 const POLL_INTERVAL: Duration = Duration::from_hours(1);
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 const INSTALLER_DIR_PREFIX: &str = "zaku-updater";
 
 #[cfg(target_os = "linux")]
@@ -154,9 +151,11 @@ impl PartialEq for UpdateStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReleaseAsset {
+pub struct ReleaseArtifact {
     pub version: AppVersion,
-    pub url: String,
+    pub size: u64,
+    pub sha256: String,
+    pub download_url: String,
 }
 
 #[cfg(target_os = "macos")]
@@ -212,6 +211,7 @@ async fn unmount_disk_image(mount_path: &Path) {
 #[derive(Debug, Clone, Copy, RegisterSetting)]
 struct UpdateSettings {
     automatic: bool,
+    beta: bool,
 }
 
 impl Settings for UpdateSettings {
@@ -222,6 +222,9 @@ impl Settings for UpdateSettings {
             automatic: update
                 .and_then(|update| update.automatic)
                 .expect("update automatic should be defaulted"),
+            beta: update
+                .and_then(|update| update.beta)
+                .expect("update beta should be defaulted"),
         }
     }
 }
@@ -241,10 +244,7 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
         workspace.register_action({
             let update_version = update_version.clone();
             move |_, action, window, cx| {
-                update_version.update(cx, |update_version, _| {
-                    update_version.start_manual_check();
-                });
-                check_for_updates(action, window, cx);
+                check_for_updates(action, &update_version, window, cx);
             }
         });
         workspace.register_action({
@@ -261,7 +261,10 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
     })
     .detach();
 
-    let version = AppVersion::global(cx);
+    let version = metadata::version(cx);
+    let settings = *UpdateSettings::get_global(cx);
+    let should_poll_for_updates =
+        !Updater::eligible_channels_for(&version, settings.beta).is_empty();
     let updater = cx.new(|cx| {
         let updater = Updater::new(
             version,
@@ -270,20 +273,25 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
             Arc::new(PlatformReleaseInstaller),
             cx,
         );
-        let mut update_subscription = UpdateSettings::get_global(cx)
-            .automatic
-            .then(|| updater.start_polling(cx));
+        if should_poll_for_updates {
+            let mut beta_updates_enabled = settings.beta;
+            let mut update_subscription = settings.automatic.then(|| updater.start_polling(cx));
 
-        cx.observe_global::<SettingsStore>(move |updater, cx| {
-            if UpdateSettings::get_global(cx).automatic {
-                if update_subscription.is_none() {
-                    update_subscription = Some(updater.start_polling(cx));
+            cx.observe_global::<SettingsStore>(move |updater, cx| {
+                let settings = *UpdateSettings::get_global(cx);
+                if settings.automatic {
+                    if update_subscription.is_none() {
+                        update_subscription = Some(updater.start_polling(cx));
+                    } else if beta_updates_enabled != settings.beta {
+                        updater.poll(UpdateCheckType::Automatic, cx);
+                    }
+                } else {
+                    update_subscription.take();
                 }
-            } else {
-                update_subscription.take();
-            }
-        })
-        .detach();
+                beta_updates_enabled = settings.beta;
+            })
+            .detach();
+        }
 
         updater
     });
@@ -291,26 +299,65 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
     update_version::notify_if_app_was_updated(cx);
 }
 
-pub fn check_for_updates(_: &actions::updater::Check, window: &mut Window, cx: &mut App) {
+fn check_for_updates(
+    _: &actions::updater::Check,
+    update_version: &Entity<UpdateVersion>,
+    window: &mut Window,
+    cx: &mut App,
+) {
     if let Some(updater) = Updater::get(cx) {
-        updater.update(cx, |updater, cx| {
-            updater.poll(UpdateCheckType::Manual, cx);
-        });
+        let current_version = updater.read(cx).current_version();
+        let settings = *UpdateSettings::get_global(cx);
+        let should_poll_for_updates =
+            !Updater::eligible_channels_for(&current_version, settings.beta).is_empty();
+        if should_poll_for_updates {
+            update_version.update(cx, |update_version, _| {
+                update_version.start_manual_check();
+            });
+            updater.update(cx, |updater, cx| {
+                updater.poll(UpdateCheckType::Manual, cx);
+            });
+        } else {
+            let channel = if current_version.is_dev() {
+                "dev"
+            } else if current_version.is_nightly() {
+                "nightly"
+            } else {
+                return;
+            };
+            let detail = format!("Update checks are not available on the {channel} channel.");
+            drop(window.prompt(
+                PromptLevel::Info,
+                "Updates unavailable",
+                Some(&detail),
+                &["OK"],
+                cx,
+            ));
+        }
     } else {
-        drop(window.prompt(
+        log::error!("Cannot check for updates because updater is not initialized");
+        let prompt = window.prompt(
             PromptLevel::Warning,
             "Couldn't check for updates",
-            Some("Please check your internet connection or try again later."),
-            &["OK"],
+            Some("Check the logs for details or try again later."),
+            &["Open Logs", "OK"],
             cx,
-        ));
+        );
+        window
+            .spawn(cx, async move |cx| {
+                if prompt.await == Ok(0) {
+                    cx.update(|window, cx| {
+                        window.dispatch_action(Box::new(actions::zaku::OpenLogs), cx);
+                    })?;
+                }
+                anyhow::Ok(())
+            })
+            .detach_and_log_err(cx);
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 struct InstallerDir(tempfile::TempDir);
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 impl InstallerDir {
     fn new(cache_dir: &Path) -> anyhow::Result<Self> {
         Ok(Self(
@@ -322,37 +369,6 @@ impl InstallerDir {
 
     fn path(&self) -> &Path {
         self.0.path()
-    }
-}
-
-#[cfg(target_os = "windows")]
-struct InstallerDir(PathBuf);
-
-#[cfg(target_os = "windows")]
-impl InstallerDir {
-    async fn new() -> anyhow::Result<Self> {
-        let installer_dir = std::env::current_exe()?
-            .parent()
-            .context("no parent directory for Zaku.exe")?
-            .join("updates");
-        match smol::fs::metadata(&installer_dir).await {
-            Ok(_) => smol::fs::remove_dir_all(&installer_dir).await?,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(error).with_context(|| {
-                    format!(
-                        "failed to read update directory metadata {}",
-                        installer_dir.display()
-                    )
-                });
-            }
-        }
-        smol::fs::create_dir(&installer_dir).await?;
-        Ok(Self(installer_dir))
-    }
-
-    fn path(&self) -> &Path {
-        self.0.as_path()
     }
 }
 
@@ -370,8 +386,7 @@ struct PlatformReleaseInstaller;
 impl ReleaseInstaller for PlatformReleaseInstaller {
     fn install(
         &self,
-        #[cfg(any(target_os = "linux", target_os = "macos"))] installer_dir: InstallerDir,
-        #[cfg(target_os = "windows")] _: InstallerDir,
+        installer_dir: InstallerDir,
         target_path: PathBuf,
         cx: &mut AsyncApp,
     ) -> anyhow::Result<Task<anyhow::Result<Option<PathBuf>>>> {
@@ -398,7 +413,11 @@ impl ReleaseInstaller for PlatformReleaseInstaller {
                     .await
                 }
                 #[cfg(target_os = "windows")]
-                "windows" => install_release_windows(&target_path).await,
+                "windows" => {
+                    let result = install_release_windows(&target_path).await;
+                    drop(installer_dir);
+                    result
+                }
                 unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
             }
         }))
@@ -421,7 +440,6 @@ pub struct Updater {
     status: UpdateStatus,
     current_version: AppVersion,
     client: Arc<dyn HttpClient>,
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
     cache_dir: PathBuf,
     installer: Arc<dyn ReleaseInstaller>,
     pending_poll: Option<Task<Option<()>>>,
@@ -442,8 +460,7 @@ impl Updater {
     fn new(
         current_version: AppVersion,
         client: Arc<dyn HttpClient>,
-        #[cfg(any(target_os = "linux", target_os = "macos"))] cache_dir: PathBuf,
-        #[cfg(target_os = "windows")] _: PathBuf,
+        cache_dir: PathBuf,
         installer: Arc<dyn ReleaseInstaller>,
         #[cfg(any(target_os = "linux", target_os = "macos"))] _: &mut Context<Self>,
         #[cfg(target_os = "windows")] cx: &mut Context<Self>,
@@ -461,7 +478,6 @@ impl Updater {
             status: UpdateStatus::Idle,
             current_version,
             client,
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
             cache_dir,
             installer,
             pending_poll: None,
@@ -473,7 +489,6 @@ impl Updater {
     }
 
     pub fn start_polling(&self, cx: &mut Context<Self>) -> Task<anyhow::Result<()>> {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
         cx.background_spawn(cleanup_stale_installer_dirs(self.cache_dir.clone()))
             .detach();
 
@@ -573,16 +588,21 @@ impl Updater {
         true
     }
 
-    async fn get_release_asset(
+    async fn get_release_artifact(
         this: &Entity<Self>,
+        channel: ReleaseChannel,
         os: &str,
         arch: &str,
         cx: &mut AsyncApp,
-    ) -> anyhow::Result<ReleaseAsset> {
+    ) -> anyhow::Result<Option<ReleaseArtifact>> {
         let client = this.read_with(cx, |this, _| this.client.clone());
-        let url = format!("{ZAKU_SERVER_URL}/releases/stable/latest/{os}-{arch}");
+        let url = format!("{ZAKU_SERVER_URL}/releases/{channel}/latest/{os}-{arch}");
 
         let mut response = client.get(&url, AsyncBody::default(), true).await?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
         let mut body = Vec::new();
         response.body_mut().read_to_end(&mut body).await?;
 
@@ -592,18 +612,31 @@ impl Updater {
             String::from_utf8_lossy(&body),
         );
 
-        serde_json::from_slice(body.as_slice()).with_context(|| {
+        let release_artifact = serde_json::from_slice(&body).with_context(|| {
             format!(
-                "error deserializing release {:?}",
+                "error deserializing release: {}",
                 String::from_utf8_lossy(&body),
             )
-        })
+        })?;
+        Ok(Some(release_artifact))
+    }
+
+    fn eligible_channels_for(
+        version: &AppVersion,
+        beta_updates_enabled: bool,
+    ) -> &'static [ReleaseChannel] {
+        if !version.is_beta() && !version.is_stable() {
+            return &[];
+        }
+
+        if beta_updates_enabled {
+            &[ReleaseChannel::Beta, ReleaseChannel::Stable]
+        } else {
+            &[ReleaseChannel::Stable]
+        }
     }
 
     async fn update(this: Entity<Self>, cx: &mut AsyncApp) -> anyhow::Result<()> {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
-        Self::check_dependencies()?;
-
         let (client, installed_version, previous_status, installer) =
             this.read_with(cx, |this, _| {
                 (
@@ -613,8 +646,20 @@ impl Updater {
                     this.installer.clone(),
                 )
             });
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let cache_dir = this.read_with(cx, |this, _| this.cache_dir.clone());
+        let current_version = if let UpdateStatus::Updated { version } = &previous_status {
+            version
+        } else {
+            &installed_version
+        };
+        let beta_updates_enabled = cx.update(|cx| UpdateSettings::get_global(cx).beta);
+        let channels = Self::eligible_channels_for(current_version, beta_updates_enabled);
+        if channels.is_empty() {
+            return Ok(());
+        }
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        Self::check_dependencies()?;
 
         this.update(cx, |this, cx| {
             this.status = UpdateStatus::Checking;
@@ -622,11 +667,26 @@ impl Updater {
             cx.notify();
         });
 
-        let fetched_release_data = Self::get_release_asset(&this, OS, ARCH, cx).await?;
+        let mut release_artifact: Option<ReleaseArtifact> = None;
+        for channel in channels {
+            let Some(candidate) = Self::get_release_artifact(&this, *channel, OS, ARCH, cx).await?
+            else {
+                continue;
+            };
+            if release_artifact
+                .as_ref()
+                .is_none_or(|release| candidate.version > release.version)
+            {
+                release_artifact = Some(candidate);
+            }
+        }
+        let release_artifact =
+            release_artifact.context("no latest release for eligible update channels")?;
         let newer_version = Self::check_if_fetched_version_is_newer(
             installed_version,
-            fetched_release_data.version.clone(),
+            release_artifact.version.clone(),
             previous_status.clone(),
+            beta_updates_enabled,
         )?;
 
         let Some(newer_version) = newer_version else {
@@ -649,33 +709,23 @@ impl Updater {
             cx.notify();
         });
 
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let installer_dir =
             InstallerDir::new(&cache_dir).context("failed to create installer dir")?;
-        #[cfg(target_os = "windows")]
-        let installer_dir = InstallerDir::new()
-            .await
-            .context("failed to create installer dir")?;
         let target_path = Self::target_path(&installer_dir)?;
         let progress_entity = this.clone();
         let mut progress_cx = cx.clone();
-        download_release(
-            &target_path,
-            fetched_release_data,
-            client,
-            move |progress| {
-                progress_entity.update(&mut progress_cx, |this, cx| {
-                    if let UpdateStatus::Downloading {
-                        progress: current_progress,
-                        ..
-                    } = &mut this.status
-                    {
-                        *current_progress = progress;
-                        cx.notify();
-                    }
-                });
-            },
-        )
+        download_release(&target_path, release_artifact, client, move |progress| {
+            progress_entity.update(&mut progress_cx, |this, cx| {
+                if let UpdateStatus::Downloading {
+                    progress: current_progress,
+                    ..
+                } = &mut this.status
+                {
+                    *current_progress = progress;
+                    cx.notify();
+                }
+            });
+        })
         .await
         .with_context(|| format!("failed to download update to {}", target_path.display()))?;
 
@@ -710,17 +760,17 @@ impl Updater {
         installed_version: AppVersion,
         fetched_version: AppVersion,
         status: UpdateStatus,
+        beta_updates_enabled: bool,
     ) -> anyhow::Result<Option<AppVersion>> {
-        anyhow::ensure!(
-            fetched_version.is_stable(),
-            "stable release version must not contain a prerelease"
-        );
-
         let current_version = if let UpdateStatus::Updated { version } = status {
             version
         } else {
             installed_version
         };
+        anyhow::ensure!(
+            fetched_version.is_stable() || beta_updates_enabled && fetched_version.is_beta(),
+            "{fetched_version} is not an eligible update for Zaku {current_version}",
+        );
         Ok(Self::check_if_fetched_version_is_newer_stable(
             &current_version,
             fetched_version,
@@ -800,41 +850,25 @@ impl Updater {
 
 async fn download_release(
     target_path: &Path,
-    release: ReleaseAsset,
+    release: ReleaseArtifact,
     client: Arc<dyn HttpClient>,
     mut on_progress: impl FnMut(Option<f32>),
 ) -> anyhow::Result<()> {
     const PERCENTAGE_SCALE: u8 = 100;
     let mut target_file = File::create(target_path).await?;
 
-    let mut response = client.get(&release.url, AsyncBody::default(), true).await?;
+    let mut response = client
+        .get(&release.download_url, AsyncBody::default(), true)
+        .await?;
     anyhow::ensure!(
         response.status().is_success(),
         "failed to download update: {:?}",
         response.status()
     );
 
-    let total_bytes = response
-        .headers()
-        .get(http_client::http::header::CONTENT_LENGTH)
-        .map(|value| -> anyhow::Result<u64> {
-            value
-                .to_str()
-                .context("content length should be valid text")?
-                .parse::<u64>()
-                .context("content length should be a valid integer")
-        })
-        .transpose();
-    let total_bytes = match total_bytes {
-        Ok(total_bytes) => total_bytes.filter(|total_bytes| *total_bytes > 0),
-        Err(error) => {
-            log::warn!("Failed to read update content length: {error:#}");
-            None
-        }
-    };
-
     let mut downloaded_bytes = 0_u64;
     let mut last_reported_percent = None;
+    let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 8192];
     let body = response.body_mut();
     loop {
@@ -845,25 +879,31 @@ async fn download_release(
         let bytes = buffer
             .get(..bytes_read)
             .context("downloaded byte count exceeded the buffer")?;
-        target_file.write_all(bytes).await?;
-        downloaded_bytes += bytes_read as u64;
+        let bytes_read =
+            u64::try_from(bytes_read).context("downloaded byte count should fit in u64")?;
+        downloaded_bytes += bytes_read;
 
-        if let Some(total_bytes) = total_bytes {
-            let percentage_scale = u128::from(PERCENTAGE_SCALE);
-            let percent = u128::from(downloaded_bytes) * percentage_scale / u128::from(total_bytes);
-            let percent = percent.min(percentage_scale);
-            let percent = u8::try_from(percent).context("download percentage should fit in u8")?;
-            if last_reported_percent != Some(percent) {
-                last_reported_percent = Some(percent);
-                let fraction = f32::from(percent) / f32::from(PERCENTAGE_SCALE);
-                on_progress(Some(fraction));
-            }
+        hasher.update(bytes);
+        target_file.write_all(bytes).await?;
+
+        let percentage_scale = u128::from(PERCENTAGE_SCALE);
+        let percent = u128::from(downloaded_bytes) * percentage_scale / u128::from(release.size);
+        let percent = percent.min(percentage_scale);
+        let percent = u8::try_from(percent).context("download percentage should fit in u8")?;
+        if last_reported_percent != Some(percent) {
+            last_reported_percent = Some(percent);
+            let fraction = f32::from(percent) / f32::from(PERCENTAGE_SCALE);
+            on_progress(Some(fraction));
         }
     }
     target_file.flush().await?;
-    if total_bytes.is_some() && last_reported_percent != Some(PERCENTAGE_SCALE) {
-        on_progress(Some(1.0));
-    }
+
+    let sha256 = hex::encode(hasher.finalize());
+    anyhow::ensure!(
+        sha256.eq_ignore_ascii_case(&release.sha256),
+        "downloaded update SHA-256 does not match: expected {}, received {sha256}",
+        release.sha256,
+    );
     log::info!("Downloaded update to {}", target_path.display());
 
     Ok(())
@@ -1070,7 +1110,6 @@ pub async fn finalize_update_on_quit() {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn cleanup_stale_installer_dirs(cache_dir: PathBuf) {
     const STALE_INSTALLER_DIR_AGE: Duration = Duration::from_hours(24);
 
@@ -1120,8 +1159,8 @@ async fn cleanup_stale_installer_dirs(cache_dir: PathBuf) {
 mod tests {
     use super::*;
 
-    use futures::channel::oneshot;
-    use gpui::{BorrowAppContext, TestAppContext};
+    use futures::channel::{mpsc, oneshot};
+    use gpui::{BorrowAppContext, Empty, TestAppContext};
     use parking_lot::Mutex;
     use serde_json::json;
     use std::{
@@ -1140,8 +1179,7 @@ mod tests {
     impl ReleaseInstaller for TestReleaseInstaller {
         fn install(
             &self,
-            #[cfg(any(target_os = "linux", target_os = "macos"))] installer_dir: InstallerDir,
-            #[cfg(target_os = "windows")] _: InstallerDir,
+            installer_dir: InstallerDir,
             target_path: PathBuf,
             cx: &mut AsyncApp,
         ) -> anyhow::Result<Task<anyhow::Result<Option<PathBuf>>>> {
@@ -1151,8 +1189,6 @@ mod tests {
             Ok(background_executor.spawn(async move {
                 let installed_path = installed_dir.path().join("zaku");
                 smol::fs::copy(target_path, &installed_path).await?;
-
-                #[cfg(any(target_os = "linux", target_os = "macos"))]
                 drop(installer_dir);
 
                 Ok(Some(installed_path))
@@ -1161,13 +1197,15 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_updater_defaults_to_true(cx: &mut TestAppContext) {
+    fn test_updater_settings_defaults(cx: &mut TestAppContext) {
         cx.update(|cx| {
             settings::init(cx);
+            let settings = UpdateSettings::get_global(cx);
             assert!(
-                UpdateSettings::get_global(cx).automatic,
+                settings.automatic,
                 "automatic updates should default to true"
             );
+            assert!(!settings.beta, "beta updates should default to false");
         });
     }
 
@@ -1176,48 +1214,82 @@ mod tests {
         cx.background_executor.allow_parking();
 
         let release_available = Arc::new(AtomicBool::new(false));
-        let (download_tx, download_rx) = oneshot::channel::<Vec<u8>>();
+        let (tx, rx) = oneshot::channel::<Vec<u8>>();
         let cache_dir = tempdir().unwrap();
         let installed_dir = Arc::new(tempdir().unwrap());
+        let update_contents = b"test-zaku-update".to_vec();
+        let update_size = u64::try_from(update_contents.len()).unwrap();
+        let update_sha256 = hex::encode(Sha256::digest(&update_contents));
 
         let (updater, _polling) = cx.update(|cx| {
+            settings::init(cx);
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(r#"{ "update": { "beta": true } }"#, cx)
+                    .result()
+                    .unwrap();
+            });
             let release_available = Arc::clone(&release_available);
-            let download_rx = Arc::new(Mutex::new(Some(download_rx)));
-            let discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
-            let artifact_extension = match OS {
-                "linux" => "tar.gz",
-                "macos" => "dmg",
-                "windows" => "exe",
-                unsupported_os => panic!("not supported: {unsupported_os}"),
-            };
-            let artifact_path = format!(
-                "/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
-            );
+            let rx = Arc::new(Mutex::new(Some(rx)));
+            let beta_discovery_path = format!("/releases/beta/latest/{OS}-{ARCH}");
+            let stable_discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
+            let artifact_path = format!("/releases/stable/26.2/{OS}-{ARCH}/download");
             let http_client = FakeHttpClient::create(move |request| {
-                let download_rx = download_rx.clone();
-                let discovery_path = discovery_path.clone();
+                let rx = rx.clone();
+                let beta_discovery_path = beta_discovery_path.clone();
+                let stable_discovery_path = stable_discovery_path.clone();
                 let artifact_path = artifact_path.clone();
                 let release_available = release_available.load(Ordering::Relaxed);
+                let update_sha256 = update_sha256.clone();
                 async move {
                     let path = request.uri().path();
-                    if path == discovery_path {
-                        let version = if release_available {
-                            "26.1"
-                        } else {
-                            "26.0"
-                        };
-                        let url = format!(
-                            "https://releases.zaku.dev/stable/{version}/{OS}-{ARCH}/Zaku-{version}-{ARCH}.{artifact_extension}"
+                    if path == beta_discovery_path {
+                        let version = "26.0-beta.1";
+                        let download_url = format!(
+                            "https://api.zaku.dev/releases/beta/{version}/{OS}-{ARCH}/download"
                         );
                         Ok(Response::builder()
                             .status(200)
-                            .body(json!({ "version": version, "url": url }).to_string().into())
+                            .body(
+                                json!({
+                                    "version": version,
+                                    "size": update_size,
+                                    "sha256": update_sha256,
+                                    "download_url": download_url,
+                                })
+                                .to_string()
+                                .into(),
+                            )
                             .unwrap())
-                    } else if path == artifact_path {
-                        let download_rx = download_rx.lock().take().unwrap();
+                    } else if path == stable_discovery_path {
+                        if !release_available {
+                            return Ok(Response::builder()
+                                .status(StatusCode::NOT_FOUND)
+                                .body(AsyncBody::default())
+                                .unwrap());
+                        }
+                        let version = "26.2";
+                        let download_url = format!(
+                            "https://api.zaku.dev/releases/stable/{version}/{OS}-{ARCH}/download"
+                        );
                         Ok(Response::builder()
                             .status(200)
-                            .body(download_rx.await.unwrap().into())
+                            .body(
+                                json!({
+                                    "version": version,
+                                    "size": update_size,
+                                    "sha256": update_sha256,
+                                    "download_url": download_url,
+                                })
+                                .to_string()
+                                .into(),
+                            )
+                            .unwrap())
+                    } else if path == artifact_path {
+                        let rx = rx.lock().take().unwrap();
+                        Ok(Response::builder()
+                            .status(200)
+                            .body(rx.await.unwrap().into())
                             .unwrap())
                     } else {
                         panic!("unexpected update request path: {path}");
@@ -1226,7 +1298,7 @@ mod tests {
             });
             let updater = cx.new(|cx| {
                 Updater::new(
-                    "26.0".parse().unwrap(),
+                    "26.0-beta.1".parse().unwrap(),
                     http_client,
                     cache_dir.path().to_path_buf(),
                     Arc::new(TestReleaseInstaller {
@@ -1245,7 +1317,7 @@ mod tests {
             assert_eq!(updater.status(), UpdateStatus::Idle);
             assert_eq!(
                 updater.current_version(),
-                "26.0".parse::<AppVersion>().unwrap()
+                "26.0-beta.1".parse::<AppVersion>().unwrap()
             );
         });
 
@@ -1263,13 +1335,12 @@ mod tests {
                 UpdateStatus::Downloading {
                     version,
                     progress: None,
-                } if version == &"26.1".parse::<AppVersion>().unwrap()
+                } if version == &"26.2".parse::<AppVersion>().unwrap()
             ),
             "status should be downloading without progress, got {status:?}"
         );
 
-        let update_contents = b"fake-zaku-update".to_vec();
-        download_tx.send(update_contents.clone()).unwrap();
+        tx.send(update_contents.clone()).unwrap();
 
         loop {
             cx.run_until_parked();
@@ -1285,7 +1356,7 @@ mod tests {
         assert_eq!(
             updater.read_with(cx, |updater, _| updater.status()),
             UpdateStatus::Updated {
-                version: "26.1".parse().unwrap(),
+                version: "26.2".parse().unwrap(),
             }
         );
 
@@ -1297,11 +1368,11 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_updater_watches_user_setting(cx: &mut TestAppContext) {
+    async fn test_updater_watches_automatic_setting(cx: &mut TestAppContext) {
         cx.background_executor.allow_parking();
 
         let request_count = Arc::new(AtomicUsize::new(0));
-        let (release_tx, release_rx) = oneshot::channel::<()>();
+        let (tx, rx) = oneshot::channel::<()>();
         let cache_dir = tempdir().unwrap();
 
         cx.update(|cx| {
@@ -1314,34 +1385,32 @@ mod tests {
             });
             metadata::init_test("26.0".parse().unwrap(), cx);
 
-            let release_rx = Arc::new(Mutex::new(Some(release_rx)));
+            let rx = Arc::new(Mutex::new(Some(rx)));
             let request_count = Arc::clone(&request_count);
             let discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
-            let artifact_extension = match OS {
-                "linux" => "tar.gz",
-                "macos" => "dmg",
-                "windows" => "exe",
-                unsupported_os => panic!("not supported: {unsupported_os}"),
-            };
             let http_client = FakeHttpClient::create(move |request| {
-                let release_rx = release_rx.clone();
+                let rx = rx.clone();
                 let discovery_path = discovery_path.clone();
                 let request_count = request_count.clone();
                 async move {
                     let path = request.uri().path();
                     assert_eq!(path, discovery_path, "update request path should match");
                     request_count.fetch_add(1, Ordering::SeqCst);
-                    let release_rx = release_rx.lock().take().unwrap();
-                    release_rx.await.unwrap();
-                    let url = format!(
-                        "https://releases.zaku.dev/stable/26.0/{OS}-{ARCH}/Zaku-26.0-{ARCH}.{artifact_extension}"
-                    );
+                    let rx = rx.lock().take().unwrap();
+                    rx.await.unwrap();
+                    let download_url =
+                        format!("https://api.zaku.dev/releases/stable/26.0/{OS}-{ARCH}/download");
                     Ok(Response::builder()
                         .status(200)
                         .body(
-                            json!({ "version": "26.0", "url": url })
-                                .to_string()
-                                .into(),
+                            json!({
+                                "version": "26.0",
+                                "size": 1,
+                                "sha256": hex::encode(Sha256::digest([0_u8])),
+                                "download_url": download_url,
+                            })
+                            .to_string()
+                            .into(),
                         )
                         .unwrap())
                 }
@@ -1388,7 +1457,7 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        release_tx.send(()).unwrap();
+        tx.send(()).unwrap();
 
         loop {
             cx.run_until_parked();
@@ -1412,83 +1481,232 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_stable_does_not_update_when_fetched_version_is_not_higher() {
-        let installed_version = "26.0".parse::<AppVersion>().unwrap();
+    #[gpui::test]
+    async fn test_updater_watches_beta_setting(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
 
-        for fetched_version in ["25.9.9", "26.0"] {
-            let newer_version = Updater::check_if_fetched_version_is_newer(
-                installed_version.clone(),
-                fetched_version.parse().unwrap(),
-                UpdateStatus::Idle,
+        let (tx, mut rx) = mpsc::unbounded();
+        let cache_dir = tempdir().unwrap();
+
+        let updater = cx.update(|cx| {
+            settings::init(cx);
+            metadata::init_test("26.0".parse().unwrap(), cx);
+
+            let beta_discovery_path = format!("/releases/beta/latest/{OS}-{ARCH}");
+            let stable_discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
+            let http_client = FakeHttpClient::create(move |request| {
+                let tx = tx.clone();
+                let beta_discovery_path = beta_discovery_path.clone();
+                let stable_discovery_path = stable_discovery_path.clone();
+                async move {
+                    let path = request.uri().path().to_string();
+                    tx.unbounded_send(path.clone()).unwrap();
+                    let (channel, version) = if path == beta_discovery_path {
+                        ("beta", "26.0-beta.1")
+                    } else if path == stable_discovery_path {
+                        ("stable", "26.0")
+                    } else {
+                        panic!("unexpected update request path: {path}");
+                    };
+                    let download_url = format!(
+                        "https://api.zaku.dev/releases/{channel}/{version}/{OS}-{ARCH}/download"
+                    );
+                    Ok(Response::builder()
+                        .status(200)
+                        .body(
+                            json!({
+                                "version": version,
+                                "size": 1,
+                                "sha256": hex::encode(Sha256::digest([0_u8])),
+                                "download_url": download_url,
+                            })
+                            .to_string()
+                            .into(),
+                        )
+                        .unwrap())
+                }
+            });
+            crate::init(http_client, cache_dir.path().to_path_buf(), cx);
+            Updater::get(cx).unwrap()
+        });
+
+        assert_eq!(
+            futures::StreamExt::next(&mut rx).await.unwrap(),
+            format!("/releases/stable/latest/{OS}-{ARCH}"),
+            "default update settings should check only stable releases"
+        );
+        cx.condition(&updater, |updater, _| {
+            matches!(updater.status(), UpdateStatus::Idle)
+        })
+        .await;
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(r#"{ "update": { "beta": true } }"#, cx)
+                    .result()
+                    .unwrap();
+            });
+        });
+
+        assert_eq!(
+            futures::StreamExt::next(&mut rx).await.unwrap(),
+            format!("/releases/beta/latest/{OS}-{ARCH}"),
+            "enabling beta updates should immediately check beta releases"
+        );
+        assert_eq!(
+            futures::StreamExt::next(&mut rx).await.unwrap(),
+            format!("/releases/stable/latest/{OS}-{ARCH}"),
+            "enabling beta updates should immediately check beta and stable releases"
+        );
+        cx.condition(&updater, |updater, _| {
+            matches!(updater.status(), UpdateStatus::Idle)
+        })
+        .await;
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(r#"{ "update": { "beta": false } }"#, cx)
+                    .result()
+                    .unwrap();
+            });
+        });
+
+        assert_eq!(
+            futures::StreamExt::next(&mut rx).await.unwrap(),
+            format!("/releases/stable/latest/{OS}-{ARCH}"),
+            "disabling beta updates should immediately check only stable releases"
+        );
+        cx.condition(&updater, |updater, _| {
+            matches!(updater.status(), UpdateStatus::Idle)
+        })
+        .await;
+    }
+
+    #[gpui::test]
+    fn test_updater_is_unavailable_on_dev_and_nightly(cx: &mut TestAppContext) {
+        cx.update(settings::init);
+
+        for (version, channel) in [("26.1-dev", "dev"), ("26.1-nightly.2026-08-11", "nightly")] {
+            let updater = cx.new(|cx| {
+                Updater::new(
+                    version.parse().unwrap(),
+                    FakeHttpClient::create(|_| async { panic!("http client should not be used") }),
+                    PathBuf::new(),
+                    Arc::new(PlatformReleaseInstaller),
+                    cx,
+                )
+            });
+            cx.set_global(GlobalUpdater(Some(updater)));
+
+            let window = cx.add_window(|_, _| Empty);
+            let update_version = window
+                .update(cx, |_, window, cx| {
+                    cx.new(|cx| UpdateVersion::new(window, cx))
+                })
+                .unwrap();
+            window
+                .update(cx, |_, window, cx| {
+                    check_for_updates(&actions::updater::Check, &update_version, window, cx);
+                })
+                .unwrap();
+            cx.run_until_parked();
+
+            assert_eq!(
+                cx.pending_prompt(),
+                Some((
+                    "Updates unavailable".to_string(),
+                    format!("Update checks are not available on the {channel} channel."),
+                ))
             );
-
-            assert_eq!(newer_version.unwrap(), None);
+            cx.simulate_prompt_answer("OK");
         }
     }
 
     #[test]
-    fn test_stable_does_update_when_fetched_version_is_higher() {
-        let installed_version = "26.0".parse::<AppVersion>().unwrap();
-        let fetched_version = "26.1".parse::<AppVersion>().unwrap();
+    fn test_eligible_channels_for_version() {
+        for (version, beta_updates_enabled, expected_channels) in [
+            (
+                "26.0-beta.1",
+                true,
+                &[ReleaseChannel::Beta, ReleaseChannel::Stable][..],
+            ),
+            ("26.1", false, &[ReleaseChannel::Stable][..]),
+            (
+                "26.1",
+                true,
+                &[ReleaseChannel::Beta, ReleaseChannel::Stable][..],
+            ),
+            ("26.1-beta.1", false, &[ReleaseChannel::Stable][..]),
+            ("26.1-nightly.2026-08-02", true, &[][..]),
+            ("26.1-dev.1000.aaaaaaaa", false, &[][..]),
+        ] {
+            let version = version.parse().unwrap();
+            assert_eq!(
+                Updater::eligible_channels_for(&version, beta_updates_enabled),
+                expected_channels
+            );
+        }
+    }
 
-        let newer_version = Updater::check_if_fetched_version_is_newer(
+    #[test]
+    fn test_fetched_version_selection() {
+        for (
             installed_version,
-            fetched_version.clone(),
-            UpdateStatus::Idle,
-        );
+            fetched_version,
+            updated_version,
+            beta_updates_enabled,
+            expected_version,
+        ) in [
+            (
+                "26.0-beta.1",
+                "26.0-beta.2",
+                None,
+                true,
+                Some("26.0-beta.2"),
+            ),
+            ("26.0-beta.1", "26.0", None, true, Some("26.0")),
+            ("26.1", "26.2-beta.1", None, true, Some("26.2-beta.1")),
+            ("26.1", "26.0", None, false, None),
+            ("26.1", "26.1", None, false, None),
+            ("26.0", "26.1", None, false, Some("26.1")),
+            ("26.0", "26.1", Some("26.1"), false, None),
+            ("26.0", "26.1.1", Some("26.1"), false, Some("26.1.1")),
+        ] {
+            let status = match updated_version {
+                Some(version) => UpdateStatus::Updated {
+                    version: version.parse().unwrap(),
+                },
+                None => UpdateStatus::Idle,
+            };
+            let selected_version = Updater::check_if_fetched_version_is_newer(
+                installed_version.parse().unwrap(),
+                fetched_version.parse().unwrap(),
+                status,
+                beta_updates_enabled,
+            );
+            let expected_version =
+                expected_version.map(|version| version.parse::<AppVersion>().unwrap());
 
-        assert_eq!(newer_version.unwrap(), Some(fetched_version));
+            assert_eq!(selected_version.unwrap(), expected_version);
+        }
     }
 
     #[test]
-    fn test_stable_does_not_update_when_fetched_version_is_not_higher_than_cached() {
-        let installed_version = "26.0".parse::<AppVersion>().unwrap();
-        let status = UpdateStatus::Updated {
-            version: "26.1".parse().unwrap(),
-        };
-        let fetched_version = "26.1".parse::<AppVersion>().unwrap();
-
-        let newer_version =
-            Updater::check_if_fetched_version_is_newer(installed_version, fetched_version, status);
-
-        assert_eq!(newer_version.unwrap(), None);
-    }
-
-    #[test]
-    fn test_stable_does_update_when_fetched_version_is_higher_than_cached() {
-        let installed_version = "26.0".parse::<AppVersion>().unwrap();
-        let status = UpdateStatus::Updated {
-            version: "26.1".parse().unwrap(),
-        };
-        let fetched_version = "26.1.1".parse::<AppVersion>().unwrap();
-
-        let newer_version = Updater::check_if_fetched_version_is_newer(
-            installed_version,
-            fetched_version.clone(),
-            status,
-        );
-
-        assert_eq!(newer_version.unwrap(), Some(fetched_version));
-    }
-
-    #[test]
-    fn test_stable_update_rejects_prereleases() {
+    fn test_fetched_prerelease_rejection() {
         for fetched_version in [
-            "26.1-preview.1",
+            "26.1-beta.1",
             "26.1-nightly.2026-07-19",
             "26.1-dev.1000.aaaaaaaa",
         ] {
-            let result = Updater::check_if_fetched_version_is_newer(
+            Updater::check_if_fetched_version_is_newer(
                 "26.0".parse().unwrap(),
                 fetched_version.parse().unwrap(),
                 UpdateStatus::Idle,
-            );
-
-            assert!(
-                result.is_err(),
-                "{fetched_version} should be rejected for stable updates"
-            );
+                false,
+            )
+            .unwrap_err();
         }
     }
 
@@ -1497,34 +1715,19 @@ mod tests {
         cx.background_executor.allow_parking();
 
         let body = vec![0_u8; 20_000];
-        let content_length = body.len();
+        let release = ReleaseArtifact {
+            version: "26.1".parse().unwrap(),
+            size: u64::try_from(body.len()).unwrap(),
+            sha256: hex::encode(Sha256::digest(&body)),
+            download_url: format!("{ZAKU_SERVER_URL}/releases/stable/26.1/{OS}-{ARCH}/download"),
+        };
+        let expected_size = release.size;
         let http_client = FakeHttpClient::create(move |_| {
             let body = body.clone();
-            async move {
-                Ok(Response::builder()
-                    .status(200)
-                    .header(
-                        http_client::http::header::CONTENT_LENGTH,
-                        body.len().to_string(),
-                    )
-                    .body(body.into())
-                    .unwrap())
-            }
+            async move { Ok(Response::builder().status(200).body(body.into()).unwrap()) }
         });
         let temp_dir = tempdir().unwrap();
         let target_path = temp_dir.path().join("zaku-download");
-        let artifact_extension = match OS {
-            "linux" => "tar.gz",
-            "macos" => "dmg",
-            "windows" => "exe",
-            unsupported_os => panic!("not supported: {unsupported_os}"),
-        };
-        let release = ReleaseAsset {
-            version: "26.1".parse().unwrap(),
-            url: format!(
-                "https://releases.zaku.dev/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
-            ),
-        };
         let reported = Rc::new(RefCell::new(Vec::new()));
 
         download_release(&target_path, release, http_client, {
@@ -1560,57 +1763,37 @@ mod tests {
 
         let downloaded_length = std::fs::metadata(&target_path).unwrap().len();
         assert_eq!(
-            downloaded_length, content_length as u64,
-            "file size should match response body"
+            downloaded_length, expected_size,
+            "file size should match release metadata"
         );
     }
 
     #[gpui::test]
-    async fn test_download_release_without_content_length_reports_no_progress(
-        cx: &mut TestAppContext,
-    ) {
+    async fn test_download_release_rejects_sha256_mismatch(cx: &mut TestAppContext) {
         cx.background_executor.allow_parking();
 
-        let body = vec![0_u8; 20_000];
-        let content_length = body.len();
+        let body = b"test-zaku-update".to_vec();
+        let release = ReleaseArtifact {
+            version: "26.1".parse().unwrap(),
+            size: u64::try_from(body.len()).unwrap(),
+            sha256: hex::encode(Sha256::digest(b"different-update")),
+            download_url: format!("{ZAKU_SERVER_URL}/releases/stable/26.1/{OS}-{ARCH}/download"),
+        };
         let http_client = FakeHttpClient::create(move |_| {
             let body = body.clone();
             async move { Ok(Response::builder().status(200).body(body.into()).unwrap()) }
         });
         let temp_dir = tempdir().unwrap();
         let target_path = temp_dir.path().join("zaku-download");
-        let artifact_extension = match OS {
-            "linux" => "tar.gz",
-            "macos" => "dmg",
-            "windows" => "exe",
-            unsupported_os => panic!("not supported: {unsupported_os}"),
-        };
-        let release = ReleaseAsset {
-            version: "26.1".parse().unwrap(),
-            url: format!(
-                "https://releases.zaku.dev/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
-            ),
-        };
-        let reported = Rc::new(RefCell::new(Vec::new()));
 
-        download_release(&target_path, release, http_client, {
-            let reported = reported.clone();
-            move |fraction| {
-                reported.borrow_mut().push(fraction);
-            }
-        })
-        .await
-        .unwrap();
-
+        let error = download_release(&target_path, release, http_client, |_| {})
+            .await
+            .unwrap_err();
         assert!(
-            reported.borrow().is_empty(),
-            "progress should not be reported without content length, got {:?}",
-            reported.borrow()
-        );
-        let downloaded_length = std::fs::metadata(&target_path).unwrap().len();
-        assert_eq!(
-            downloaded_length, content_length as u64,
-            "file size should match response body"
+            error
+                .to_string()
+                .starts_with("downloaded update SHA-256 does not match"),
+            "unexpected error: {error:#}"
         );
     }
 }

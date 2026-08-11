@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/actions",
+  "crates/app_version",
   "crates/assets",
   "crates/collections",
   "crates/command_palette",
@@ -58,7 +59,7 @@ members = [
 default-members = ["crates/zaku"]
 
 [workspace.package]
-version = "0.0.0"
+version = "26.0.0-dev"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/buildzaku/zaku"
 edition = "2024"
@@ -77,17 +78,18 @@ ashpd = { version = "0.13", default-features = false, features = [
 async-lock = { version = "3.4" }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
-clock = { git = "https://github.com/zed-industries/zed", rev = "1efdc3e63e", package = "clock" }
+clap = { version = "4.6", features = ["derive"] }
+clock = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "clock" }
 cookie = { version = "0.18" }
 derive_more = { version = "2.1", features = ["deref", "deref_mut"] }
 dirs = { version = "6.0" }
 dunce = { version = "1.0" }
 embed-resource = { version = "3.0" }
 futures = { version = "0.3" }
-fuzzy_nucleo = { git = "https://github.com/zed-industries/zed", rev = "1efdc3e63e", package = "fuzzy_nucleo" }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1efdc3e63e", package = "gpui" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1efdc3e63e", package = "gpui_platform" }
-gpui_util = { git = "https://github.com/zed-industries/zed", rev = "1efdc3e63e", package = "gpui_util" }
+fuzzy_nucleo = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "fuzzy_nucleo" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "gpui" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "gpui_platform" }
+gpui_util = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "gpui_util" }
 hex = { version = "0.4" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
@@ -140,12 +142,12 @@ smol = { version = "2.0" }
 sqlformat = { version = "0.5" }
 streaming-iterator = { version = "0.1" }
 strum = { version = "0.28", features = ["derive"] }
-sum_tree = { git = "https://github.com/zed-industries/zed", rev = "1efdc3e63e", package = "sum_tree" }
+sum_tree = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "sum_tree" }
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
 sysinfo = { version = "0.39" }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
-text = { git = "https://github.com/zed-industries/zed", rev = "1efdc3e63e", package = "text" }
+text = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "text" }
 thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
 toml = { version = "1.1" }
@@ -177,6 +179,7 @@ windows = { version = "0.62", features = [
 # Workspace member crates
 ##################################################
 actions = { path = "crates/actions" }
+app_version = { path = "crates/app_version" }
 assets = { path = "crates/assets" }
 collections = { path = "crates/collections" }
 command_palette = { path = "crates/command_palette" }
@@ -232,6 +235,10 @@ worktree = { path = "crates/worktree" }
 [patch.crates-io]
 async-process = { git = "https://github.com/zed-industries/async-process", rev = "0b6d671357" }
 async-task = { git = "https://github.com/smol-rs/async-task", rev = "b4486cd71e" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
 
 [workspace.lints.rust]
 # Visibility.

@@ -13,8 +13,10 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
     echo "Run ./script/check --help" >&2
     exit 1
   fi
-  echo "Usage: ./script/check [OPTIONS]"
   echo "Check shell scripts with ShellCheck."
+  echo
+  echo "Usage: ./script/check [OPTIONS]"
+  echo
   echo "Options:"
   echo "  --verbose   List scripts being checked."
   echo "  -h, --help  Show help."

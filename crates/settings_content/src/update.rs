@@ -6,4 +6,5 @@ use settings_macros::{MergeFrom, with_fallible_options};
 #[derive(Clone, Default, Serialize, Deserialize, MergeFrom)]
 pub struct UpdateSettingsContent {
     pub automatic: Option<bool>,
+    pub beta: Option<bool>,
 }

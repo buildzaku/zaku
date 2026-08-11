@@ -1,5 +1,5 @@
 #Requires -Version 7.4
-$SCCACHE_VERSION = "0.16.0"
+$SCCACHE_VERSION = "0.17.0"
 $SCCACHE_DIR = "./target/sccache"
 
 if ($args.Length -gt 0) {
@@ -51,6 +51,10 @@ function Install-Sccache {
             }
         }
         $archive = "sccache-v${SCCACHE_VERSION}-${arch}-pc-windows-msvc.zip"
+        $expectedSha256 = switch ($arch) {
+            "aarch64" { "82994d1bc92ccc0556f7e6e0ad6cbd08a41a1e84b461fcae628ac2afc8c372bf" }
+            "x86_64" { "e94cfc5b58cbe439302f586c1d1bd7980c2cd371d47bdf385ade657411e6f3ac" }
+        }
         $basename = "sccache-v${SCCACHE_VERSION}-${arch}-pc-windows-msvc"
         $url = "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}"
 
@@ -59,6 +63,10 @@ function Install-Sccache {
         try {
             $archivePath = Join-Path $tempDir $archive
             Invoke-WebRequest -Uri $url -OutFile $archivePath
+            $sha256 = (Get-FileHash -Algorithm SHA256 -Path $archivePath).Hash
+            if ($sha256 -ne $expectedSha256) {
+                throw "Unexpected sccache archive checksum: $sha256"
+            }
             Expand-Archive -Path $archivePath -DestinationPath $tempDir
 
             $extractedPath = Join-Path $tempDir $basename "sccache.exe"
@@ -93,13 +101,13 @@ function Install-Sccache {
     }
     $env:PATH = "$absolutePath;$env:PATH"
 
-    $sccacheCommand = Get-Command sccache -ErrorAction SilentlyContinue
-    if (-not $sccacheCommand) {
+    $sccacheCmd = Get-Command sccache -ErrorAction SilentlyContinue
+    if (-not $sccacheCmd) {
         throw "Could not find sccache in PATH after installing it at $absolutePath"
     }
 }
 
-function Initialize-SccacheEnvironment {
+function Test-R2Configuration {
     $missing = @()
 
     foreach ($name in @("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_SCCACHE_BUCKET")) {
@@ -109,27 +117,32 @@ function Initialize-SccacheEnvironment {
     }
 
     if ($missing.Length -gt 0) {
-        Write-Information "Missing $($missing -join ', '), skipping sccache configuration" -InformationAction Continue
-        return
+        Write-Information "Missing $($missing -join ' '); skipping sccache configuration" -InformationAction Continue
+        return $false
     }
 
-    $sccacheCommand = Get-Command sccache -ErrorAction SilentlyContinue
-    if (-not $sccacheCommand) {
+    return $true
+}
+
+function Initialize-SccacheEnv {
+    $sccacheCmd = Get-Command sccache -ErrorAction SilentlyContinue
+    if (-not $sccacheCmd) {
         throw "Could not find sccache in PATH while configuring RUSTC_WRAPPER"
     }
 
     Write-Information "Configuring sccache with Cloudflare R2" -InformationAction Continue
 
     $baseDir = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { (Get-Location).Path }
-    $sccacheBin = $sccacheCommand.Source
+    $sccachePath = $sccacheCmd.Source
 
     $env:SCCACHE_ENDPOINT = "https://$($env:R2_ACCOUNT_ID).r2.cloudflarestorage.com"
     $env:SCCACHE_BUCKET = $env:R2_SCCACHE_BUCKET
     $env:SCCACHE_REGION = "auto"
     $env:SCCACHE_BASEDIRS = $baseDir
+    $env:SCCACHE_CLIENT_SIDE = "1"
     $env:AWS_ACCESS_KEY_ID = $env:R2_ACCESS_KEY_ID
     $env:AWS_SECRET_ACCESS_KEY = $env:R2_SECRET_ACCESS_KEY
-    $env:RUSTC_WRAPPER = $sccacheBin
+    $env:RUSTC_WRAPPER = $sccachePath
 
     if ($env:GITHUB_ENV) {
         @(
@@ -137,6 +150,7 @@ function Initialize-SccacheEnvironment {
             "SCCACHE_BUCKET=$($env:SCCACHE_BUCKET)"
             "SCCACHE_REGION=$($env:SCCACHE_REGION)"
             "SCCACHE_BASEDIRS=$($env:SCCACHE_BASEDIRS)"
+            "SCCACHE_CLIENT_SIDE=$($env:SCCACHE_CLIENT_SIDE)"
             "AWS_ACCESS_KEY_ID=$($env:AWS_ACCESS_KEY_ID)"
             "AWS_SECRET_ACCESS_KEY=$($env:AWS_SECRET_ACCESS_KEY)"
             "RUSTC_WRAPPER=$($env:RUSTC_WRAPPER)"
@@ -146,7 +160,7 @@ function Initialize-SccacheEnvironment {
     Write-Information "Configured sccache with Cloudflare R2 (bucket: $($env:SCCACHE_BUCKET))" -InformationAction Continue
 }
 
-function Show-SccacheConfiguration {
+function Show-SccacheConfig {
     Write-Output "=== sccache configuration ==="
     Write-Output "sccache version: $(sccache --version)"
     Write-Output "sccache path: $((Get-Command sccache).Source)"
@@ -155,6 +169,7 @@ function Show-SccacheConfiguration {
     Write-Output "SCCACHE_ENDPOINT: $($env:SCCACHE_ENDPOINT ?? '<not set>')"
     Write-Output "SCCACHE_REGION: $($env:SCCACHE_REGION ?? '<not set>')"
     Write-Output "SCCACHE_BASEDIRS: $($env:SCCACHE_BASEDIRS ?? '<not set>')"
+    Write-Output "SCCACHE_CLIENT_SIDE: $($env:SCCACHE_CLIENT_SIDE ?? '<not set>')"
 
     if ($env:AWS_ACCESS_KEY_ID) {
         Write-Output "AWS_ACCESS_KEY_ID: <set>"
@@ -169,11 +184,12 @@ function Show-SccacheConfiguration {
     else {
         Write-Output "AWS_SECRET_ACCESS_KEY: <not set>"
     }
+}
 
-    Write-Output "=== sccache stats ==="
-    sccache --show-stats
+if (-not (Test-R2Configuration)) {
+    exit 0
 }
 
 Install-Sccache
-Initialize-SccacheEnvironment
-Show-SccacheConfiguration
+Initialize-SccacheEnv
+Show-SccacheConfig

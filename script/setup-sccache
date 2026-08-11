@@ -7,7 +7,7 @@ if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); th
   exit 1
 fi
 
-SCCACHE_VERSION="0.16.0"
+SCCACHE_VERSION="0.17.0"
 SCCACHE_DIR="$(pwd)/target/sccache"
 
 if [[ $# -gt 0 ]]; then
@@ -20,11 +20,9 @@ install_sccache() {
 
   local expected_version="sccache ${SCCACHE_VERSION}"
   local installed_version=""
-  if [[ -x "${SCCACHE_DIR}/sccache" ]]; then
-    if ! installed_version="$("${SCCACHE_DIR}/sccache" --version 2>/dev/null)"; then
-      echo "Reinstalling invalid sccache binary"
-      installed_version=""
-    fi
+  if [[ -x "${SCCACHE_DIR}/sccache" ]] && ! installed_version="$("${SCCACHE_DIR}/sccache" --version 2>/dev/null)"; then
+    echo "Reinstalling invalid sccache binary"
+    installed_version=""
   fi
 
   if [[ "$installed_version" == "$expected_version" ]]; then
@@ -39,22 +37,26 @@ install_sccache() {
 
     echo "Installing sccache ${SCCACHE_VERSION}"
 
-    local os arch archive basename temporary_directory
+    local os arch archive expected_sha256 basename temp_dir
     os="$(uname -s)"
     arch="$(uname -m)"
 
     case "${os}-${arch}" in
     Linux-aarch64)
       archive="sccache-v${SCCACHE_VERSION}-aarch64-unknown-linux-musl.tar.gz"
+      expected_sha256="821a86343191aa1cbab74bd42f9e93c9a63bf85e4742945f40d3ae84193c1c77"
       ;;
     Linux-x86_64)
       archive="sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+      expected_sha256="67c4a96dd237c1f518f6b36083f270f9976d516f1e57fce891755ea782e50006"
       ;;
     Darwin-arm64)
       archive="sccache-v${SCCACHE_VERSION}-aarch64-apple-darwin.tar.gz"
+      expected_sha256="0c560bfba31aef5bdfb4fb3d2677f6e61d71c5c00952f2a83344f47aa31f00f1"
       ;;
     Darwin-x86_64)
       archive="sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz"
+      expected_sha256="c2144cafbfe3d22e34ae637f9974ce53613543ac19477fdb287df22ea3668261"
       ;;
     *)
       echo "Unsupported platform: ${os}-${arch}" >&2
@@ -63,12 +65,25 @@ install_sccache() {
     esac
 
     basename="${archive%.tar.gz}"
-    temporary_directory=$(mktemp -d)
-    trap 'rm -rf "$temporary_directory"' EXIT
-    curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}" | tar xz -C "$temporary_directory"
-    mv "${temporary_directory}/${basename}/sccache" "${SCCACHE_DIR}/"
-    rm -rf "$temporary_directory"
-    trap - EXIT
+    temp_dir=$(mktemp -d)
+    (
+      trap 'rm -rf "$temp_dir"' EXIT
+
+      archive_path="${temp_dir}/${archive}"
+      curl -fsSL -o "$archive_path" "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}"
+      if [[ "$os" == "Linux" ]]; then
+        sha256=$(sha256sum "$archive_path")
+      else
+        sha256=$(shasum -a 256 "$archive_path")
+      fi
+      sha256="${sha256%% *}"
+      if [[ "$sha256" != "$expected_sha256" ]]; then
+        echo "Unexpected sccache archive checksum: $sha256" >&2
+        exit 1
+      fi
+      tar xzf "$archive_path" -C "$temp_dir"
+      mv "${temp_dir}/${basename}/sccache" "${SCCACHE_DIR}/"
+    )
 
     if ! installed_version="$("${SCCACHE_DIR}/sccache" --version 2>/dev/null)"; then
       echo "Invalid sccache binary: ${SCCACHE_DIR}/sccache" >&2
@@ -89,7 +104,7 @@ install_sccache() {
   export PATH="${SCCACHE_DIR}:${PATH}"
 }
 
-check_missing_r2_configuration() {
+has_r2_configuration() {
   local missing=()
 
   for name in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_SCCACHE_BUCKET; do
@@ -99,30 +114,27 @@ check_missing_r2_configuration() {
   done
 
   if ((${#missing[@]} > 0)); then
-    echo "Missing ${missing[*]}, skipping sccache configuration"
-    return 0
+    echo "Missing ${missing[*]}; skipping sccache configuration"
+    return 1
   fi
 
-  return 1
+  return 0
 }
 
-configure_sccache() {
-  if check_missing_r2_configuration; then
-    return
-  fi
-
+initialize_sccache_env() {
   echo "Configuring sccache with Cloudflare R2"
 
   local base_dir="${GITHUB_WORKSPACE:-$(pwd)}"
-  local sccache_bin="${SCCACHE_DIR}/sccache"
+  local sccache_path="${SCCACHE_DIR}/sccache"
 
   export SCCACHE_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
   export SCCACHE_BUCKET="${R2_SCCACHE_BUCKET}"
   export SCCACHE_REGION="auto"
   export SCCACHE_BASEDIRS="${base_dir}"
+  export SCCACHE_CLIENT_SIDE="1"
   export AWS_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID}"
   export AWS_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY}"
-  export RUSTC_WRAPPER="${sccache_bin}"
+  export RUSTC_WRAPPER="${sccache_path}"
 
   if [[ -n "${GITHUB_ENV:-}" ]]; then
     {
@@ -130,6 +142,7 @@ configure_sccache() {
       echo "SCCACHE_BUCKET=${SCCACHE_BUCKET}"
       echo "SCCACHE_REGION=${SCCACHE_REGION}"
       echo "SCCACHE_BASEDIRS=${SCCACHE_BASEDIRS}"
+      echo "SCCACHE_CLIENT_SIDE=${SCCACHE_CLIENT_SIDE}"
       echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
       echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
       echo "RUSTC_WRAPPER=${RUSTC_WRAPPER}"
@@ -139,7 +152,7 @@ configure_sccache() {
   echo "Configured sccache with Cloudflare R2 (bucket: ${SCCACHE_BUCKET})"
 }
 
-show_config() {
+show_sccache_config() {
   echo "=== sccache configuration ==="
   echo "sccache version: $(sccache --version)"
   echo "sccache path: $(command -v sccache)"
@@ -148,6 +161,7 @@ show_config() {
   echo "SCCACHE_ENDPOINT: ${SCCACHE_ENDPOINT:-<not set>}"
   echo "SCCACHE_REGION: ${SCCACHE_REGION:-<not set>}"
   echo "SCCACHE_BASEDIRS: ${SCCACHE_BASEDIRS:-<not set>}"
+  echo "SCCACHE_CLIENT_SIDE: ${SCCACHE_CLIENT_SIDE:-<not set>}"
   if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
     echo "AWS_ACCESS_KEY_ID: <set>"
   else
@@ -158,10 +172,12 @@ show_config() {
   else
     echo "AWS_SECRET_ACCESS_KEY: <not set>"
   fi
-  echo "=== sccache stats ==="
-  sccache --show-stats
 }
 
+if ! has_r2_configuration; then
+  exit 0
+fi
+
 install_sccache
-configure_sccache
-show_config
+initialize_sccache_env
+show_sccache_config

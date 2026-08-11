@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); then
+  echo "Bash 5.2 or later is required" >&2
+  exit 1
+fi
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  if [[ $# -ne 1 ]]; then
+    echo "Unexpected argument: $2" >&2
+    echo "Run ./script/cherry-pick --help" >&2
+    exit 1
+  fi
+  echo "Cherry-pick a commit to a release branch and open a pull request."
+  echo
+  echo "Usage: ./script/cherry-pick <branch> <commit-sha>"
+  echo
+  echo "Options:"
+  echo "  -h, --help  Show help."
+  exit 0
+fi
+
+if [[ $# -eq 0 ]]; then
+  echo "Missing release branch" >&2
+  echo "Run ./script/cherry-pick --help" >&2
+  exit 1
+fi
+if [[ $# -eq 1 ]]; then
+  echo "Missing commit SHA" >&2
+  echo "Run ./script/cherry-pick --help" >&2
+  exit 1
+fi
+if [[ $# -gt 2 ]]; then
+  echo "Unexpected argument: $3" >&2
+  echo "Run ./script/cherry-pick --help" >&2
+  exit 1
+fi
+
+target_branch="$1"
+commit_sha="$2"
+
+if [[ ! "$target_branch" =~ ^[0-9]{2}\.[0-9]+\.x$ ]]; then
+  echo "Invalid release branch: $target_branch" >&2
+  echo "Run ./script/cherry-pick --help" >&2
+  exit 1
+fi
+
+for cmd in git gh; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Missing required command: $cmd" >&2
+    exit 1
+  fi
+done
+
+if ! gh auth status --active --hostname github.com >/dev/null 2>&1; then
+  echo "GitHub CLI authentication is required" >&2
+  exit 1
+fi
+
+git fetch --depth 2 origin "+${commit_sha}" "$target_branch" >&2
+short_sha=$(git rev-parse --short "$commit_sha")
+cherry_pick_branch="cherry-pick-${target_branch}-${short_sha}"
+
+pull_request_url=$(gh pr list --base "$target_branch" --head "$cherry_pick_branch" --state open --json url --jq '.[0].url')
+if [[ -z "$pull_request_url" ]]; then
+  if ! git ls-remote --exit-code --branches origin "refs/heads/${cherry_pick_branch}" >/dev/null 2>&1; then
+    git switch --create "$cherry_pick_branch" "origin/$target_branch" >&2
+    git cherry-pick "$commit_sha" >&2
+    git push origin "$cherry_pick_branch" >&2
+  fi
+
+  pull_request_title=$(git log -1 --format=%s "$commit_sha")
+  pull_request_body=$(git log -1 --format=%b "$commit_sha")
+
+  if [[ "$pull_request_title" =~ \(#([0-9]+)\)$ ]]; then
+    source_reference="#${BASH_REMATCH[1]}"
+  else
+    source_reference="$commit_sha"
+  fi
+  if [[ -n "$pull_request_body" ]]; then
+    pull_request_body+=$'\n\n'
+  fi
+  pull_request_body+="Cherry-picked from ${source_reference}"
+
+  pull_request_url=$(gh pr create --base "$target_branch" --head "$cherry_pick_branch" --title "$pull_request_title" --body "$pull_request_body")
+fi
+
+echo "$pull_request_url"

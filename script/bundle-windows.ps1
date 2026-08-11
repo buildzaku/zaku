@@ -19,8 +19,10 @@ if ($args.Length -gt 0) {
 }
 
 if ($Help) {
-    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
     Write-Output "Build a Windows installer."
+    Write-Output ""
+    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
+    Write-Output ""
     Write-Output "Options:"
     Write-Output "  -Arch <aarch64|x86_64>  [default: current]"
     Write-Output "  -h, -Help                Show help."
@@ -56,25 +58,17 @@ $releaseDirectory = Join-Path $targetDirectory "$target/release"
 $bundleDirectory = Join-Path $releaseDirectory "bundle/windows"
 $sourceDirectory = Join-Path $bundleDirectory "source"
 $outputDirectory = Join-Path $bundleDirectory "output"
-$cargo = if ($env:CARGO) { $env:CARGO } else { "cargo" }
-
-$iscc = if ($env:ISCC_PATH) {
+$compilerPath = if ($env:ISCC_PATH) {
     $env:ISCC_PATH
 }
 else {
-    $compiler = @(
+    @(
         (Join-Path $env:ProgramFiles "Inno Setup 7/ISCC.exe")
         (Join-Path $env:LOCALAPPDATA "Programs/Inno Setup 7/ISCC.exe")
-    ) | Where-Object { Test-Path $_ -PathType Leaf } | Select-Object -First 1
-    if ($compiler) {
-        $compiler
-    }
-    else {
-        (Get-Command "ISCC.exe" -ErrorAction SilentlyContinue).Source
-    }
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 }
-if (-not $iscc -or -not (Test-Path $iscc -PathType Leaf)) {
-    throw "Inno Setup 7 compiler was not found. Install Inno Setup 7 or set ISCC_PATH to ISCC.exe"
+if (-not $compilerPath -or -not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
+    throw "Inno Setup 7.0.2 or newer was not found. Install Inno Setup or set ISCC_PATH to ISCC.exe"
 }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio/Installer/vswhere.exe"
@@ -96,28 +90,26 @@ if (-not $visualStudioDirectory) {
 }
 $developerShell = Join-Path $visualStudioDirectory "Common7/Tools/Launch-VsDevShell.ps1"
 $visualStudioArch = if ($Arch -ceq "x86_64") { "amd64" } else { "arm64" }
-$visualStudioHostArch = if ($hostArch -ceq "x86_64") { "amd64" } else { "arm64" }
-& $developerShell -Arch $visualStudioArch -HostArch $visualStudioHostArch -SkipAutomaticLocation
+& $developerShell -Arch $visualStudioArch -HostArch amd64 -SkipAutomaticLocation
 
 Push-Location $workspaceDirectory
 try {
-    $version = & "$PSScriptRoot/get-version.ps1"
-    if (-not $version) {
+    $version = cargo app-version show
+    if ($LASTEXITCODE -ne 0 -or -not $version) {
         throw "Could not read the Zaku package version"
     }
-    $versionCore = ($version -split "-", 2)[0]
-    $versionInfoVersion = switch ($versionCore.Split(".").Length) {
-        2 { "$versionCore.0.0" }
-        3 { "$versionCore.0" }
-        default { throw "Invalid Zaku version: $version" }
+    $longVersion = cargo app-version show --long
+    if ($LASTEXITCODE -ne 0 -or -not $longVersion) {
+        throw "Could not read the long Zaku package version"
     }
+    $versionInfoVersion = "$(($longVersion -split "-", 2)[0]).0"
 
     Write-Output "Compiling Zaku"
     rustup target add $target
     if ($LASTEXITCODE -ne 0) {
         throw "Could not install the Rust target $target"
     }
-    & $cargo build --release --package zaku --package updater_windows --target $target
+    cargo build --release --package zaku --package updater_windows --target $target
     if ($LASTEXITCODE -ne 0) {
         throw "Could not compile Zaku for $target"
     }
@@ -133,16 +125,24 @@ try {
     Copy-Item "crates/zaku/resources/windows/app-icon.ico" (Join-Path $sourceDirectory "app-icon.ico")
 
     Write-Output "Creating Windows installer"
-    & $iscc "/DArchitecture=$Arch" "/DVersion=$version" "/DVersionInfoVersion=$versionInfoVersion" "/DSourceDir=$sourceDirectory" "/DOutputDir=$outputDirectory" "crates/zaku/resources/windows/zaku.iss"
+    $compilerArguments = @(
+        "/DArchitecture=$Arch"
+        "/DVersion=$version"
+        "/DVersionInfoVersion=$versionInfoVersion"
+        "/DSourceDir=$sourceDirectory"
+        "/DOutputDir=$outputDirectory"
+        "crates/zaku/resources/windows/zaku.iss"
+    )
+    & $compilerPath @compilerArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Could not create the Zaku installer"
     }
 
-    $installer = Join-Path $outputDirectory "Zaku-$version-$Arch.exe"
+    $installer = Join-Path $outputDirectory "Zaku-$version-windows-$Arch.exe"
     if (-not (Test-Path $installer -PathType Leaf)) {
         throw "Zaku installer was not created at $installer"
     }
-    $artifact = Join-Path $releaseDirectory "Zaku-$version-$Arch.exe"
+    $artifact = Join-Path $releaseDirectory "Zaku-$version-windows-$Arch.exe"
     Move-Item $installer $artifact -Force
     Write-Output "Created Windows installer: $artifact"
 }

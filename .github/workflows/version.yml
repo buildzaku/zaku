@@ -1,0 +1,123 @@
+name: "Version"
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Version command"
+        required: true
+        type: choice
+        options:
+          - "bump patch"
+          - "bump beta"
+          - "promote stable"
+      branch:
+        description: "Release branch"
+        required: true
+        type: string
+      source_sha:
+        description: "Release branch commit SHA"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  update:
+    name: "Update version"
+    if: github.repository == 'buildzaku/zaku'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          token: ${{ secrets.ZAKU_GITHUB_TOKEN }}
+
+      - name: "Install cargo-edit"
+        uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
+        with:
+          tool: cargo-edit@0.13.13
+
+      - name: "Update version and create tag"
+        env:
+          ACTOR_ID: ${{ github.actor_id }}
+          ACTOR_LOGIN: ${{ github.actor }}
+          COMMAND: ${{ inputs.command }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          TARGET_BRANCH: ${{ inputs.branch }}
+        run: |
+          case "$COMMAND" in
+            "bump patch")
+              source_channel=stable
+              version_operation=bump
+              version_argument=patch
+              ;;
+            "bump beta")
+              source_channel=beta
+              version_operation=bump
+              version_argument=beta
+              ;;
+            "promote stable")
+              source_channel=beta
+              version_operation=promote
+              version_argument=stable
+              ;;
+            *)
+              echo "::error::Unsupported version command: $COMMAND"
+              exit 1
+              ;;
+          esac
+
+          current_version=$(cargo app-version show)
+          release_branch=$(cargo app-version show "$current_version" --branch)
+          if [[ "$TARGET_BRANCH" != "$release_branch" ]]; then
+            echo "::error::Release branch $TARGET_BRANCH contains version $current_version"
+            exit 1
+          fi
+
+          version=$(cargo app-version "$version_operation" "$current_version" "$version_argument")
+          long_version=$(cargo app-version show "$version" --long)
+
+          published_version=$(cargo app-version latest "$source_channel" --active)
+          if [[ -z "$published_version" ]]; then
+            echo "::error::There is no active release for the $source_channel channel"
+            exit 1
+          fi
+          if [[ "$published_version" != "$current_version" ]]; then
+            echo "::error::$TARGET_BRANCH is not the latest $source_channel release branch"
+            exit 1
+          fi
+
+          if ! remote_branch_sha=$(git ls-remote --exit-code origin "refs/heads/${TARGET_BRANCH}" | cut -f1); then
+            echo "::error::Could not resolve origin/$TARGET_BRANCH"
+            exit 1
+          fi
+          if [[ "$remote_branch_sha" != "$SOURCE_SHA" ]]; then
+            echo "::error::$TARGET_BRANCH changed: expected $SOURCE_SHA, found $remote_branch_sha"
+            exit 1
+          fi
+
+          git config user.name "$ACTOR_LOGIN"
+          git config user.email "${ACTOR_ID}+${ACTOR_LOGIN}@users.noreply.github.com"
+
+          cargo set-version --workspace "$long_version"
+          expected_version_files=$(printf '%s\n' Cargo.toml Cargo.lock | sort)
+          changed_version_files=$(git diff --name-only | sort)
+          if [[ "$changed_version_files" != "$expected_version_files" ]]; then
+            echo "::error::Unexpected file changes on $TARGET_BRANCH"
+            printf 'Changed files:\n%s\n' "${changed_version_files:-none}"
+            exit 1
+          fi
+          git add -- Cargo.toml Cargo.lock
+          git commit --message "Zaku $version"
+          git tag "$version"
+          git push --atomic origin "HEAD:refs/heads/${TARGET_BRANCH}" "refs/tags/${version}"
+          echo "Updated $TARGET_BRANCH and created release tag $version"
+        shell: bash

@@ -15,8 +15,10 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
     echo "Run ./script/bundle-macos --help" >&2
     exit 1
   fi
-  echo "Usage: ./script/bundle-macos [OPTIONS]"
   echo "Build a macOS application bundle and disk image."
+  echo
+  echo "Usage: ./script/bundle-macos [OPTIONS]"
+  echo
   echo "Options:"
   echo "  --arch <aarch64|x86_64>  [default: current]"
   echo "  -h, --help               Show help."
@@ -68,29 +70,28 @@ if [[ -z "$arch" ]]; then
 fi
 if [[ "$arch" != "aarch64" && "$arch" != "x86_64" ]]; then
   echo "Unsupported macOS architecture: $arch" >&2
+  echo "Run ./script/bundle-macos --help" >&2
   exit 1
 fi
 
 target="${arch}-apple-darwin"
-version=$(./script/get-version)
-short_version="${version%%-*}"
-if [[ "$short_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
-  short_version="${short_version}.0"
-fi
-cargo_bundle_version=$("${CARGO:-cargo}" bundle --version 2>/dev/null || true)
+version=$(cargo app-version show)
+long_version=$(cargo app-version show --long)
+long_version_without_prerelease="${long_version%%-*}"
+cargo_bundle_version=$(cargo bundle --version 2>/dev/null || true)
 if [[ "$cargo_bundle_version" != "cargo-bundle v${CARGO_BUNDLE_VERSION}" ]]; then
-  "${CARGO:-cargo}" install cargo-bundle --version "=${CARGO_BUNDLE_VERSION}" --locked
+  cargo install cargo-bundle --version "=${CARGO_BUNDLE_VERSION}" --locked
 fi
 
 rustup target add "$target"
 
 echo "Compiling Zaku"
-"${CARGO:-cargo}" build --release --package zaku --target "$target"
+cargo build --release --package zaku --target "$target"
 
 echo "Creating macOS application bundle"
 app_path=$(
   cd crates/zaku
-  CARGO_BUNDLE_SKIP_BUILD=true "${CARGO:-cargo}" bundle --release --format osx --target "$target" | sed -n '$s/^[[:space:]]*//p'
+  CARGO_BUNDLE_SKIP_BUILD=true cargo bundle --release --format osx --target "$target" | sed -n '$s/^[[:space:]]*//p'
 )
 
 if [[ ! -d "$app_path" ]]; then
@@ -98,13 +99,13 @@ if [[ ! -d "$app_path" ]]; then
   exit 1
 fi
 
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${short_version}" "${app_path}/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${long_version_without_prerelease}" "${app_path}/Contents/Info.plist"
 if [[ -n "${GITHUB_RUN_NUMBER:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}" "${app_path}/Contents/Info.plist"
 fi
 
 release_directory=$(dirname "$(dirname "$(dirname "$app_path")")")
-dmg_path="${release_directory}/Zaku-${version}-${arch}.dmg"
+dmg_path="${release_directory}/Zaku-${version}-macos-${arch}.dmg"
 dmg_source_directory=$(mktemp -d)
 dmg_output_directory=""
 

@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); then
+  echo "Bash 5.2 or later is required" >&2
+  exit 1
+fi
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  if [[ $# -ne 1 ]]; then
+    echo "Unexpected argument: $2" >&2
+    echo "Run ./script/version --help" >&2
+    exit 1
+  fi
+  echo "Update an existing Zaku release line."
+  echo
+  echo "Usage: ./script/version bump patch"
+  echo "       ./script/version bump beta"
+  echo "       ./script/version promote stable"
+  echo
+  echo "Options:"
+  echo "  -h, --help  Show help."
+  exit 0
+fi
+
+if [[ $# -eq 0 ]]; then
+  echo "Missing version operation" >&2
+  echo "Run ./script/version --help" >&2
+  exit 1
+fi
+if [[ $# -eq 1 ]]; then
+  echo "Missing version argument" >&2
+  echo "Run ./script/version --help" >&2
+  exit 1
+fi
+if [[ $# -gt 2 ]]; then
+  echo "Unexpected argument: $3" >&2
+  echo "Run ./script/version --help" >&2
+  exit 1
+fi
+
+version_operation="$1"
+version_argument="$2"
+version_cmd="$version_operation $version_argument"
+case "$version_cmd" in
+"bump patch")
+  source_channel=stable
+  ;;
+"bump beta")
+  source_channel=beta
+  ;;
+"promote stable")
+  source_channel=beta
+  ;;
+*)
+  echo "Unsupported version command: $version_cmd" >&2
+  echo "Run ./script/version --help" >&2
+  exit 1
+  ;;
+esac
+
+for cmd in cargo gh git; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Missing required command: $cmd" >&2
+    exit 1
+  fi
+done
+if ! gh auth status --active --hostname github.com >/dev/null 2>&1; then
+  echo "GitHub CLI authentication is required" >&2
+  exit 1
+fi
+
+branch=$(git branch --show-current)
+if [[ -z "$branch" ]]; then
+  echo "Version cannot be updated from detached HEAD" >&2
+  exit 1
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Working tree must be clean before updating Zaku version" >&2
+  exit 1
+fi
+if ! remote_branch_sha=$(git ls-remote --exit-code origin "refs/heads/$branch" | cut -f1); then
+  echo "Could not resolve origin/$branch" >&2
+  exit 1
+fi
+local_sha=$(git rev-parse HEAD)
+if [[ "$local_sha" != "$remote_branch_sha" ]]; then
+  echo "Local $branch must match origin/$branch before updating Zaku version" >&2
+  exit 1
+fi
+
+current_version=$(cargo app-version show)
+release_branch=$(cargo app-version show "$current_version" --branch)
+if [[ "$branch" != "$release_branch" ]]; then
+  echo "Checked out branch $branch does not match Zaku $current_version; expected $release_branch" >&2
+  exit 1
+fi
+target_version=$(cargo app-version "$version_operation" "$current_version" "$version_argument")
+
+published_version=$(cargo app-version latest "$source_channel" --active)
+if [[ -z "$published_version" ]]; then
+  echo "There is no active release for the $source_channel channel" >&2
+  exit 1
+fi
+if [[ "$published_version" != "$current_version" ]]; then
+  echo "$branch is not the latest $source_channel release branch" >&2
+  exit 1
+fi
+
+echo "This will update Zaku to $target_version on the $branch branch."
+echo
+if ! read -r -p "Proceed? [y/N] " confirmation; then
+  echo "Could not read confirmation" >&2
+  exit 1
+fi
+case "${confirmation,,}" in
+y | yes)
+  ;;
+*)
+  echo "Aborted"
+  exit 0
+  ;;
+esac
+
+gh workflow run version.yml --ref main --field "command=$version_cmd" --field "branch=$branch" --field "source_sha=$local_sha"
+echo "Started Zaku version update to $target_version on $branch"
+echo "Workflow: https://github.com/buildzaku/zaku/actions/workflows/version.yml"

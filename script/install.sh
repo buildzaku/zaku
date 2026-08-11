@@ -3,39 +3,65 @@
 set -eu
 
 main() {
+  channel="stable"
   version="latest"
-  case "${1:-}" in
-  "")
-    ;;
-  -h | --help)
-    if [ "$#" -ne 1 ]; then
-      echo "Unexpected argument: $2" >&2
-      echo "Run ${0##*/} --help" >&2
+  version_set=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+    -h | --help)
+      if [ "$#" -ne 1 ]; then
+        echo "Unexpected argument: $2" >&2
+        echo "Run ./script/install.sh --help" >&2
+        exit 1
+      fi
+      echo "Install Zaku on Linux."
+      echo
+      echo "Usage: ./script/install.sh [OPTIONS]"
+      echo
+      echo "Options:"
+      echo "  --channel <stable|beta>  [default: stable]"
+      echo "  --version <version>      [default: latest]"
+      echo "  -h, --help               Show help."
+      exit 0
+      ;;
+    --channel)
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+        echo "Missing value for --channel" >&2
+        echo "Run ./script/install.sh --help" >&2
+        exit 1
+      fi
+      channel="$2"
+      shift 2
+      ;;
+    --version)
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+        echo "Missing value for --version" >&2
+        echo "Run ./script/install.sh --help" >&2
+        exit 1
+      fi
+      version="$2"
+      version_set=1
+      shift 2
+      ;;
+    *)
+      echo "Unexpected argument: $1" >&2
+      echo "Run ./script/install.sh --help" >&2
       exit 1
-    fi
-    echo "Usage: ${0##*/} [OPTIONS]"
-    echo "Install Zaku on Linux."
-    echo "Options:"
-    echo "  --version <version>  [default: latest]"
-    echo "  -h, --help           Show help."
-    exit 0
-    ;;
-  --version)
-    if [ "$#" -ne 2 ] || [ -z "$2" ]; then
-      echo "Missing value for --version" >&2
-      echo "Run ${0##*/} --help" >&2
-      exit 1
-    fi
-    version="$2"
+      ;;
+    esac
+  done
+
+  case "$channel" in
+  stable | beta)
     ;;
   *)
-    echo "Unexpected argument: $1" >&2
-    echo "Run ${0##*/} --help" >&2
+    echo "Unsupported release channel: $channel" >&2
+    echo "Run ./script/install.sh --help" >&2
     exit 1
     ;;
   esac
 
-  if [ "${1:-}" = "--version" ] && [ -n "${ZAKU_BUNDLE_PATH:-}" ]; then
+  if [ "$version_set" -eq 1 ] && [ -n "${ZAKU_BUNDLE_PATH:-}" ]; then
     echo "Cannot use --version with ZAKU_BUNDLE_PATH" >&2
     exit 1
   fi
@@ -59,9 +85,9 @@ main() {
     ;;
   esac
 
-  for command in mktemp sed tar; do
-    if ! command -v "$command" >/dev/null 2>&1; then
-      echo "Missing required command: $command" >&2
+  for cmd in mktemp sed tar; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      echo "Missing required command: $cmd" >&2
       exit 1
     fi
   done
@@ -107,11 +133,9 @@ main() {
     set +e
 
     if [ "$committed" -eq 0 ]; then
-      if [ "$desktop_installed" -eq 1 ]; then
-        if ! rm -f "$desktop_path"; then
-          echo "Could not remove desktop entry during rollback: $desktop_path" >&2
-          rollback_failed=1
-        fi
+      if [ "$desktop_installed" -eq 1 ] && ! rm -f "$desktop_path"; then
+        echo "Could not remove desktop entry during rollback: $desktop_path" >&2
+        rollback_failed=1
       fi
       if [ "$has_desktop_backup" -eq 1 ]; then
         if [ -e "$desktop_backup" ] || [ -L "$desktop_backup" ]; then
@@ -124,11 +148,9 @@ main() {
           rollback_failed=1
         fi
       fi
-      if [ "$binary_installed" -eq 1 ]; then
-        if ! rm -f "$binary_path"; then
-          echo "Could not remove binary during rollback: $binary_path" >&2
-          rollback_failed=1
-        fi
+      if [ "$binary_installed" -eq 1 ] && ! rm -f "$binary_path"; then
+        echo "Could not remove binary during rollback: $binary_path" >&2
+        rollback_failed=1
       fi
       if [ "$has_binary_backup" -eq 1 ]; then
         if [ -e "$binary_backup" ] || [ -L "$binary_backup" ]; then
@@ -141,11 +163,9 @@ main() {
           rollback_failed=1
         fi
       fi
-      if [ "$application_installed" -eq 1 ]; then
-        if ! rm -rf "$application_path"; then
-          echo "Could not remove application during rollback: $application_path" >&2
-          rollback_failed=1
-        fi
+      if [ "$application_installed" -eq 1 ] && ! rm -rf "$application_path"; then
+        echo "Could not remove application during rollback: $application_path" >&2
+        rollback_failed=1
       fi
       if [ "$has_application_backup" -eq 1 ]; then
         if [ -e "$application_backup" ] || [ -L "$application_backup" ]; then
@@ -160,10 +180,8 @@ main() {
       fi
     fi
 
-    if [ -n "$temporary_directory" ]; then
-      if ! rm -rf "$temporary_directory"; then
-        echo "Could not remove temporary directory: $temporary_directory" >&2
-      fi
+    if [ -n "$temporary_directory" ] && ! rm -rf "$temporary_directory"; then
+      echo "Could not remove temporary directory: $temporary_directory" >&2
     fi
     if [ -n "$transaction_directory" ]; then
       if [ "$rollback_failed" -eq 1 ]; then
@@ -197,7 +215,7 @@ main() {
     cp "$ZAKU_BUNDLE_PATH" "$archive_path"
   else
     echo "Downloading Zaku $version"
-    curl -fL "https://api.zaku.dev/releases/stable/$version/linux-$arch/download" -o "$archive_path"
+    curl -fsSL -o "$archive_path" "https://api.zaku.dev/releases/$channel/$version/linux-$arch/download"
   fi
 
   extracted_directory="$transaction_directory/extracted"
@@ -223,7 +241,7 @@ main() {
   fi
 
   echo "Installing Zaku"
-  prepared_desktop="$transaction_directory/dev.zaku.Zaku.desktop"
+  desktop_entry="$transaction_directory/dev.zaku.Zaku.desktop"
   desktop_executable=$(printf '%s' "$application_path/libexec/zaku" | sed -e 's/\\/\\\\\\\\/g' -e 's/["`$]/\\\\&/g' -e 's/%/%%/g')
   desktop_application_path=$(printf '%s' "$application_path" | sed 's/\\/\\\\/g')
   while IFS= read -r line || [ -n "$line" ]; do
@@ -241,8 +259,8 @@ main() {
       printf '%s\n' "$line"
       ;;
     esac
-  done <"$staged_desktop" >"$prepared_desktop"
-  chmod +x "$prepared_desktop"
+  done <"$staged_desktop" >"$desktop_entry"
+  chmod +x "$desktop_entry"
 
   if [ -e "$application_path" ] || [ -L "$application_path" ]; then
     has_application_backup=1
@@ -262,7 +280,7 @@ main() {
   binary_installed=1
   ln -s "$application_path/libexec/zaku" "$binary_path"
   desktop_installed=1
-  mv "$prepared_desktop" "$desktop_path"
+  mv "$desktop_entry" "$desktop_path"
   committed=1
 
   echo "Installed Zaku: $binary_directory/zaku"

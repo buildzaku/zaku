@@ -13,8 +13,10 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
     echo "Run ./script/bundle-linux --help" >&2
     exit 1
   fi
-  echo "Usage: ./script/bundle-linux [OPTIONS]"
   echo "Build a Linux application bundle."
+  echo
+  echo "Usage: ./script/bundle-linux [OPTIONS]"
+  echo
   echo "Options:"
   echo "  --arch <aarch64|x86_64>  [default: current]"
   echo "  -h, --help               Show help."
@@ -68,6 +70,7 @@ if [[ -z "$arch" ]]; then
 fi
 if [[ "$arch" != "aarch64" && "$arch" != "x86_64" ]]; then
   echo "Unsupported Linux architecture: $arch" >&2
+  echo "Run ./script/bundle-linux --help" >&2
   exit 1
 fi
 if [[ "$arch" != "$host_arch" ]]; then
@@ -77,10 +80,10 @@ fi
 
 target="${arch}-unknown-linux-gnu"
 target_directory="${CARGO_TARGET_DIR:-target}"
-version=$(./script/get-version)
+version=$(cargo app-version show)
 
 echo "Compiling Zaku"
-RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-args=-Wl,--disable-new-dtags,-rpath,\$ORIGIN/../lib" "${CARGO:-cargo}" build --release --package zaku --target "$target"
+RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-args=-Wl,--disable-new-dtags,-rpath,\$ORIGIN/../lib" cargo build --release --package zaku --target "$target"
 
 binary_path="${target_directory}/${target}/release/zaku"
 if [[ ! -x "$binary_path" ]]; then
@@ -136,7 +139,7 @@ cp crates/zaku/resources/dev.zaku.Zaku.desktop "${zaku_directory}/share/applicat
 chmod +x "${zaku_directory}/share/applications/dev.zaku.Zaku.desktop"
 
 release_directory="${target_directory}/${target}/release"
-archive_path="${release_directory}/Zaku-${version}-${arch}.tar.gz"
+archive_path="${release_directory}/Zaku-${version}-linux-${arch}.tar.gz"
 archive_directory=$(mktemp -d "${release_directory}/.zaku-linux.XXXXXX")
 temporary_archive="${archive_directory}/$(basename "$archive_path")"
 
