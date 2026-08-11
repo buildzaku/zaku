@@ -63,21 +63,28 @@ git fetch --depth 2 origin "+${commit_sha}" "$target_branch" >&2
 short_sha=$(git rev-parse --short "$commit_sha")
 cherry_pick_branch="cherry-pick-${target_branch}-${short_sha}"
 
-git switch --create "$cherry_pick_branch" "origin/$target_branch" >&2
-git cherry-pick "$commit_sha" >&2
-git push origin "$cherry_pick_branch" >&2
+pull_request_url=$(gh pr list --base "$target_branch" --head "$cherry_pick_branch" --state open --json url --jq '.[0].url')
+if [[ -z "$pull_request_url" ]]; then
+  if ! git ls-remote --exit-code --branches origin "refs/heads/${cherry_pick_branch}" >/dev/null 2>&1; then
+    git switch --create "$cherry_pick_branch" "origin/$target_branch" >&2
+    git cherry-pick "$commit_sha" >&2
+    git push origin "$cherry_pick_branch" >&2
+  fi
 
-pull_request_title=$(git log -1 --format=%s "$commit_sha")
-pull_request_body=$(git log -1 --format=%b "$commit_sha")
+  pull_request_title=$(git log -1 --format=%s "$commit_sha")
+  pull_request_body=$(git log -1 --format=%b "$commit_sha")
 
-if [[ "$pull_request_title" =~ \(#([0-9]+)\)$ ]]; then
-  source_reference="#${BASH_REMATCH[1]}"
-else
-  source_reference="$commit_sha"
+  if [[ "$pull_request_title" =~ \(#([0-9]+)\)$ ]]; then
+    source_reference="#${BASH_REMATCH[1]}"
+  else
+    source_reference="$commit_sha"
+  fi
+  if [[ -n "$pull_request_body" ]]; then
+    pull_request_body+=$'\n\n'
+  fi
+  pull_request_body+="Cherry-picked from ${source_reference}"
+
+  pull_request_url=$(gh pr create --base "$target_branch" --head "$cherry_pick_branch" --title "$pull_request_title" --body "$pull_request_body")
 fi
-if [[ -n "$pull_request_body" ]]; then
-  pull_request_body+=$'\n\n'
-fi
-pull_request_body+="Cherry-picked from ${source_reference}"
 
-gh pr create --base "$target_branch" --head "$cherry_pick_branch" --title "$pull_request_title" --body "$pull_request_body"
+echo "$pull_request_url"
