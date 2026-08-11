@@ -51,6 +51,10 @@ function Install-Sccache {
             }
         }
         $archive = "sccache-v${SCCACHE_VERSION}-${arch}-pc-windows-msvc.zip"
+        $expectedSha256 = switch ($arch) {
+            "aarch64" { "82994d1bc92ccc0556f7e6e0ad6cbd08a41a1e84b461fcae628ac2afc8c372bf" }
+            "x86_64" { "e94cfc5b58cbe439302f586c1d1bd7980c2cd371d47bdf385ade657411e6f3ac" }
+        }
         $basename = "sccache-v${SCCACHE_VERSION}-${arch}-pc-windows-msvc"
         $url = "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}"
 
@@ -59,6 +63,10 @@ function Install-Sccache {
         try {
             $archivePath = Join-Path $tempDir $archive
             Invoke-WebRequest -Uri $url -OutFile $archivePath
+            $sha256 = (Get-FileHash -Algorithm SHA256 -Path $archivePath).Hash
+            if ($sha256 -ine $expectedSha256) {
+                throw "Unexpected sccache archive checksum: $sha256"
+            }
             Expand-Archive -Path $archivePath -DestinationPath $tempDir
 
             $extractedPath = Join-Path $tempDir $basename "sccache.exe"
