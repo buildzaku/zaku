@@ -1,3 +1,7 @@
+#if VER < EncodeVer(7, 0, 2)
+#error Inno Setup 7.0.2 or newer is required
+#endif
+
 [Setup]
 AppId={{f80b4ce0-da83-424f-92ec-e17462766875}
 AppName=Zaku

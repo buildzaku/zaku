@@ -58,7 +58,6 @@ $releaseDirectory = Join-Path $targetDirectory "$target/release"
 $bundleDirectory = Join-Path $releaseDirectory "bundle/windows"
 $sourceDirectory = Join-Path $bundleDirectory "source"
 $outputDirectory = Join-Path $bundleDirectory "output"
-$minimumCompilerVersion = [version]"7.0.2"
 $compilerPath = if ($env:ISCC_PATH) {
     $env:ISCC_PATH
 }
@@ -69,11 +68,7 @@ else {
     ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 }
 if (-not $compilerPath -or -not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
-    throw "Inno Setup $minimumCompilerVersion or newer was not found. Install Inno Setup or set ISCC_PATH to ISCC.exe"
-}
-$compilerVersion = (Get-Item -LiteralPath $compilerPath).VersionInfo.FileVersionRaw
-if ($compilerVersion -lt $minimumCompilerVersion) {
-    throw "Inno Setup $minimumCompilerVersion or newer is required: $compilerVersion"
+    throw "Inno Setup 7.0.2 or newer was not found. Install Inno Setup or set ISCC_PATH to ISCC.exe"
 }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio/Installer/vswhere.exe"
