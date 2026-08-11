@@ -61,10 +61,9 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
           BUMP_YEAR: ${{ inputs.bump_year }}
         run: |
-          current_version=$(cargo app-version show)
-          source_version="$current_version"
+          source_version=$(cargo app-version show)
           if [[ "$BUMP_YEAR" == "true" ]]; then
-            source_version=$(cargo app-version bump "$current_version" year)
+            source_version=$(cargo app-version bump "$source_version" year)
           fi
           release_version=$(cargo app-version promote "$source_version" "$CHANNEL")
           release_long_version=$(cargo app-version show "$release_version" --long)

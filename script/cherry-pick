@@ -67,18 +67,17 @@ git switch --create "$cherry_pick_branch" "origin/$target_branch" >&2
 git cherry-pick "$commit_sha" >&2
 git push origin "$cherry_pick_branch" >&2
 
-commit_title=$(git log -1 --format=%s "$commit_sha")
-commit_body=$(git log -1 --format=%b "$commit_sha")
+pull_request_title=$(git log -1 --format=%s "$commit_sha")
+pull_request_body=$(git log -1 --format=%b "$commit_sha")
 
-if [[ "$commit_title" =~ \(#([0-9]+)\)$ ]]; then
+if [[ "$pull_request_title" =~ \(#([0-9]+)\)$ ]]; then
   source_reference="#${BASH_REMATCH[1]}"
 else
   source_reference="$commit_sha"
 fi
-pull_request_body="$commit_body"
 if [[ -n "$pull_request_body" ]]; then
   pull_request_body+=$'\n\n'
 fi
 pull_request_body+="Cherry-picked from ${source_reference}"
 
-gh pr create --base "$target_branch" --head "$cherry_pick_branch" --title "$commit_title" --body "$pull_request_body"
+gh pr create --base "$target_branch" --head "$cherry_pick_branch" --title "$pull_request_title" --body "$pull_request_body"
