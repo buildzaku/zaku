@@ -95,7 +95,7 @@ jobs:
 
           Invoke-WebRequest -Uri $env:INNO_SETUP_URL -OutFile $installer
           $sha256 = (Get-FileHash -Algorithm SHA256 -Path $installer).Hash
-          if ($sha256 -ine $env:INNO_SETUP_SHA256) {
+          if ($sha256 -ne $env:INNO_SETUP_SHA256) {
             throw "Unexpected Inno Setup installer checksum: $sha256"
           }
 

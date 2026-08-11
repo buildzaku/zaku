@@ -64,7 +64,7 @@ function Install-Sccache {
             $archivePath = Join-Path $tempDir $archive
             Invoke-WebRequest -Uri $url -OutFile $archivePath
             $sha256 = (Get-FileHash -Algorithm SHA256 -Path $archivePath).Hash
-            if ($sha256 -ine $expectedSha256) {
+            if ($sha256 -ne $expectedSha256) {
                 throw "Unexpected sccache archive checksum: $sha256"
             }
             Expand-Archive -Path $archivePath -DestinationPath $tempDir
