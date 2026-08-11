@@ -69,7 +69,7 @@ jobs:
           main_version=$(cargo app-version bump "$source_version" minor)
           main_long_version=$(cargo app-version show "$main_version" --long)
 
-          if git ls-remote --exit-code --heads origin "refs/heads/${release_branch}" >/dev/null 2>&1; then
+          if git ls-remote --exit-code --branches origin "refs/heads/${release_branch}" >/dev/null 2>&1; then
             echo "::error::Release branch already exists: $release_branch"
             exit 1
           fi
