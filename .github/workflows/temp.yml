@@ -1,0 +1,16 @@
+name: "Temp"
+
+on:
+  push:
+    branches:
+      - release-workflow
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: "Build"
+    uses: ./.github/workflows/build.yml
+    with:
+      version: 26.0.0-dev
