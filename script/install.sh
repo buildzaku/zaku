@@ -241,7 +241,7 @@ main() {
   fi
 
   echo "Installing Zaku"
-  prepared_desktop="$transaction_directory/dev.zaku.Zaku.desktop"
+  desktop_entry="$transaction_directory/dev.zaku.Zaku.desktop"
   desktop_executable=$(printf '%s' "$application_path/libexec/zaku" | sed -e 's/\\/\\\\\\\\/g' -e 's/["`$]/\\\\&/g' -e 's/%/%%/g')
   desktop_application_path=$(printf '%s' "$application_path" | sed 's/\\/\\\\/g')
   while IFS= read -r line || [ -n "$line" ]; do
@@ -259,8 +259,8 @@ main() {
       printf '%s\n' "$line"
       ;;
     esac
-  done <"$staged_desktop" >"$prepared_desktop"
-  chmod +x "$prepared_desktop"
+  done <"$staged_desktop" >"$desktop_entry"
+  chmod +x "$desktop_entry"
 
   if [ -e "$application_path" ] || [ -L "$application_path" ]; then
     has_application_backup=1
@@ -280,7 +280,7 @@ main() {
   binary_installed=1
   ln -s "$application_path/libexec/zaku" "$binary_path"
   desktop_installed=1
-  mv "$prepared_desktop" "$desktop_path"
+  mv "$desktop_entry" "$desktop_path"
   committed=1
 
   echo "Installed Zaku: $binary_directory/zaku"
