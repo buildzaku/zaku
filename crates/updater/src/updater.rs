@@ -244,10 +244,7 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
         workspace.register_action({
             let update_version = update_version.clone();
             move |_, action, window, cx| {
-                update_version.update(cx, |update_version, _| {
-                    update_version.start_manual_check();
-                });
-                check_for_updates(action, window, cx);
+                check_for_updates(action, &update_version, window, cx);
             }
         });
         workspace.register_action({
@@ -302,16 +299,40 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
     update_version::notify_if_app_was_updated(cx);
 }
 
-pub fn check_for_updates(_: &actions::updater::Check, window: &mut Window, cx: &mut App) {
+fn check_for_updates(
+    _: &actions::updater::Check,
+    update_version: &Entity<UpdateVersion>,
+    window: &mut Window,
+    cx: &mut App,
+) {
     if let Some(updater) = Updater::get(cx) {
+        let current_version = updater.read(cx).current_version();
         let settings = *UpdateSettings::get_global(cx);
         let should_poll_for_updates =
-            !Updater::eligible_channels_for(&updater.read(cx).current_version, settings.beta)
-                .is_empty();
+            !Updater::eligible_channels_for(&current_version, settings.beta).is_empty();
         if should_poll_for_updates {
+            update_version.update(cx, |update_version, _| {
+                update_version.start_manual_check();
+            });
             updater.update(cx, |updater, cx| {
                 updater.poll(UpdateCheckType::Manual, cx);
             });
+        } else {
+            let channel = if current_version.is_dev() {
+                "dev"
+            } else if current_version.is_nightly() {
+                "nightly"
+            } else {
+                return;
+            };
+            let detail = format!("Update checks are not available on the {channel} channel.");
+            drop(window.prompt(
+                PromptLevel::Info,
+                "Updates unavailable",
+                Some(&detail),
+                &["OK"],
+                cx,
+            ));
         }
     } else {
         log::error!("Cannot check for updates because updater is not initialized");
@@ -1139,7 +1160,7 @@ mod tests {
     use super::*;
 
     use futures::channel::{mpsc, oneshot};
-    use gpui::{BorrowAppContext, TestAppContext};
+    use gpui::{BorrowAppContext, Empty, TestAppContext};
     use parking_lot::Mutex;
     use serde_json::json;
     use std::{
@@ -1561,6 +1582,46 @@ mod tests {
             matches!(updater.status(), UpdateStatus::Idle)
         })
         .await;
+    }
+
+    #[gpui::test]
+    fn test_updater_is_unavailable_on_dev_and_nightly(cx: &mut TestAppContext) {
+        cx.update(settings::init);
+
+        for (version, channel) in [("26.1-dev", "dev"), ("26.1-nightly.2026-08-11", "nightly")] {
+            let updater = cx.new(|cx| {
+                Updater::new(
+                    version.parse().unwrap(),
+                    FakeHttpClient::create(|_| async { panic!("http client should not be used") }),
+                    PathBuf::new(),
+                    Arc::new(PlatformReleaseInstaller),
+                    cx,
+                )
+            });
+            cx.set_global(GlobalUpdater(Some(updater)));
+
+            let window = cx.add_window(|_, _| Empty);
+            let update_version = window
+                .update(cx, |_, window, cx| {
+                    cx.new(|cx| UpdateVersion::new(window, cx))
+                })
+                .unwrap();
+            window
+                .update(cx, |_, window, cx| {
+                    check_for_updates(&actions::updater::Check, &update_version, window, cx);
+                })
+                .unwrap();
+            cx.run_until_parked();
+
+            assert_eq!(
+                cx.pending_prompt(),
+                Some((
+                    "Updates unavailable".to_string(),
+                    format!("Update checks are not available on the {channel} channel."),
+                ))
+            );
+            cx.simulate_prompt_answer("OK");
+        }
     }
 
     #[test]

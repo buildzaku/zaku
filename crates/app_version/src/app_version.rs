@@ -89,6 +89,14 @@ impl AppVersion {
         self.0.pre.as_str().starts_with("beta.")
     }
 
+    pub fn is_nightly(&self) -> bool {
+        self.0.pre.as_str().starts_with("nightly.")
+    }
+
+    pub fn is_dev(&self) -> bool {
+        self.0.pre.as_str() == "dev" || self.0.pre.as_str().starts_with("dev.")
+    }
+
     pub fn long(&self) -> String {
         self.0.to_string()
     }
