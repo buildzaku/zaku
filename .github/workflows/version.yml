@@ -100,7 +100,7 @@ jobs:
             exit 1
           fi
           if [[ "$remote_branch_sha" != "$SOURCE_SHA" ]]; then
-            echo "::error::$TARGET_BRANCH changed after the version update was triggered: $SOURCE_SHA -> $remote_branch_sha"
+            echo "::error::$TARGET_BRANCH changed: expected $SOURCE_SHA, found $remote_branch_sha"
             exit 1
           fi
 

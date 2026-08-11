@@ -13,7 +13,7 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
     echo "Run ./script/release --help" >&2
     exit 1
   fi
-  echo "Trigger a Zaku release and advance main."
+  echo "Create a Zaku release branch and advance main."
   echo
   echo "Usage: ./script/release <beta|stable> [--bump-year]"
   echo
@@ -104,6 +104,6 @@ y | yes)
   ;;
 esac
 
-gh workflow run prepare_release.yml --ref main --field "channel=$channel" --field "source_sha=$local_sha" --field "bump_year=$bump_year"
+gh workflow run release.yml --ref main --field "channel=$channel" --field "source_sha=$local_sha" --field "bump_year=$bump_year"
 echo "Started Zaku release $release_version"
-echo "Workflow: https://github.com/buildzaku/zaku/actions/workflows/prepare_release.yml"
+echo "Workflow: https://github.com/buildzaku/zaku/actions/workflows/release.yml"
