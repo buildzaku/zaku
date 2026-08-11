@@ -90,8 +90,7 @@ if (-not $visualStudioDirectory) {
 }
 $developerShell = Join-Path $visualStudioDirectory "Common7/Tools/Launch-VsDevShell.ps1"
 $visualStudioArch = if ($Arch -ceq "x86_64") { "amd64" } else { "arm64" }
-$visualStudioHostArch = if ($hostArch -ceq "x86_64") { "amd64" } else { "arm64" }
-& $developerShell -Arch $visualStudioArch -HostArch $visualStudioHostArch -SkipAutomaticLocation
+& $developerShell -Arch $visualStudioArch -HostArch amd64 -SkipAutomaticLocation
 
 Push-Location $workspaceDirectory
 try {
