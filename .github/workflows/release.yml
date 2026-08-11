@@ -338,6 +338,7 @@ jobs:
           name: Zaku-${{ needs.github_release.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.extension }}
           path: target/${{ matrix.target }}/release/Zaku-${{ needs.github_release.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.extension }}
           if-no-files-found: error
+          overwrite: true
 
   publish_release:
     name: "Publish release"
