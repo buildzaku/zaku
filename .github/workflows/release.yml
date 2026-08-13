@@ -105,7 +105,7 @@ jobs:
           git add -- Cargo.toml Cargo.lock
           git commit --message "Zaku $release_version"
           release_sha=$(git rev-parse HEAD)
-          git tag "$release_version" "$release_sha"
+          git tag --annotate --message "Zaku $release_version" "$release_version" "$release_sha"
 
           git switch --create "main-$main_version" "$SOURCE_SHA"
           cargo set-version --workspace "$main_long_version"
@@ -128,18 +128,18 @@ jobs:
     if: github.repository == 'buildzaku/zaku' && github.event_name == 'push'
     runs-on: ubuntu-24.04
     outputs:
-      channel: ${{ steps.validate.outputs.channel }}
+      channel: ${{ steps.verify_release.outputs.channel }}
       github_release_status: ${{ steps.check_release.outputs.github_release_status }}
       manifest_exists: ${{ steps.check_release.outputs.manifest_exists }}
-      version: ${{ steps.validate.outputs.version }}
+      version: ${{ steps.verify_release.outputs.version }}
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - id: validate
-        name: "Validate release"
+      - id: verify_release
+        name: "Verify release"
         run: |
           version=$(cargo app-version show)
           if [[ "$GITHUB_REF_NAME" != "$version" ]]; then
@@ -162,17 +162,17 @@ jobs:
           echo "channel=$channel" >>"${GITHUB_OUTPUT}"
           echo "prerelease=$prerelease" >>"${GITHUB_OUTPUT}"
           echo "version=$version" >>"${GITHUB_OUTPUT}"
-          echo "Valid $channel release $version on $release_branch"
+          echo "Verified $channel release $version on $release_branch"
         shell: bash
 
       - id: check_release
         name: "Check release state"
         env:
-          CHANNEL: ${{ steps.validate.outputs.channel }}
+          CHANNEL: ${{ steps.verify_release.outputs.channel }}
           GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
-          PRERELEASE: ${{ steps.validate.outputs.prerelease }}
+          PRERELEASE: ${{ steps.verify_release.outputs.prerelease }}
           REPOSITORY: ${{ github.repository }}
-          VERSION: ${{ steps.validate.outputs.version }}
+          VERSION: ${{ steps.verify_release.outputs.version }}
         run: |
           if release=$(gh release view "$VERSION" --json isDraft,isPrerelease --repo "$REPOSITORY" 2>/dev/null); then
             if ! jq --exit-status --argjson prerelease "$PRERELEASE" '.isPrerelease == $prerelease' <<<"$release" >/dev/null; then

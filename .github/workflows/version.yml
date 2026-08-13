@@ -117,7 +117,7 @@ jobs:
           fi
           git add -- Cargo.toml Cargo.lock
           git commit --message "Zaku $version"
-          git tag "$version"
+          git tag --annotate --message "Zaku $version" "$version"
           git push --atomic origin "HEAD:refs/heads/${TARGET_BRANCH}" "refs/tags/${version}"
           echo "Updated $TARGET_BRANCH and created release tag $version"
         shell: bash
