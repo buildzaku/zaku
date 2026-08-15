@@ -228,7 +228,7 @@ impl<T: Copy + Ord> TextSelectionState<T> {
     }
 
     #[cfg(test)]
-    pub(super) fn position_for_id_offset(&self, id: T, offset: usize) -> Option<Point<Pixels>> {
+    pub(crate) fn position_for_id_offset(&self, id: T, offset: usize) -> Option<Point<Pixels>> {
         let layout = self.layout_for_id(id)?;
         layout
             .layout

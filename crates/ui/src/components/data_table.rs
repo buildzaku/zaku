@@ -1611,3 +1611,133 @@ impl RenderOnce for Table {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::{Context, Modifiers, Point, Render, TestAppContext};
+
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+
+    fn init_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test_new(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+        });
+    }
+
+    struct TestTable {
+        interaction_state: Entity<TableInteractionState>,
+        rows: Vec<SharedString>,
+    }
+
+    impl TestTable {
+        fn new(rows: impl IntoIterator<Item: Into<SharedString>>, cx: &mut Context<Self>) -> Self {
+            Self {
+                interaction_state: cx.new(|cx| TableInteractionState::new(cx)),
+                rows: rows.into_iter().map(Into::into).collect(),
+            }
+        }
+
+        fn selected_text(&self, window: &mut Window, cx: &mut App) -> Option<String> {
+            let text_for_selection =
+                |row_index, _, _: &mut Window, _: &mut App| self.rows.get(row_index).cloned();
+
+            self.interaction_state.update(cx, |state, cx| {
+                state.selected_text(self.rows.len(), 1, &text_for_selection, window, cx)
+            })
+        }
+
+        #[track_caller]
+        fn position_for_text_offset(
+            &self,
+            row_index: usize,
+            byte_offset: usize,
+            cx: &mut Context<Self>,
+        ) -> Point<Pixels> {
+            self.interaction_state
+                .read_with(cx, |state, _| {
+                    state
+                        .text_selection
+                        .position_for_id_offset(TableTextId::new(row_index, 0), byte_offset)
+                })
+                .unwrap()
+        }
+    }
+
+    impl Render for TestTable {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let rows_for_text = self.rows.clone();
+            let mut table = Table::new(1)
+                .interactable(&self.interaction_state)
+                .text_for_selection(move |row_index, _, _, _| {
+                    rows_for_text.get(row_index).cloned()
+                });
+
+            for row in &self.rows {
+                table = table.row(vec![TableCell::text(row.clone())]);
+            }
+
+            gpui::div().size_full().child(table)
+        }
+    }
+
+    #[gpui::test]
+    fn test_table_text_selection_drag_outside_window(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let rows = ["first", "second", "third"];
+        let second_row_index = 1;
+        let second_row_length = rows[second_row_index].len();
+        let (view, cx) = cx.add_window_view(move |_, cx| TestTable::new(rows, cx));
+        let text_start = view.update(cx, |view, cx| {
+            view.position_for_text_offset(second_row_index, 0, cx)
+        });
+        let text_end = view.update(cx, |view, cx| {
+            view.position_for_text_offset(second_row_index, second_row_length, cx)
+        });
+        let window_size = cx.update(|window, _| window.viewport_size());
+        let offset = gpui::px(10.0);
+        let window_right = gpui::point(window_size.width + offset, text_start.y);
+        let window_below = gpui::point(window_right.x, window_size.height + offset);
+        let window_above = gpui::point(window_right.x, -offset);
+
+        cx.simulate_mouse_down(text_start, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(text_end, MouseButton::Left, Modifiers::default());
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "second",
+            "drag inside the table should select second",
+        );
+
+        cx.simulate_mouse_move(window_right, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(window_below, MouseButton::Left, Modifiers::default());
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "second\nthird",
+            "drag below the window should select through third",
+        );
+
+        cx.simulate_mouse_move(window_above, MouseButton::Left, Modifiers::default());
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "first",
+            "drag above the window should reverse the selection through first",
+        );
+
+        cx.simulate_mouse_up(window_above, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(text_end, None, Modifiers::default());
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "first",
+            "mouse up outside the window should end table text selection",
+        );
+    }
+}
