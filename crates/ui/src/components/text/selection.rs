@@ -72,6 +72,7 @@ struct PointForPosition<T> {
 #[derive(Clone)]
 struct TextLayoutEntry<T> {
     id: T,
+    line_index: usize,
     text: SharedString,
     layout: TextLayoutSnapshot,
 }
@@ -184,14 +185,22 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         self.selection.as_ref().is_none_or(TextSelection::is_empty)
     }
 
-    pub fn register_layout(&mut self, id: T, text: SharedString, layout: &TextLayout) {
+    pub fn register_layout(
+        &mut self,
+        id: T,
+        line_index: usize,
+        text: SharedString,
+        layout: &TextLayout,
+    ) {
         let snapshot = TextLayoutSnapshot::new(layout);
         if let Some(existing_layout) = self.layouts.iter_mut().find(|entry| entry.id == id) {
+            existing_layout.line_index = line_index;
             existing_layout.text = text;
             existing_layout.layout = snapshot;
         } else {
             self.layouts.push(TextLayoutEntry {
                 id,
+                line_index,
                 text,
                 layout: snapshot,
             });
@@ -286,7 +295,7 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         let Some(layout) = self.layout_for_id(id) else {
             return false;
         };
-        let point = self.point_for_layout(id, layout, position);
+        let point = self.point_for_layout(layout, position);
 
         self.begin_selection_at_point(point, click_count)
     }
@@ -339,15 +348,6 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         self.selection = Some(selection);
 
         true
-    }
-
-    pub fn update_selection(&mut self, id: T, position: Point<Pixels>) -> bool {
-        let Some(layout) = self.layout_for_id(id) else {
-            return false;
-        };
-        let point = self.point_for_layout(id, layout, position);
-
-        self.update_selection_to_point(point)
     }
 
     fn update_selection_to_point(&mut self, point: TextSelectionPoint<T>) -> bool {
@@ -422,18 +422,15 @@ impl<T: Copy + Ord> TextSelectionState<T> {
     }
 
     pub fn update_selection_at_position(&mut self, position: Point<Pixels>) -> bool {
+        if !self.is_selecting {
+            return false;
+        }
+
         let Some(point_for_position) = self.point_for_position(position) else {
             return false;
         };
 
         self.update_selection_to_point(point_for_position.nearest_valid)
-    }
-
-    pub fn end_selection(&mut self, id: T, position: Point<Pixels>) -> bool {
-        let was_selecting = self.is_selecting;
-        let updated = self.update_selection(id, position);
-        self.is_selecting = false;
-        updated || was_selecting
     }
 
     pub fn select_all(&mut self, tail: TextSelectionPoint<T>, head: TextSelectionPoint<T>) {
@@ -455,12 +452,12 @@ impl<T: Copy + Ord> TextSelectionState<T> {
 
     fn point_for_position(&self, position: Point<Pixels>) -> Option<PointForPosition<T>> {
         let mut layouts = self.layouts.iter().collect::<Vec<_>>();
-        layouts.sort_by_key(|layout| layout.id);
+        layouts.sort_by_key(|layout| (layout.line_index, layout.id));
 
-        let first_layout = *layouts.first()?;
-        let last_layout = *layouts.last()?;
-        let mut top = first_layout.layout.bounds.top();
-        let mut bottom = first_layout.layout.bounds.bottom();
+        let first_selection_layout = self.layouts.iter().min_by_key(|layout| layout.id)?;
+        let last_selection_layout = self.layouts.iter().max_by_key(|layout| layout.id)?;
+        let mut top = layouts.first()?.layout.bounds.top();
+        let mut bottom = layouts.first()?.layout.bounds.bottom();
 
         for layout in &layouts {
             top = top.min(layout.layout.bounds.top());
@@ -474,29 +471,104 @@ impl<T: Copy + Ord> TextSelectionState<T> {
 
         if position.y < top {
             return Some(PointForPosition {
-                nearest_valid: TextSelectionPoint::new(first_layout.id, 0),
+                nearest_valid: TextSelectionPoint::new(first_selection_layout.id, 0),
                 is_text_hovered: false,
             });
         }
         if position.y > bottom {
             return Some(PointForPosition {
-                nearest_valid: TextSelectionPoint::new(last_layout.id, last_layout.text.len()),
+                nearest_valid: TextSelectionPoint::new(
+                    last_selection_layout.id,
+                    last_selection_layout.text.len(),
+                ),
                 is_text_hovered: false,
             });
         }
 
-        for (index, layout) in layouts.iter().enumerate() {
-            if position.x < layout.layout.bounds.left() {
-                if let Some(previous_layout) =
-                    index.checked_sub(1).and_then(|index| layouts.get(index))
+        if let Some(layout) = layouts
+            .iter()
+            .find(|layout| layout.layout.bounds.contains(&position))
+        {
+            return Some(PointForPosition {
+                nearest_valid: self.point_for_layout(layout, position),
+                is_text_hovered: true,
+            });
+        }
+
+        let mut line_bounds = Vec::<(usize, Pixels, Pixels)>::new();
+        for layout in &layouts {
+            let layout_bounds = layout.layout.bounds;
+            if let Some((line_index, line_top, line_bottom)) = line_bounds.last_mut()
+                && *line_index == layout.line_index
+            {
+                *line_top = (*line_top).min(layout_bounds.top());
+                *line_bottom = (*line_bottom).max(layout_bounds.bottom());
+            } else {
+                line_bounds.push((
+                    layout.line_index,
+                    layout_bounds.top(),
+                    layout_bounds.bottom(),
+                ));
+            }
+        }
+
+        let &(first_line_index, first_line_top, _) = line_bounds.first()?;
+        let selected_line_index = if position.y < first_line_top {
+            first_line_index
+        } else {
+            let mut selected_line_index = None;
+            for (index, &(line_index, _, line_bottom)) in line_bounds.iter().enumerate() {
+                if position.y <= line_bottom {
+                    selected_line_index = Some(line_index);
+                    break;
+                }
+
+                if let Some((_, next_line_top, _)) = line_bounds.get(index + 1)
+                    && position.y < *next_line_top
+                {
+                    let layout = layouts
+                        .iter()
+                        .rev()
+                        .find(|layout| layout.line_index == line_index)?;
+                    return Some(PointForPosition {
+                        nearest_valid: TextSelectionPoint::new(layout.id, layout.text.len()),
+                        is_text_hovered: false,
+                    });
+                }
+            }
+
+            let Some(selected_line_index) = selected_line_index else {
+                return Some(PointForPosition {
+                    nearest_valid: TextSelectionPoint::new(
+                        last_selection_layout.id,
+                        last_selection_layout.text.len(),
+                    ),
+                    is_text_hovered: false,
+                });
+            };
+            selected_line_index
+        };
+
+        let mut line_layouts = layouts
+            .into_iter()
+            .filter(|layout| layout.line_index == selected_line_index)
+            .collect::<Vec<_>>();
+        line_layouts.sort_by_key(|layout| (layout.layout.bounds.left(), layout.id));
+
+        for (index, layout) in line_layouts.iter().enumerate() {
+            let layout_bounds = layout.layout.bounds;
+            if position.x < layout_bounds.left() {
+                if let Some(previous_layout) = index
+                    .checked_sub(1)
+                    .and_then(|index| line_layouts.get(index))
                 {
                     let previous_right = previous_layout.layout.bounds.right();
-                    let next_left = layout.layout.bounds.left();
+                    let next_left = layout_bounds.left();
                     if position.x - previous_right < next_left - position.x {
                         return Some(PointForPosition {
-                            nearest_valid: TextSelectionPoint::new(
-                                previous_layout.id,
-                                previous_layout.text.len(),
+                            nearest_valid: self.point_for_layout(
+                                previous_layout,
+                                gpui::point(previous_right, position.y),
                             ),
                             is_text_hovered: false,
                         });
@@ -504,35 +576,32 @@ impl<T: Copy + Ord> TextSelectionState<T> {
                 }
 
                 return Some(PointForPosition {
-                    nearest_valid: TextSelectionPoint::new(layout.id, 0),
+                    nearest_valid: self
+                        .point_for_layout(layout, gpui::point(layout_bounds.left(), position.y)),
                     is_text_hovered: false,
                 });
             }
 
-            if position.x <= layout.layout.bounds.right() {
-                let is_text_hovered = position.y >= layout.layout.bounds.top()
-                    && position.y <= layout.layout.bounds.bottom();
-                let position = if is_text_hovered {
-                    position
-                } else {
-                    gpui::point(position.x, layout.layout.bounds.top())
-                };
+            if position.x <= layout_bounds.right() {
                 return Some(PointForPosition {
-                    nearest_valid: self.point_for_layout(layout.id, layout, position),
-                    is_text_hovered,
+                    nearest_valid: self.point_for_layout(layout, position),
+                    is_text_hovered: false,
                 });
             }
         }
 
+        let last_layout = line_layouts.last()?;
         Some(PointForPosition {
-            nearest_valid: TextSelectionPoint::new(last_layout.id, last_layout.text.len()),
+            nearest_valid: self.point_for_layout(
+                last_layout,
+                gpui::point(last_layout.layout.bounds.right(), position.y),
+            ),
             is_text_hovered: false,
         })
     }
 
     fn point_for_layout(
         &self,
-        id: T,
         layout: &TextLayoutEntry<T>,
         position: Point<Pixels>,
     ) -> TextSelectionPoint<T> {
@@ -540,7 +609,7 @@ impl<T: Copy + Ord> TextSelectionState<T> {
             .layout
             .closest_index_for_position(position)
             .min(layout.text.len());
-        TextSelectionPoint::new(id, offset)
+        TextSelectionPoint::new(layout.id, offset)
     }
 }
 

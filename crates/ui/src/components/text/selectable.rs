@@ -232,7 +232,7 @@ impl<T: Copy + Ord + 'static> Element for SelectableTextElement<T> {
 
             if let Some(interaction_state) = self.interaction_state.as_ref()
                 && let Err(error) = interaction_state.update(cx, |state, _| {
-                    state.register_text_layout(self.id, self.text.clone(), text_layout);
+                    state.register_text_layout(self.id, 0, self.text.clone(), text_layout);
                 })
             {
                 log::trace!("Failed to register selectable text layout: {error:?}");
@@ -447,7 +447,7 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableTextGroup<T> {
                                     let interaction_state = interaction_state.clone();
 
                                     move |event: &MouseMoveEvent, phase, _, cx| {
-                                        if phase == DispatchPhase::Bubble && event.dragging() {
+                                        if phase == DispatchPhase::Bubble {
                                             interaction_state.update(cx, |state, cx| {
                                                 state.update_text_selection_at_position(
                                                     event.position,
