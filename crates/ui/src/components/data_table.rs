@@ -4,11 +4,11 @@ pub use table_row::{IntoTableRow, TableRow};
 
 use gpui::{
     AbsoluteLength, Anchor, AnyElement, App, Bounds, ClipboardItem, Context, CursorStyle,
-    DefiniteLength, DismissEvent, Div, DragMoveEvent, Element, ElementId, Entity, EntityId,
-    FocusHandle, Focusable, FontWeight, GlobalElementId, Hitbox, InspectorElementId, LayoutId,
-    Length, ListHorizontalSizingBehavior, ListSizingBehavior, ListState, MouseButton, Pixels,
-    Point, RenderOnce, ScrollHandle, SharedString, Stateful, StyledText, Subscription,
-    UniformListScrollHandle, WeakEntity, Window, prelude::*,
+    DefiniteLength, DismissEvent, DispatchPhase, Div, DragMoveEvent, Element, ElementId, Entity,
+    EntityId, FocusHandle, Focusable, FontWeight, GlobalElementId, Hitbox, InspectorElementId,
+    LayoutId, Length, ListHorizontalSizingBehavior, ListSizingBehavior, ListState, MouseButton,
+    MouseMoveEvent, MouseUpEvent, Pixels, Point, RenderOnce, ScrollHandle, SharedString, Stateful,
+    StyledText, Subscription, UniformListScrollHandle, WeakEntity, Window, prelude::*,
 };
 use std::{ops::Range, rc::Rc};
 
@@ -335,36 +335,6 @@ impl TableInteractionState {
             position,
             click_count,
         ) {
-            cx.notify();
-        }
-    }
-
-    fn update_text_selection(
-        &mut self,
-        row_index: usize,
-        column_index: usize,
-        position: Point<Pixels>,
-        cx: &mut Context<Self>,
-    ) {
-        if self
-            .text_selection
-            .update_selection(TableTextId::new(row_index, column_index), position)
-        {
-            cx.notify();
-        }
-    }
-
-    fn end_text_selection(
-        &mut self,
-        row_index: usize,
-        column_index: usize,
-        position: Point<Pixels>,
-        cx: &mut Context<Self>,
-    ) {
-        if self
-            .text_selection
-            .end_selection(TableTextId::new(row_index, column_index), position)
-        {
             cx.notify();
         }
     }
@@ -857,40 +827,23 @@ fn render_text_cell(
     let mut cell = text_cell_style(base, text_cell, cx).child(element);
 
     if let Some(interaction_state) = table_cx.interaction_state.as_ref() {
-        cell = cell
-            .on_mouse_down(MouseButton::Left, {
-                let interaction_state = interaction_state.clone();
-                move |event, window, cx| {
-                    interaction_state.update(cx, |state, cx| {
-                        state.begin_text_selection(
-                            row_index,
-                            column_index,
-                            event.position,
-                            event.click_count,
-                            window,
-                            cx,
-                        );
-                    });
-                    cx.stop_propagation();
-                    window.prevent_default();
-                }
-            })
-            .on_mouse_move({
-                let interaction_state = interaction_state.clone();
-                move |event, _, cx| {
-                    interaction_state.update(cx, |state, cx| {
-                        state.update_text_selection(row_index, column_index, event.position, cx);
-                    });
-                }
-            })
-            .on_mouse_up(MouseButton::Left, {
-                let interaction_state = interaction_state.clone();
-                move |event, _, cx| {
-                    interaction_state.update(cx, |state, cx| {
-                        state.end_text_selection(row_index, column_index, event.position, cx);
-                    });
-                }
-            });
+        cell = cell.on_mouse_down(MouseButton::Left, {
+            let interaction_state = interaction_state.clone();
+            move |event, window, cx| {
+                interaction_state.update(cx, |state, cx| {
+                    state.begin_text_selection(
+                        row_index,
+                        column_index,
+                        event.position,
+                        event.click_count,
+                        window,
+                        cx,
+                    );
+                });
+                cx.stop_propagation();
+                window.prevent_default();
+            }
+        });
 
         if let Some(text_for_selection) = table_cx.text_for_selection.clone() {
             let row_count = table_cx.total_row_count;
@@ -996,9 +949,12 @@ impl Element for TableTextElement {
 
         if let Some(interaction_state) = self.interaction_state.as_ref()
             && let Err(error) = interaction_state.update(cx, |state, _| {
-                state
-                    .text_selection
-                    .register_layout(self.id, self.text.clone(), text_layout);
+                state.text_selection.register_layout(
+                    self.id,
+                    self.id.row_index,
+                    self.text.clone(),
+                    text_layout,
+                );
             })
         {
             log::trace!("Failed to register table text layout: {error:?}");
@@ -1406,17 +1362,52 @@ impl RenderOnce for Table {
                                 });
                             }
                         })
-                        .on_mouse_up(MouseButton::Left, {
-                            let interaction_state = interaction_state.clone();
+                        .child(
+                            gpui::canvas(|_, _, _| {}, {
+                                let interaction_state = interaction_state.clone();
 
-                            move |_, _, cx| {
-                                interaction_state.update(cx, |state, cx| {
-                                    if state.text_selection.end_selection_drag() {
-                                        cx.notify();
-                                    }
-                                });
-                            }
-                        })
+                                move |bounds, (), window, cx| {
+                                    interaction_state.update(cx, |state, _| {
+                                        state.text_selection.set_selection_bounds(bounds);
+                                    });
+
+                                    window.on_mouse_event({
+                                        let interaction_state = interaction_state.clone();
+
+                                        move |event: &MouseMoveEvent, phase, _, cx| {
+                                            if phase == DispatchPhase::Bubble {
+                                                interaction_state.update(cx, |state, cx| {
+                                                    if state
+                                                        .text_selection
+                                                        .update_selection_at_position(
+                                                            event.position,
+                                                        )
+                                                    {
+                                                        cx.notify();
+                                                    }
+                                                });
+                                            }
+                                        }
+                                    });
+
+                                    window.on_mouse_event({
+                                        move |event: &MouseUpEvent, phase, _, cx| {
+                                            if phase == DispatchPhase::Bubble
+                                                && event.button == MouseButton::Left
+                                            {
+                                                interaction_state.update(cx, |state, cx| {
+                                                    if state.text_selection.end_selection_drag() {
+                                                        cx.notify();
+                                                    }
+                                                });
+                                            }
+                                        }
+                                    });
+                                }
+                            })
+                            .absolute()
+                            .inset_0(),
+                        )
                 },
             )
             .when_some(table_width, |this, width| this.w(width))
@@ -1609,5 +1600,190 @@ impl RenderOnce for Table {
         } else {
             table.into_any_element()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::{Context, Modifiers, Point, Render, TestAppContext};
+
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+
+    fn init_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test_new(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+        });
+    }
+
+    struct TestTable {
+        interaction_state: Entity<TableInteractionState>,
+        rows: Vec<SharedString>,
+    }
+
+    impl TestTable {
+        fn new(rows: impl IntoIterator<Item: Into<SharedString>>, cx: &mut Context<Self>) -> Self {
+            Self {
+                interaction_state: cx.new(|cx| TableInteractionState::new(cx)),
+                rows: rows.into_iter().map(Into::into).collect(),
+            }
+        }
+
+        fn selected_text(&self, window: &mut Window, cx: &mut App) -> Option<String> {
+            let text_for_selection =
+                |row_index, _, _: &mut Window, _: &mut App| self.rows.get(row_index).cloned();
+
+            self.interaction_state.update(cx, |state, cx| {
+                state.selected_text(self.rows.len(), 1, &text_for_selection, window, cx)
+            })
+        }
+
+        #[track_caller]
+        fn position_for_text_offset(
+            &self,
+            row_index: usize,
+            byte_offset: usize,
+            cx: &mut Context<Self>,
+        ) -> Point<Pixels> {
+            self.interaction_state
+                .read_with(cx, |state, _| {
+                    state
+                        .text_selection
+                        .position_for_id_offset(TableTextId::new(row_index, 0), byte_offset)
+                })
+                .unwrap()
+        }
+    }
+
+    impl Render for TestTable {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let rows_for_text = self.rows.clone();
+            let mut table = Table::new(1)
+                .interactable(&self.interaction_state)
+                .text_for_selection(move |row_index, _, _, _| {
+                    rows_for_text.get(row_index).cloned()
+                });
+
+            for row in &self.rows {
+                table = table.row(vec![TableCell::text(row.clone())]);
+            }
+
+            gpui::div().size_full().child(table)
+        }
+    }
+
+    #[gpui::test]
+    fn test_table_text_selection_drag_outside_window(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let rows = ["first", "second", "third"];
+        let second_row_index = 1;
+        let second_row_length = rows[second_row_index].len();
+        let (view, cx) = cx.add_window_view(move |_, cx| TestTable::new(rows, cx));
+        let text_start = view.update(cx, |view, cx| {
+            view.position_for_text_offset(second_row_index, 0, cx)
+        });
+        let text_end = view.update(cx, |view, cx| {
+            view.position_for_text_offset(second_row_index, second_row_length, cx)
+        });
+        let window_size = cx.update(|window, _| window.viewport_size());
+        let offset = gpui::px(10.0);
+        let window_right = gpui::point(window_size.width + offset, text_start.y);
+        let window_below = gpui::point(window_right.x, window_size.height + offset);
+        let window_above = gpui::point(window_right.x, -offset);
+
+        cx.simulate_mouse_down(text_start, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(text_end, MouseButton::Left, Modifiers::default());
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "second",
+        );
+
+        cx.simulate_mouse_move(window_right, MouseButton::Left, Modifiers::default());
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "second",
+        );
+
+        cx.simulate_mouse_move(window_below, MouseButton::Left, Modifiers::default());
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "second\nthird",
+        );
+
+        cx.simulate_mouse_move(window_above, MouseButton::Left, Modifiers::default());
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "first",
+        );
+
+        cx.simulate_mouse_up(window_above, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(text_end, None, Modifiers::default());
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "first",
+        );
+    }
+
+    #[gpui::test]
+    fn test_table_multiline_text_selection_drag_outside_window(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let rows = ["first", "second\nthird\nfourth", "fifth"];
+        let second_row_index = 1;
+        let (view, cx) = cx.add_window_view(move |_, cx| TestTable::new(rows, cx));
+        let text_start = view.update(cx, |view, cx| {
+            view.position_for_text_offset(second_row_index, 0, cx)
+        });
+        let first_line_end = view.update(cx, |view, cx| {
+            view.position_for_text_offset(second_row_index, "second".len(), cx)
+        });
+        let second_line_end = view.update(cx, |view, cx| {
+            view.position_for_text_offset(second_row_index, "second\nthird".len(), cx)
+        });
+        let window_size = cx.update(|window, _| window.viewport_size());
+        let offset = gpui::px(10.0);
+        let line_height = second_line_end.y - first_line_end.y;
+        let window_right = gpui::point(
+            window_size.width + offset,
+            first_line_end.y + line_height / 2.0,
+        );
+        let window_below = gpui::point(window_right.x, window_size.height + offset);
+
+        cx.simulate_mouse_down(text_start, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(window_right, MouseButton::Left, Modifiers::default());
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "second",
+        );
+
+        cx.simulate_mouse_move(
+            gpui::point(window_right.x, second_line_end.y + line_height / 2.0),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "second\nthird",
+        );
+
+        cx.simulate_mouse_move(window_below, MouseButton::Left, Modifiers::default());
+        assert_eq!(
+            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
+                .unwrap_or_default(),
+            "second\nthird\nfourth\nfifth",
+        );
+        cx.simulate_mouse_up(window_below, MouseButton::Left, Modifiers::default());
     }
 }

@@ -49,10 +49,12 @@ impl<T: Copy + Ord + 'static> TextInteractionState<T> {
     pub(super) fn register_text_layout(
         &mut self,
         id: T,
+        line_index: usize,
         text: SharedString,
         text_layout: &TextLayout,
     ) {
-        self.text_selection.register_layout(id, text, text_layout);
+        self.text_selection
+            .register_layout(id, line_index, text, text_layout);
     }
 
     pub(super) fn selected_range_for_text(&self, id: T, text: &str) -> Option<Range<usize>> {
