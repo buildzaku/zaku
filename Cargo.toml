@@ -42,6 +42,8 @@ members = [
   "crates/svg",
   "crates/syntax_theme",
   "crates/system_specs",
+  "crates/telemetry",
+  "crates/telemetry_events",
   "crates/theme",
   "crates/theme_settings",
   "crates/title_bar",
@@ -219,6 +221,8 @@ sql_macros = { path = "crates/sql_macros" }
 svg = { path = "crates/svg" }
 syntax_theme = { path = "crates/syntax_theme" }
 system_specs = { path = "crates/system_specs" }
+telemetry = { path = "crates/telemetry" }
+telemetry_events = { path = "crates/telemetry_events" }
 theme = { path = "crates/theme" }
 theme_settings = { path = "crates/theme_settings" }
 title_bar = { path = "crates/title_bar" }

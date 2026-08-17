@@ -7248,6 +7248,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "telemetry"
+version = "26.0.0-dev"
+dependencies = [
+ "futures",
+ "log",
+ "serde_json",
+ "telemetry_events",
+]
+
+[[package]]
+name = "telemetry_events"
+version = "26.0.0-dev"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
