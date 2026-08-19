@@ -1641,6 +1641,7 @@ impl Workspace {
                 .update(|_, cx| Workspace::open(path, app_state, requesting_window, open_mode, cx))?
                 .await?;
 
+            telemetry::event!("Project Opened");
             window
                 .update(cx, |_, window, _cx| {
                     window.activate_window();

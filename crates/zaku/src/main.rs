@@ -9,7 +9,7 @@ use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 use gpui::{App, Application, PromptLevel, QuitMode, prelude::*};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use indoc::indoc;
-use std::{collections::HashMap, io::ErrorKind, path::Path, sync::Arc};
+use std::{collections::HashMap, fmt, io::ErrorKind, path::Path, sync::Arc};
 use uuid::Uuid;
 #[cfg(target_os = "windows")]
 use windows::{Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID, core::HSTRING};
@@ -64,10 +64,12 @@ fn main() {
     let app =
         Application::with_platform(gpui_platform::current_platform(false)).with_assets(Assets);
     let app_db = AppDatabase::new();
-    let session = app.background_executor().spawn(Session::new(
-        Uuid::new_v4().to_string(),
-        KeyValueStore::open(&app_db),
-    ));
+    let kv_store = KeyValueStore::open(&app_db);
+    let session = app
+        .background_executor()
+        .spawn(Session::new(Uuid::new_v4().to_string(), kv_store.clone()));
+    let system_id = app.background_executor().spawn(system_id(kv_store.clone()));
+    let installation_id = app.background_executor().spawn(installation_id(kv_store));
 
     app.run(move |cx: &mut App| {
         metadata::init(cx);
@@ -89,11 +91,40 @@ fn main() {
         zaku::handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
         theme_settings::init(LoadThemes::All(Box::new(Assets)), cx);
         register_embedded_fonts(cx);
+        let system_id = match cx.foreground_executor().block_on(system_id) {
+            Ok(system_id) => Some(system_id),
+            Err(error) => {
+                log::error!("Failed to initialize system ID: {error:#}");
+                None
+            }
+        };
+        let installation_id = match cx.foreground_executor().block_on(installation_id) {
+            Ok(installation_id) => Some(installation_id),
+            Err(error) => {
+                log::error!("Failed to initialize installation ID: {error:#}");
+                None
+            }
+        };
         let session = cx.foreground_executor().block_on(session);
-        let app_session = cx.new(|cx| AppSession::new(session, cx));
         let http_client = Arc::new(ReqwestClient::new());
         let client = Client::new(http_client, cx);
-        Client::set_global(client.clone(), cx);
+        let telemetry = client.telemetry().clone();
+        telemetry.start(
+            system_id.as_ref().map(ToString::to_string),
+            installation_id.as_ref().map(ToString::to_string),
+            session.id().to_owned(),
+        );
+        if let (Some(system_id), Some(installation_id)) = (&system_id, &installation_id) {
+            if matches!(
+                (system_id, installation_id),
+                (IdType::New(_), IdType::New(_))
+            ) {
+                telemetry::event!("App First Opened");
+            } else {
+                telemetry::event!("App Opened");
+            }
+        }
+        let app_session = cx.new(|cx| AppSession::new(session, cx));
         let languages = Arc::new(LanguageRegistry::new(cx.background_executor().clone()));
         languages::init(languages.as_ref());
         languages.set_theme(cx.theme().clone());
@@ -116,6 +147,7 @@ fn main() {
         command_palette::init(cx);
         let menus = zaku::app_menu(cx);
         cx.set_menus(menus);
+        telemetry.flush_events().detach();
 
         cx.activate(true);
         cx.spawn(
@@ -143,6 +175,48 @@ fn main() {
         )
         .detach();
     });
+}
+
+async fn system_id(kv_store: KeyValueStore) -> anyhow::Result<IdType> {
+    let key_name = "system_id";
+    if let Some(system_id) = kv_store.read_kv(key_name)? {
+        return Ok(IdType::Existing(system_id));
+    }
+
+    let system_id = Uuid::new_v4().to_string();
+    kv_store
+        .write_kv(key_name.to_string(), system_id.clone())
+        .await?;
+
+    Ok(IdType::New(system_id))
+}
+
+async fn installation_id(kv_store: KeyValueStore) -> anyhow::Result<IdType> {
+    let key_name = "installation_id";
+    if let Some(installation_id) = kv_store.read_kv(key_name)? {
+        return Ok(IdType::Existing(installation_id));
+    }
+
+    let installation_id = Uuid::new_v4().to_string();
+    kv_store
+        .write_kv(key_name.to_string(), installation_id.clone())
+        .await?;
+
+    Ok(IdType::New(installation_id))
+}
+
+#[derive(Debug, Clone)]
+enum IdType {
+    New(String),
+    Existing(String),
+}
+
+impl fmt::Display for IdType {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::New(id) | Self::Existing(id) => formatter.write_str(id),
+        }
+    }
 }
 
 fn init_paths() -> HashMap<ErrorKind, Vec<&'static Path>> {

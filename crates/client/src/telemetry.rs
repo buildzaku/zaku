@@ -16,9 +16,14 @@ use std::{
 
 use app_version::{AppVersion, ReleaseChannel};
 use http_client::{AsyncBody, HttpClient, HttpClientWithUrl, Method, Request, StatusCode};
+#[cfg(not(any(test, feature = "test")))]
+use telemetry_events::FlexibleEvent;
 use telemetry_events::{Event, EventRequestBody, EventWrapper};
 
 struct TelemetryState {
+    system_id: Option<Arc<str>>,
+    installation_id: Option<Arc<str>>,
+    session_id: Option<String>,
     release_channel: ReleaseChannel,
     arch: &'static str,
     events_queue: Vec<EventWrapper>,
@@ -64,6 +69,9 @@ impl Telemetry {
             .release_channel()
             .expect("application version should have a release channel");
         let state = Arc::new(Mutex::new(TelemetryState {
+            system_id: None,
+            installation_id: None,
+            session_id: None,
             release_channel,
             arch: env::consts::ARCH,
             events_queue: Vec::new(),
@@ -123,6 +131,20 @@ impl Telemetry {
         })
         .detach();
 
+        #[cfg(not(any(test, feature = "test")))]
+        cx.on_app_quit({
+            let this = this.clone();
+
+            move |_| {
+                this.report_event(Event::Flexible(FlexibleEvent {
+                    event_type: "App Closed".to_string(),
+                    event_properties: std::collections::HashMap::new(),
+                }));
+                this.flush_events()
+            }
+        })
+        .detach();
+
         this
     }
 
@@ -130,15 +152,21 @@ impl Telemetry {
         path::logs_dir().join("telemetry.log")
     }
 
-    fn report_event(self: &Arc<Self>, mut event: Event) {
+    pub fn start(
+        self: &Arc<Self>,
+        system_id: Option<String>,
+        installation_id: Option<String>,
+        session_id: String,
+    ) {
+        let mut state = self.state.lock();
+        state.system_id = system_id.map(Into::into);
+        state.installation_id = installation_id.map(Into::into);
+        state.session_id = Some(session_id);
+    }
+
+    fn report_event(self: &Arc<Self>, event: Event) {
         let mut state = self.state.lock();
         log::trace!(target: "telemetry", "{event:?}");
-
-        match &mut event {
-            Event::Flexible(event) => event
-                .event_properties
-                .insert("event_source".into(), "zaku".into()),
-        };
 
         if state.scheduled_flush_task.is_none() {
             let this = self.clone();
@@ -164,10 +192,18 @@ impl Telemetry {
 
         state.events_queue.push(EventWrapper { elapsed_ms, event });
 
-        if state.events_queue.len() >= state.max_queue_size {
+        if state.installation_id.is_some() && state.events_queue.len() >= state.max_queue_size {
             drop(state);
             self.flush_events().detach();
         }
+    }
+
+    pub fn system_id(self: &Arc<Self>) -> Option<Arc<str>> {
+        self.state.lock().system_id.clone()
+    }
+
+    pub fn installation_id(self: &Arc<Self>) -> Option<Arc<str>> {
+        self.state.lock().installation_id.clone()
     }
 
     fn build_request(
@@ -200,25 +236,30 @@ impl Telemetry {
 
             let mut json_bytes = Vec::new();
             if let Some(file) = &mut state.log_file {
-                for event in &events {
+                let log_result = events.iter().try_for_each(|event| -> anyhow::Result<()> {
                     json_bytes.clear();
                     serde_json::to_writer(&mut json_bytes, event)?;
                     file.write_all(&json_bytes)?;
                     file.write_all(b"\n")?;
+                    Ok(())
+                });
+                if let Err(error) = log_result {
+                    log::error!("Failed to write telemetry log: {error:#}");
+                    state.log_file = None;
                 }
             }
 
             (
                 json_bytes,
                 EventRequestBody {
-                    system_id: None,
-                    installation_id: None,
-                    session_id: None,
+                    system_id: state.system_id.as_deref().map(Into::into),
+                    installation_id: state.installation_id.as_deref().map(Into::into),
+                    session_id: state.session_id.clone(),
                     app_version: state.app_version.to_string(),
                     os_name: state.os_name.clone(),
                     os_version: state.os_version.clone(),
                     arch: state.arch.to_string(),
-                    release_channel: Some(state.release_channel.to_string()),
+                    release_channel: state.release_channel.to_string(),
                     events,
                 },
             )
@@ -296,10 +337,14 @@ mod tests {
         let executor = cx.executor();
         let clock = Arc::new(FakeSystemClock::new());
         let http_client = FakeHttpClient::with_response(StatusCode::OK);
+        let system_id = Some("system_id".to_string());
+        let installation_id = Some("installation_id".to_string());
+        let session_id = "session_id".to_string();
 
         let (telemetry, first_date_time, event) = cx.update(|cx| {
             let telemetry = Telemetry::new(clock.clone(), http_client, cx);
             telemetry.state.lock().max_queue_size = 4;
+            telemetry.start(system_id, installation_id, session_id);
 
             assert!(is_empty_state(&telemetry));
 
@@ -352,10 +397,14 @@ mod tests {
         let executor = cx.executor();
         let clock = Arc::new(FakeSystemClock::new());
         let http_client = FakeHttpClient::with_response(StatusCode::OK);
+        let system_id = Some("system_id".to_string());
+        let installation_id = Some("installation_id".to_string());
+        let session_id = "session_id".to_string();
 
         cx.update(|cx| {
             let telemetry = Telemetry::new(clock.clone(), http_client, cx);
             telemetry.state.lock().max_queue_size = 4;
+            telemetry.start(system_id, installation_id, session_id);
 
             assert!(is_empty_state(&telemetry));
             let first_date_time = clock.utc_now();

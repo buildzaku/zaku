@@ -64,6 +64,7 @@ session = { workspace = true }
 settings = { workspace = true }
 svg = { workspace = true }
 system_specs = { workspace = true }
+telemetry = { workspace = true }
 theme = { workspace = true }
 theme_settings = { workspace = true }
 title_bar = { workspace = true }

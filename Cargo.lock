@@ -3165,7 +3165,6 @@ dependencies = [
  "http",
  "http-body",
  "log",
- "parking_lot",
  "url",
 ]
 
@@ -9348,6 +9347,7 @@ dependencies = [
  "session",
  "settings",
  "smallvec",
+ "telemetry",
  "theme",
  "theme_settings",
  "ui",
@@ -9591,6 +9591,7 @@ dependencies = [
  "settings",
  "svg",
  "system_specs",
+ "telemetry",
  "theme",
  "theme_settings",
  "title_bar",

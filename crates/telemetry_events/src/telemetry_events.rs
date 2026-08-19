@@ -5,7 +5,7 @@ use std::collections::HashMap;
 pub struct EventRequestBody {
     /// Identifier unique to each system Zaku is installed on.
     pub system_id: Option<String>,
-    /// Identifier unique to each Zaku installation for a release channel.
+    /// Identifier unique to each Zaku installation.
     pub installation_id: Option<String>,
     /// Identifier unique to each application session.
     pub session_id: Option<String>,
@@ -18,7 +18,7 @@ pub struct EventRequestBody {
     /// Application architecture.
     pub arch: String,
     /// Application release channel.
-    pub release_channel: Option<String>,
+    pub release_channel: String,
     /// Events included in the batch.
     pub events: Vec<EventWrapper>,
 }

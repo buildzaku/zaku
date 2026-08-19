@@ -3,7 +3,6 @@ mod async_body;
 use derive_more::Deref;
 use futures::future::BoxFuture;
 use http::HeaderValue;
-use parking_lot::Mutex;
 use std::sync::Arc;
 #[cfg(any(test, feature = "test"))]
 use std::{any::type_name, fmt};
@@ -82,7 +81,7 @@ pub trait HttpClient: 'static + Send + Sync {
 
 #[derive(Deref)]
 pub struct HttpClientWithUrl {
-    base_url: Mutex<String>,
+    base_url: String,
     #[deref]
     client: Arc<dyn HttpClient>,
 }
@@ -90,21 +89,13 @@ pub struct HttpClientWithUrl {
 impl HttpClientWithUrl {
     pub fn new(client: Arc<dyn HttpClient>, base_url: impl Into<String>) -> Self {
         Self {
-            base_url: Mutex::new(base_url.into()),
+            base_url: base_url.into(),
             client,
         }
     }
 
-    pub fn base_url(&self) -> String {
-        self.base_url.lock().clone()
-    }
-
-    pub fn set_base_url(&self, base_url: impl Into<String>) {
-        *self.base_url.lock() = base_url.into();
-    }
-
     pub fn build_url(&self, path: &str) -> String {
-        format!("{}{}", self.base_url(), path)
+        format!("{}{path}", self.base_url)
     }
 }
 
@@ -147,7 +138,7 @@ impl FakeHttpClient {
         F: Fn(Request<AsyncBody>) -> Fut + Send + Sync + 'static,
     {
         Arc::new(HttpClientWithUrl {
-            base_url: Mutex::new("http://test.example".into()),
+            base_url: "http://test.example".into(),
             client: Arc::new(Self {
                 handler: Arc::new(move |request| Box::pin(handler(request))),
                 user_agent: HeaderValue::from_static(type_name::<Self>()),
