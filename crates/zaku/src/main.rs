@@ -15,6 +15,7 @@ use uuid::Uuid;
 use windows::{Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID, core::HSTRING};
 
 use assets::Assets;
+use client::Client;
 use db::{AppDatabase, kv::KeyValueStore};
 use fs::{Fs, NativeFs};
 use language::LanguageRegistry;
@@ -91,6 +92,8 @@ fn main() {
         let session = cx.foreground_executor().block_on(session);
         let app_session = cx.new(|cx| AppSession::new(session, cx));
         let http_client = Arc::new(ReqwestClient::new());
+        let client = Client::new(http_client, cx);
+        Client::set_global(client.clone(), cx);
         let languages = Arc::new(LanguageRegistry::new(cx.background_executor().clone()));
         languages::init(languages.as_ref());
         languages.set_theme(cx.theme().clone());
@@ -101,13 +104,8 @@ fn main() {
             }
         })
         .detach();
-        let app_state = Arc::new(AppState::new(
-            fs,
-            http_client.clone(),
-            app_session,
-            languages,
-        ));
-        updater::init(http_client, path::cache_dir().clone(), cx);
+        let app_state = Arc::new(AppState::new(fs, client.clone(), app_session, languages));
+        updater::init(client, path::cache_dir().clone(), cx);
         workspace::init(app_state.clone(), cx);
         project_panel::init(cx);
         editor::init(cx);

@@ -13,7 +13,7 @@ pub struct SystemSpecs {
     os_name: String,
     os_version: String,
     memory: u64,
-    architecture: &'static str,
+    arch: &'static str,
     commit_sha: String,
     gpu_specs: Option<String>,
 }
@@ -30,7 +30,7 @@ impl SystemSpecs {
             RefreshKind::nothing().with_memory(MemoryRefreshKind::everything()),
         );
         let memory = system.total_memory();
-        let architecture = env::consts::ARCH;
+        let arch = env::consts::ARCH;
         let commit_sha = ZAKU_COMMIT_SHA.to_string();
 
         let gpu_specs = window.gpu_specs().map(|specs| {
@@ -46,7 +46,7 @@ impl SystemSpecs {
                 os_name,
                 os_version,
                 memory,
-                architecture,
+                arch,
                 commit_sha,
                 gpu_specs,
             }
@@ -63,7 +63,7 @@ impl Display for SystemSpecs {
             app_version_information,
             os_information,
             format!("Memory: {}", format_bytes(self.memory)),
-            format!("Architecture: {}", self.architecture),
+            format!("Architecture: {}", self.arch),
         ]
         .into_iter()
         .chain(self.gpu_specs.as_ref().map(|specs| format!("GPU: {specs}")))

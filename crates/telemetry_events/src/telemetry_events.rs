@@ -16,7 +16,7 @@ pub struct EventRequestBody {
     /// Operating system version.
     pub os_version: Option<String>,
     /// Application architecture.
-    pub architecture: String,
+    pub arch: String,
     /// Application release channel.
     pub release_channel: Option<String>,
     /// Events included in the batch.

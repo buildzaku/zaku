@@ -4,6 +4,7 @@ members = [
   "crates/actions",
   "crates/app_version",
   "crates/assets",
+  "crates/client",
   "crates/collections",
   "crates/command_palette",
   "crates/command_palette_hooks",
@@ -183,6 +184,7 @@ windows = { version = "0.62", features = [
 actions = { path = "crates/actions" }
 app_version = { path = "crates/app_version" }
 assets = { path = "crates/assets" }
+client = { path = "crates/client" }
 collections = { path = "crates/collections" }
 command_palette = { path = "crates/command_palette" }
 command_palette_hooks = { path = "crates/command_palette_hooks" }

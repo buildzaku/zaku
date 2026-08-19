@@ -37,6 +37,7 @@ mimalloc = ["dep:mimalloc"]
 actions = { workspace = true }
 anyhow = { workspace = true }
 assets = { workspace = true }
+client = { workspace = true }
 command_palette = { workspace = true }
 db = { workspace = true }
 editor = { workspace = true }
@@ -86,6 +87,7 @@ windows = { workspace = true }
 resources = { workspace = true }
 
 [dev-dependencies]
+client = { workspace = true, features = ["test"] }
 fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
 http_client = { workspace = true, features = ["test"] }

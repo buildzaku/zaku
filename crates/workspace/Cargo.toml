@@ -16,6 +16,7 @@ workspace = true
 
 [features]
 test = [
+  "client/test",
   "db/test",
   "fs/test",
   "gpui/test-support",
@@ -29,6 +30,7 @@ test = [
 [dependencies]
 actions = { workspace = true }
 anyhow = { workspace = true }
+client = { workspace = true }
 db = { workspace = true }
 fs = { workspace = true }
 futures = { workspace = true }
@@ -56,6 +58,7 @@ util = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+client = { workspace = true, features = ["test"] }
 db = { workspace = true, features = ["test"] }
 fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }

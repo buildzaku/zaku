@@ -589,7 +589,7 @@ impl RequestEditor {
             active_tab: RequestEditorTab::Parameters,
             active_response_tab: ResponsePanelTab::Body,
             response: None,
-            http_client: AppState::global(cx).http_client.clone(),
+            http_client: AppState::global(cx).client.http_client(),
             params_scroll_handle: ScrollHandle::new(),
             headers_scroll_handle: ScrollHandle::new(),
             input_subscriptions,
@@ -1939,43 +1939,39 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
-        let app_state =
-            cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (tx, rx) = oneshot::channel();
         let rx = Arc::new(Mutex::new(Some(rx)));
 
-        http_client.replace_handler({
-            move |_, request| {
-                assert_eq!(request.uri().path(), "/search");
-                assert_eq!(request.uri().query(), Some("query=zaku&test=1"));
+        let http_client = FakeHttpClient::create(move |request| {
+            assert_eq!(request.uri().path(), "/search");
+            assert_eq!(request.uri().query(), Some("query=zaku&test=1"));
+            assert_eq!(
+                request
+                    .headers()
+                    .get("Content-Type")
+                    .and_then(|value| value.to_str().ok()),
+                Some("application/json")
+            );
+            assert!(request.headers().get("X-Debug").is_none());
+            let rx = rx.lock().take().unwrap();
+
+            async move {
+                let mut body = request.into_body();
+                let mut data = String::new();
+                body.read_to_string(&mut data).await?;
                 assert_eq!(
-                    request
-                        .headers()
-                        .get("Content-Type")
-                        .and_then(|value| value.to_str().ok()),
-                    Some("application/json")
+                    data,
+                    indoc! {r#"
+                        {
+                          "hello": "world"
+                        }
+                    "#}
                 );
-                assert!(request.headers().get("X-Debug").is_none());
-                let rx = rx.lock().take().unwrap();
 
-                async move {
-                    let mut body = request.into_body();
-                    let mut data = String::new();
-                    body.read_to_string(&mut data).await?;
-                    assert_eq!(
-                        data,
-                        indoc! {r#"
-                            {
-                              "hello": "world"
-                            }
-                        "#}
-                    );
-
-                    Ok(rx.await.unwrap())
-                }
+                Ok(rx.await.unwrap())
             }
         });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
 
         init_test(app_state, cx);
 

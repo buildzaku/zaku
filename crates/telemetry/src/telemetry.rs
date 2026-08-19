@@ -53,8 +53,8 @@ pub fn send_event(event: Event) {
     }
 }
 
-pub fn init(sender: mpsc::UnboundedSender<Event>) {
-    if TELEMETRY_QUEUE.set(sender).is_err() {
+pub fn init(tx: mpsc::UnboundedSender<Event>) {
+    if TELEMETRY_QUEUE.set(tx).is_err() {
         log::warn!("Telemetry queue is already initialized");
     }
 }

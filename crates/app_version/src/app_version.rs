@@ -7,6 +7,10 @@ use std::{fmt, str::FromStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ReleaseChannel {
+    #[value(skip)]
+    Dev,
+    #[value(skip)]
+    Nightly,
     Beta,
     Stable,
 }
@@ -14,6 +18,8 @@ pub enum ReleaseChannel {
 impl fmt::Display for ReleaseChannel {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
+            Self::Dev => "dev",
+            Self::Nightly => "nightly",
             Self::Beta => "beta",
             Self::Stable => "stable",
         })
@@ -60,6 +66,7 @@ impl ReleaseSnapshot {
 
     pub fn latest(&self, channel: ReleaseChannel) -> Option<&AppVersion> {
         match channel {
+            ReleaseChannel::Dev | ReleaseChannel::Nightly => None,
             ReleaseChannel::Beta => self.beta.as_ref(),
             ReleaseChannel::Stable => self.stable.as_ref(),
         }
@@ -67,6 +74,7 @@ impl ReleaseSnapshot {
 
     pub fn active(&self, channel: ReleaseChannel) -> Option<&AppVersion> {
         match channel {
+            ReleaseChannel::Dev | ReleaseChannel::Nightly => None,
             ReleaseChannel::Beta => match (&self.beta, &self.stable) {
                 (Some(beta), Some(stable)) if beta > stable => Some(beta),
                 (Some(beta), None) => Some(beta),
@@ -106,12 +114,16 @@ impl AppVersion {
     }
 
     pub fn release_channel(&self) -> anyhow::Result<ReleaseChannel> {
-        if self.is_beta() {
+        if self.is_dev() {
+            Ok(ReleaseChannel::Dev)
+        } else if self.is_nightly() {
+            Ok(ReleaseChannel::Nightly)
+        } else if self.is_beta() {
             Ok(ReleaseChannel::Beta)
         } else if self.is_stable() {
             Ok(ReleaseChannel::Stable)
         } else {
-            anyhow::bail!("version is not a beta or stable release")
+            anyhow::bail!("version does not have a release channel")
         }
     }
 

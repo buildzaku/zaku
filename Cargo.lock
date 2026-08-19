@@ -1075,10 +1075,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "client"
+version = "26.0.0-dev"
+dependencies = [
+ "anyhow",
+ "app_version",
+ "clock",
+ "futures",
+ "gpui",
+ "http_client 26.0.0-dev",
+ "log",
+ "metadata",
+ "parking_lot",
+ "path 26.0.0-dev",
+ "serde_json",
+ "sha2 0.11.0",
+ "system_specs",
+ "telemetry",
+ "telemetry_events",
+]
+
+[[package]]
 name = "clock"
 version = "0.1.0"
 source = "git+https://github.com/zed-industries/zed?rev=d71f146104#d71f1461045c098dc6ca6b1b5adcf1b8949722e8"
 dependencies = [
+ "parking_lot",
  "serde",
  "smallvec",
 ]
@@ -3138,6 +3160,7 @@ version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "bytes",
+ "derive_more",
  "futures",
  "http",
  "http-body",
@@ -7986,6 +8009,7 @@ dependencies = [
  "actions",
  "anyhow",
  "app_version",
+ "client",
  "db",
  "futures",
  "gpui",
@@ -9303,6 +9327,7 @@ version = "26.0.0-dev"
 dependencies = [
  "actions",
  "anyhow",
+ "client",
  "db",
  "fs",
  "futures",
@@ -9534,6 +9559,7 @@ dependencies = [
  "anyhow",
  "ashpd",
  "assets",
+ "client",
  "command_palette",
  "db",
  "editor",
