@@ -1,6 +1,7 @@
 use clock::SystemClock;
 use futures::{StreamExt, channel::mpsc};
 use gpui::{App, AppContext, BackgroundExecutor, Task};
+use jiff::Timestamp;
 use parking_lot::Mutex;
 use sha2::{Digest, Sha256};
 use std::{
@@ -24,6 +25,7 @@ struct TelemetryState {
     system_id: Option<Arc<str>>,
     installation_id: Option<Arc<str>>,
     session_id: Option<String>,
+    session_started_at_ms: i64,
     release_channel: ReleaseChannel,
     arch: &'static str,
     events_queue: Vec<EventWrapper>,
@@ -83,6 +85,7 @@ impl Telemetry {
             system_id: None,
             installation_id: None,
             session_id: None,
+            session_started_at_ms: Timestamp::now().as_millisecond(),
             release_channel,
             arch: env::consts::ARCH,
             events_queue: Vec::new(),
@@ -265,6 +268,7 @@ impl Telemetry {
                     system_id: state.system_id.as_deref().map(Into::into),
                     installation_id: state.installation_id.as_deref().map(Into::into),
                     session_id: state.session_id.clone(),
+                    session_started_at_ms: state.session_started_at_ms,
                     app_version: state.app_version.to_string(),
                     os_name: state.os_name.clone(),
                     os_version: state.os_version.clone(),

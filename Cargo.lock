@@ -1087,6 +1087,7 @@ dependencies = [
  "futures",
  "gpui",
  "http_client 26.0.0-dev",
+ "jiff",
  "log",
  "metadata",
  "parking_lot",
