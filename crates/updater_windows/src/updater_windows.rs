@@ -3,14 +3,16 @@
     windows_subsystem = "windows"
 )]
 
+#[cfg(target_os = "windows")]
+mod dialog;
+#[cfg(target_os = "windows")]
+mod updater;
+
 cfg_select! {
     any(target_os = "linux", target_os = "macos") => {
         fn main() {}
     }
     target_os = "windows" => {
-        mod dialog;
-        mod updater;
-
         use anyhow::Context as _;
         use std::borrow::Cow;
         use windows::{

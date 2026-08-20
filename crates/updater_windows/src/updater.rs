@@ -310,11 +310,7 @@ mod tests {
         std::fs::create_dir(app_dir.path().join("updates")).unwrap();
         std::fs::write(app_dir.path().join("Zaku.exe"), "old").unwrap();
         std::fs::write(app_dir.path().join("install").join("Zaku.exe"), "new").unwrap();
-        std::fs::write(
-            app_dir.path().join("updates").join("versions.txt"),
-            "26.1",
-        )
-        .unwrap();
+        std::fs::write(app_dir.path().join("updates").join("versions.txt"), "26.1").unwrap();
         let completed_jobs = AtomicUsize::new(0);
 
         execute_jobs(
@@ -344,10 +340,7 @@ mod tests {
             !app_dir.path().join("old").exists(),
             "old installation should be removed"
         );
-        assert_eq!(
-            completed_jobs.load(Ordering::SeqCst),
-            JOBS.len()
-        );
+        assert_eq!(completed_jobs.load(Ordering::SeqCst), JOBS.len());
     }
 
     #[test]
@@ -404,10 +397,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            attempts.load(Ordering::SeqCst),
-            3
-        );
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
     }
 
     #[test]
