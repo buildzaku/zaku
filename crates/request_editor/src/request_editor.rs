@@ -1131,6 +1131,19 @@ impl RequestEditor {
                                 match send_result {
                                     Ok(response) => break response,
                                     Err(error) => {
+                                        let causes = error
+                                            .chain()
+                                            .skip(1)
+                                            .map(|cause| format!("  - {cause}"))
+                                            .collect::<Vec<_>>();
+                                        let payload = if causes.is_empty() {
+                                            format!("Error: {error}")
+                                        } else {
+                                            format!(
+                                                "Error: {error}\n\nCaused by:\n{}",
+                                                causes.join("\n")
+                                            )
+                                        };
                                         response.update(cx, |response, cx| {
                                             response.set_state(
                                                 request_id,
@@ -1142,7 +1155,7 @@ impl RequestEditor {
                                             );
                                             response.set_payload(
                                                 request_id,
-                                                format!("Error: {error}"),
+                                                payload,
                                                 None,
                                                 cx,
                                             );
