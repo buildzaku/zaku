@@ -67,9 +67,9 @@ fn stderr_println(message: &str) {
     #[cfg(target_os = "windows")]
     {
         // SAFETY: `GetStdHandle` has no preconditions.
-        let stderr = match unsafe { GetStdHandle(STD_ERROR_HANDLE) } {
-            Ok(stderr) => stderr,
-            Err(_) => return,
+        let stderr = unsafe { GetStdHandle(STD_ERROR_HANDLE) };
+        let Ok(stderr) = stderr else {
+            return;
         };
         for mut bytes in [message.as_bytes(), b"\n".as_slice()] {
             while !bytes.is_empty() {
@@ -142,7 +142,13 @@ where
 {
     let executable = env::current_exe().expect("unable to find current executable");
     let socket_path = socket_path(process::id());
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     let crash_handler = spawn_crash_handler(&executable, &socket_path);
+
+    #[cfg(target_os = "windows")]
+    spawn_crash_handler(&executable, &socket_path);
+
     log::info!("Spawning crash handler process");
     let mut elapsed = Duration::ZERO;
     let retry_frequency = Duration::from_millis(100);
@@ -227,9 +233,6 @@ where
         async move {
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             let mut crash_handler = crash_handler;
-
-            #[cfg(target_os = "windows")]
-            let () = crash_handler;
 
             let _handler = handler;
             loop {
@@ -673,8 +676,8 @@ fn spawn_crash_handler(executable: &Path, socket_name: &Path) {
             PROCESS_CREATION_FLAGS(0),
             None,
             None,
-            &startup_info,
-            &mut process_info,
+            &raw const startup_info,
+            &raw mut process_info,
         )
         .expect("unable to spawn crash handler process");
     }

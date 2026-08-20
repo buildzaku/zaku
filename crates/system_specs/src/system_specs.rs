@@ -134,7 +134,7 @@ pub struct GpuInfo {
 pub fn read_gpu_info_from_sys_class_drm() -> anyhow::Result<Vec<GpuInfo>> {
     let directory = std::fs::read_dir("/sys/class/drm").context("failed to read /sys/class/drm")?;
     let mut pci_addresses = Vec::new();
-    let mut gpus = Vec::new();
+    let mut gpus = Vec::<GpuInfo>::new();
     let pci_db = match pciid_parser::Database::read() {
         Ok(db) => Some(db),
         Err(error) => {
