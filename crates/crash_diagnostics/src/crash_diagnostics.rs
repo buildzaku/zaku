@@ -400,7 +400,8 @@ fn read_process_memory(pid: u32, address: u64, length: usize) -> Option<Vec<u8>>
 
     // SAFETY: `local` provides writable storage for `length` bytes and the kernel
     // validates the address described by `remote`.
-    let bytes_read = unsafe { libc::process_vm_readv(pid, &local, 1, &remote, 1, 0) };
+    let bytes_read =
+        unsafe { libc::process_vm_readv(pid, &raw const local, 1, &raw const remote, 1, 0) };
 
     if bytes_read < 0 {
         log::warn!(
