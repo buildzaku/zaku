@@ -7,8 +7,8 @@ pub use app_menu::app_menu;
 pub use settings::{handle_keymap_file_changes, handle_settings_file_changes};
 
 use gpui::{
-    App, AsyncApp, ClipboardItem, Context, Entity, PromptLevel, Tiling, Window, WindowAppearance,
-    prelude::*,
+    App, AsyncApp, ClipboardItem, Context, Entity, Global, PromptLevel, Tiling, Window,
+    WindowAppearance, prelude::*,
 };
 use std::{borrow::Cow, io::IsTerminal, path::Path, sync::Arc};
 
@@ -26,6 +26,10 @@ use workspace::{
 };
 
 use crate::{logs::open_log_file, settings::migrate::MigrationBanner};
+
+pub struct CrashHandler(pub Arc<crash_diagnostics::Client>);
+
+impl Global for CrashHandler {}
 
 pub struct EmptyRoot {
     title_bar: Entity<TitleBar>,
@@ -105,6 +109,13 @@ pub fn init(cx: &mut App) {
             }
         })
         .detach();
+
+        if let Some(specs) = window.gpu_specs() {
+            log::info!("Using GPU: {specs:?}");
+            if let Some(handler) = cx.try_global::<CrashHandler>() {
+                crash_diagnostics::set_gpu_info(&handler.0, specs);
+            }
+        }
 
         let project_panel = ProjectPanel::new(workspace, window, cx);
         let project_panel_should_start_open = project_panel.read(cx).starts_open(window, cx);

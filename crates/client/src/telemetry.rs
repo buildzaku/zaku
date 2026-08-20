@@ -51,6 +51,17 @@ const FLUSH_INTERVAL: Duration = Duration::from_mins(5);
 static ZAKU_CLIENT_CHECKSUM_SEED: LazyLock<Option<&'static [u8]>> =
     LazyLock::new(|| option_env!("ZAKU_CLIENT_CHECKSUM_SEED").map(str::as_bytes));
 
+pub static MINIDUMP_ENDPOINT: LazyLock<Option<String>> = LazyLock::new(|| {
+    option_env!("ZAKU_MINIDUMP_ENDPOINT")
+        .map(str::to_string)
+        .or_else(|| env::var("ZAKU_MINIDUMP_ENDPOINT").ok())
+});
+
+pub fn should_install_crash_handler(channel: ReleaseChannel) -> bool {
+    env::var("ZAKU_GENERATE_MINIDUMPS").is_ok_and(|value| value == "1")
+        || (channel != ReleaseChannel::Dev && MINIDUMP_ENDPOINT.is_some())
+}
+
 pub struct Telemetry {
     clock: Arc<dyn SystemClock>,
     http_client: Arc<HttpClientWithUrl>,
@@ -176,17 +187,16 @@ impl Telemetry {
             }));
         }
 
-        let date_time = self.clock.utc_now();
+        let now = self.clock.utc_now();
         let elapsed_ms = if let Some(first_event_at) = state.first_event_at {
             u32::try_from(
-                date_time
-                    .saturating_duration_since(first_event_at)
+                now.saturating_duration_since(first_event_at)
                     .min(Duration::from_hours(24))
                     .as_millis(),
             )
             .expect("elapsed event time should fit in u32")
         } else {
-            state.first_event_at = Some(date_time);
+            state.first_event_at = Some(now);
             0
         };
 
@@ -341,14 +351,14 @@ mod tests {
         let installation_id = Some("installation_id".to_string());
         let session_id = "session_id".to_string();
 
-        let (telemetry, first_date_time, event) = cx.update(|cx| {
+        let (telemetry, first_event_at, event) = cx.update(|cx| {
             let telemetry = Telemetry::new(clock.clone(), http_client, cx);
             telemetry.state.lock().max_queue_size = 4;
             telemetry.start(system_id, installation_id, session_id);
 
             assert!(is_empty_state(&telemetry));
 
-            let first_date_time = clock.utc_now();
+            let first_event_at = clock.utc_now();
             let event = FlexibleEvent {
                 event_type: "test".to_string(),
                 event_properties: HashMap::from([(
@@ -357,28 +367,28 @@ mod tests {
                 )]),
             };
 
-            (telemetry, first_date_time, event)
+            (telemetry, first_event_at, event)
         });
 
         cx.update(|_| {
             telemetry.report_event(Event::Flexible(event.clone()));
             assert_eq!(telemetry.state.lock().events_queue.len(), 1);
             assert!(telemetry.state.lock().scheduled_flush_task.is_some());
-            assert_eq!(telemetry.state.lock().first_event_at, Some(first_date_time));
+            assert_eq!(telemetry.state.lock().first_event_at, Some(first_event_at));
 
             clock.advance(Duration::from_millis(100));
 
             telemetry.report_event(Event::Flexible(event.clone()));
             assert_eq!(telemetry.state.lock().events_queue.len(), 2);
             assert!(telemetry.state.lock().scheduled_flush_task.is_some());
-            assert_eq!(telemetry.state.lock().first_event_at, Some(first_date_time));
+            assert_eq!(telemetry.state.lock().first_event_at, Some(first_event_at));
 
             clock.advance(Duration::from_millis(100));
 
             telemetry.report_event(Event::Flexible(event.clone()));
             assert_eq!(telemetry.state.lock().events_queue.len(), 3);
             assert!(telemetry.state.lock().scheduled_flush_task.is_some());
-            assert_eq!(telemetry.state.lock().first_event_at, Some(first_date_time));
+            assert_eq!(telemetry.state.lock().first_event_at, Some(first_event_at));
 
             clock.advance(Duration::from_millis(100));
             telemetry.report_event(Event::Flexible(event));
@@ -407,7 +417,7 @@ mod tests {
             telemetry.start(system_id, installation_id, session_id);
 
             assert!(is_empty_state(&telemetry));
-            let first_date_time = clock.utc_now();
+            let first_event_at = clock.utc_now();
             let event = FlexibleEvent {
                 event_type: "test".to_string(),
                 event_properties: HashMap::from([(
@@ -419,7 +429,7 @@ mod tests {
             telemetry.report_event(Event::Flexible(event));
             assert_eq!(telemetry.state.lock().events_queue.len(), 1);
             assert!(telemetry.state.lock().scheduled_flush_task.is_some());
-            assert_eq!(telemetry.state.lock().first_event_at, Some(first_date_time));
+            assert_eq!(telemetry.state.lock().first_event_at, Some(first_event_at));
 
             let duration = Duration::from_millis(1);
             executor.advance_clock(

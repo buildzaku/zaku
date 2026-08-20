@@ -64,13 +64,13 @@ fn manifest_package(path: &Path) -> Package {
 
 fn commit_sha() -> String {
     let output = Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
+        .args(["rev-parse", "HEAD"])
         .output()
-        .expect("failed to run `git rev-parse --short HEAD`");
+        .expect("failed to run `git rev-parse HEAD`");
 
     assert!(
         output.status.success(),
-        "`git rev-parse --short HEAD` failed with status {}",
+        "`git rev-parse HEAD` failed with status {}",
         output.status
     );
 

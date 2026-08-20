@@ -8,6 +8,7 @@ members = [
   "crates/collections",
   "crates/command_palette",
   "crates/command_palette_hooks",
+  "crates/crash_diagnostics",
   "crates/db",
   "crates/editor",
   "crates/fs",
@@ -79,11 +80,13 @@ ashpd = { version = "0.13", default-features = false, features = [
   "notification",
 ] }
 async-lock = { version = "3.4" }
+async-process = { version = "2.5" }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
 clap = { version = "4.6", features = ["derive"] }
 clock = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "clock" }
 cookie = { version = "0.18" }
+crash-handler = { version = "0.8" }
 derive_more = { version = "2.1", features = ["deref", "deref_mut"] }
 dirs = { version = "6.0" }
 dunce = { version = "1.0" }
@@ -113,11 +116,14 @@ jsonc-parser = { version = "0.32", features = [
 libc = { version = "0.2" }
 libsqlite3-sys = { version = "0.38", features = ["bundled"] }
 log = { version = "0.4" }
+mach2 = { version = "0.6" }
 mimalloc = { version = "0.1" }
+minidumper = { version = "0.11" }
 notify = { version = "8.2" }
 num-traits = { version = "0.2" }
 palette = { version = "0.7", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12" }
+pciid-parser = { version = "0.8" }
 pretty_assertions = { version = "1.4", features = ["unstable"] }
 proc-macro2 = { version = "1.0" }
 quote = { version = "1.0" }
@@ -169,15 +175,19 @@ windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
   "Win32_Storage_FileSystem",
+  "Win32_System_Console",
+  "Win32_System_IO",
   "Win32_System_LibraryLoader",
   "Win32_System_RestartManager",
   "Win32_System_SystemInformation",
+  "Win32_System_Threading",
   "Win32_System_WindowsProgramming",
   "Win32_UI_Controls",
   "Win32_UI_HiDpi",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
+zstd = { version = "0.13" }
 ##################################################
 # Workspace member crates
 ##################################################
@@ -188,6 +198,7 @@ client = { path = "crates/client" }
 collections = { path = "crates/collections" }
 command_palette = { path = "crates/command_palette" }
 command_palette_hooks = { path = "crates/command_palette_hooks" }
+crash_diagnostics = { path = "crates/crash_diagnostics" }
 db = { path = "crates/db" }
 editor = { path = "crates/editor" }
 fs = { path = "crates/fs" }

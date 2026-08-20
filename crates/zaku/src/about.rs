@@ -57,6 +57,9 @@ impl AboutWindow {
 
 impl Render for AboutWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let short_sha = ZAKU_COMMIT_SHA
+            .get(..8)
+            .expect("commit SHA should be at least 8 characters long");
         let ui_font = theme::setup_ui_font(window, cx);
         let theme_colors = cx.theme().colors();
         let content = gpui::div()
@@ -100,7 +103,7 @@ impl Render for AboutWindow {
                     .child(
                         gpui::div().flex().flex_shrink_1().child(
                             Link::new(
-                                ZAKU_COMMIT_SHA,
+                                short_sha,
                                 format!("{ZAKU_REPOSITORY}/commits/{ZAKU_COMMIT_SHA}"),
                             )
                             .font_buffer(),

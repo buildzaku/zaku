@@ -89,6 +89,10 @@ impl ReleaseSnapshot {
 pub struct AppVersion(Version);
 
 impl AppVersion {
+    pub fn base(&self) -> Self {
+        Self(Version::new(self.0.major, self.0.minor, self.0.patch))
+    }
+
     pub fn is_stable(&self) -> bool {
         self.0.pre.is_empty()
     }
