@@ -50,8 +50,8 @@ const FLUSH_INTERVAL: Duration = Duration::from_secs(1);
 #[cfg(not(debug_assertions))]
 const FLUSH_INTERVAL: Duration = Duration::from_mins(5);
 
-static ZAKU_CLIENT_CHECKSUM_SEED: LazyLock<Option<&'static [u8]>> =
-    LazyLock::new(|| option_env!("ZAKU_CLIENT_CHECKSUM_SEED").map(str::as_bytes));
+static ZAKU_CHECKSUM_SEED: LazyLock<Option<&'static [u8]>> =
+    LazyLock::new(|| option_env!("ZAKU_CHECKSUM_SEED").map(str::as_bytes));
 
 pub static MINIDUMP_ENDPOINT: LazyLock<Option<String>> = LazyLock::new(|| {
     option_env!("ZAKU_MINIDUMP_ENDPOINT")
@@ -302,7 +302,7 @@ impl Telemetry {
 }
 
 pub fn calculate_json_checksum(json: &impl AsRef<[u8]>) -> Option<String> {
-    let checksum_seed = ZAKU_CLIENT_CHECKSUM_SEED.as_ref()?;
+    let checksum_seed = ZAKU_CHECKSUM_SEED.as_ref()?;
 
     let mut digest = Sha256::new();
     digest.update(checksum_seed);
