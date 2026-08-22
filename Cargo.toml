@@ -121,6 +121,11 @@ mimalloc = { version = "0.1" }
 minidumper = { version = "0.11" }
 notify = { version = "8.2" }
 num-traits = { version = "0.2" }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "NSProcessInfo",
+  "NSString",
+  "std",
+] }
 palette = { version = "0.7", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12" }
 pciid-parser = { version = "0.8" }

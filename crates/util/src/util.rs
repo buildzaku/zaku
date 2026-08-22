@@ -37,6 +37,24 @@ pub fn capitalize(str: &str) -> String {
     }
 }
 
+#[cfg(target_os = "linux")]
+pub fn parse_os_version(content: &str) -> Option<String> {
+    let mut id = None;
+    let mut version_id = None;
+    for line in content.lines() {
+        match line.split_once('=') {
+            Some(("ID", value)) => id = Some(value.trim_matches('"')),
+            Some(("VERSION_ID", value)) => version_id = Some(value.trim_matches('"')),
+            _ => {}
+        }
+    }
+    let id = id?;
+    Some(match version_id {
+        Some(version) => format!("{id} {version}"),
+        None => id.to_string(),
+    })
+}
+
 pub fn truncate_and_trailoff(text: &str, max_chars: usize) -> String {
     debug_assert!(max_chars >= 5);
 
@@ -153,5 +171,29 @@ where
                 entries.insert(index, incoming_entry);
             }
         }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+
+    use indoc::indoc;
+
+    #[test]
+    fn test_parse_os_version() {
+        let os_release = indoc! {r#"
+            NAME="Ubuntu"
+            ID=ubuntu
+            VERSION_ID="24.04"
+            PRETTY_NAME="Ubuntu 24.04 LTS"
+        "#};
+        assert_eq!(
+            parse_os_version(os_release),
+            Some("ubuntu 24.04".to_string())
+        );
+        assert_eq!(parse_os_version("ID=arch\n"), Some("arch".to_string()));
+        assert_eq!(parse_os_version("VERSION_ID=1\n"), None);
+        assert_eq!(parse_os_version(""), None);
     }
 }

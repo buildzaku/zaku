@@ -32,9 +32,17 @@ parking_lot = { workspace = true }
 path = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
-system_specs = { workspace = true }
 telemetry = { workspace = true }
 telemetry_events = { workspace = true }
+util = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { workspace = true }
+regex = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+semver = { workspace = true }
+windows = { workspace = true }
 
 [dev-dependencies]
 clock = { workspace = true, features = ["test-support"] }

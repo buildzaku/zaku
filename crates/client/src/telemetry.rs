@@ -2,7 +2,13 @@ use clock::SystemClock;
 use futures::{StreamExt, channel::mpsc};
 use gpui::{App, AppContext, BackgroundExecutor, Task};
 use jiff::Timestamp;
+#[cfg(target_os = "macos")]
+use objc2_foundation::NSProcessInfo;
 use parking_lot::Mutex;
+#[cfg(target_os = "macos")]
+use regex::Regex;
+#[cfg(target_os = "windows")]
+use semver::Version;
 use sha2::{Digest, Sha256};
 use std::{
     env,
@@ -13,6 +19,8 @@ use std::{
     sync::{Arc, LazyLock},
     time::{Duration, Instant},
 };
+#[cfg(target_os = "windows")]
+use windows::{Wdk::System::SystemServices, Win32::System::SystemInformation::OSVERSIONINFOW};
 
 use app_version::{AppVersion, ReleaseChannel};
 use http_client::{AsyncBody, HttpClient, HttpClientWithUrl, Method, Request, StatusCode};
@@ -63,6 +71,78 @@ pub fn should_install_crash_handler(channel: ReleaseChannel) -> bool {
         || (channel != ReleaseChannel::Dev && MINIDUMP_ENDPOINT.is_some())
 }
 
+pub fn os_name() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        format!("Linux {}", gpui::guess_compositor())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        "macOS".to_string()
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        "Windows".to_string()
+    }
+}
+
+pub fn os_version() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        let content = if let Ok(file) = std::fs::read_to_string("/etc/os-release") {
+            file
+        } else if let Ok(file) = std::fs::read_to_string("/usr/lib/os-release") {
+            file
+        } else if let Ok(file) = std::fs::read_to_string("/var/run/os-release") {
+            file
+        } else {
+            log::error!(
+                "Failed to load /etc/os-release, /usr/lib/os-release, or /var/run/os-release"
+            );
+            String::new()
+        };
+        util::parse_os_version(&content).unwrap_or_else(|| "unknown".to_string())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        static MACOS_VERSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r"(\s*\(Build [^)]*[0-9]\))").expect("macOS version regex should be valid")
+        });
+        let process_info = NSProcessInfo::processInfo();
+        let version_string = process_info
+            .operatingSystemVersionString()
+            .to_string()
+            .replace("Version ", "");
+        MACOS_VERSION_REGEX
+            .replace_all(&version_string, "")
+            .to_string()
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut info = OSVERSIONINFOW::default();
+        info.dwOSVersionInfoSize = u32::try_from(std::mem::size_of_val(&info))
+            .expect("operating system version information size should fit in u32");
+
+        // SAFETY: RtlGetVersion writes to the provided output buffer, and `info`
+        // remains valid for the duration of the call.
+        let status = unsafe { SystemServices::RtlGetVersion(&raw mut info) };
+        if status.is_ok() {
+            Version::new(
+                u64::from(info.dwMajorVersion),
+                u64::from(info.dwMinorVersion),
+                u64::from(info.dwBuildNumber),
+            )
+            .to_string()
+        } else {
+            "unknown".to_string()
+        }
+    }
+}
+
 pub struct Telemetry {
     clock: Arc<dyn SystemClock>,
     http_client: Arc<HttpClientWithUrl>,
@@ -92,7 +172,7 @@ impl Telemetry {
             log_file: None,
             first_event_at: None,
             max_queue_size: MAX_QUEUE_SIZE,
-            os_name: system_specs::os_name(),
+            os_name: os_name(),
             app_version,
             os_version: None,
         }));
@@ -101,7 +181,7 @@ impl Telemetry {
         cx.background_spawn({
             let state = state.clone();
             async move {
-                let os_version = system_specs::os_version();
+                let os_version = os_version();
                 match File::create(Self::log_file_path()) {
                     Ok(log_file) => {
                         let mut state = state.lock();

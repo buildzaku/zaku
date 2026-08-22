@@ -22,3 +22,6 @@ log = { workspace = true }
 rust-embed = { workspace = true }
 serde = { workspace = true }
 smol = { workspace = true }
+
+[dev-dependencies]
+indoc = { workspace = true }

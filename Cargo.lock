@@ -1091,13 +1091,17 @@ dependencies = [
  "jiff",
  "log",
  "metadata",
+ "objc2-foundation 0.3.2",
  "parking_lot",
  "path 26.0.0-dev",
+ "regex",
+ "semver",
  "serde_json",
  "sha2 0.11.0",
- "system_specs",
  "telemetry",
  "telemetry_events",
+ "util 26.0.0-dev",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -8399,6 +8403,7 @@ dependencies = [
 name = "util"
 version = "26.0.0-dev"
 dependencies = [
+ "indoc",
  "log",
  "rust-embed",
  "serde",
