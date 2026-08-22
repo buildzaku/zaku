@@ -9,8 +9,6 @@ pub struct EventRequestBody {
     pub installation_id: Option<String>,
     /// Identifier unique to each application session.
     pub session_id: Option<String>,
-    /// Application session start time in milliseconds since the Unix epoch.
-    pub session_started_at_ms: i64,
     /// Application version.
     pub app_version: String,
     /// Operating system.
