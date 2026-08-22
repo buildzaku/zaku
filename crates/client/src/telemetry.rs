@@ -6,7 +6,6 @@ use parking_lot::Mutex;
 use sha2::{Digest, Sha256};
 use std::{
     env,
-    fmt::Write as _,
     fs::File,
     io::Write as _,
     mem,
@@ -301,19 +300,15 @@ impl Telemetry {
     }
 }
 
-pub fn calculate_json_checksum(json: &impl AsRef<[u8]>) -> Option<String> {
+pub fn calculate_json_checksum(json: &[u8]) -> Option<String> {
     let checksum_seed = ZAKU_CHECKSUM_SEED.as_ref()?;
 
     let mut digest = Sha256::new();
     digest.update(checksum_seed);
     digest.update(json);
     digest.update(checksum_seed);
-    let mut checksum = String::new();
-    for byte in digest.finalize() {
-        write!(&mut checksum, "{byte:02x}").expect("writing to a string should not fail");
-    }
 
-    Some(checksum)
+    Some(hex::encode(digest.finalize()))
 }
 
 #[cfg(test)]

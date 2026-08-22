@@ -23,6 +23,7 @@ app_version = { workspace = true }
 clock = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
+hex = { workspace = true }
 http_client = { workspace = true }
 jiff = { workspace = true }
 log = { workspace = true }
