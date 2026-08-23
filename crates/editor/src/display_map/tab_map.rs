@@ -302,8 +302,7 @@ impl TabSnapshot {
     }
 
     fn tab_point_to_buffer_point(&self, output: TabPoint, bias: Bias) -> (Point, u32, u32) {
-        let max_buffer_point = self.buffer_snapshot.max_point();
-        let row = output.row().min(max_buffer_point.row);
+        let row = output.row();
 
         let line_start = Point::new(row, 0);
         let line_start_offset = self.buffer_snapshot.point_to_offset(line_start);

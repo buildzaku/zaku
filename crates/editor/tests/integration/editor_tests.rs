@@ -1252,7 +1252,7 @@ fn test_undo_redo_selection(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn test_selection_with_mouse(cx: &mut TestAppContext) {
+fn test_mouse_selection(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
@@ -1322,6 +1322,30 @@ fn test_selection_with_mouse(cx: &mut TestAppContext) {
         assert_eq!(
             display_ranges(editor, cx),
             [DisplayPoint::new(DisplayRow(3), 3)..DisplayPoint::new(DisplayRow(0), 0)]
+        );
+    });
+}
+
+#[gpui::test]
+fn test_mouse_selection_beyond_end_of_buffer(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state(indoc! {"
+        The
+        quick
+        brˇown
+        fox\
+    "});
+
+    cx.update_editor(|editor, _, cx| {
+        editor.begin_selection(DisplayPoint::new(DisplayRow(0), 1), 1, cx);
+        editor.update_selection(DisplayPoint::new(DisplayRow(4), 0), cx);
+    });
+    cx.update_editor(|editor, _, cx| {
+        assert_eq!(
+            display_ranges(editor, cx),
+            [DisplayPoint::new(DisplayRow(0), 1)..DisplayPoint::new(DisplayRow(3), 3)]
         );
     });
 }
