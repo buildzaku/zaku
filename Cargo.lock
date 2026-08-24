@@ -9836,6 +9836,7 @@ dependencies = [
  "project",
  "project_panel",
  "request_editor",
+ "reqwest",
  "reqwest_client",
  "resources",
  "response_panel",

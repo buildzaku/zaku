@@ -3,6 +3,8 @@
     windows_subsystem = "windows"
 )]
 
+mod reliability;
+
 use anyhow::anyhow;
 #[cfg(target_os = "linux")]
 use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
@@ -185,7 +187,8 @@ fn main() {
         })
         .detach();
         let app_state = Arc::new(AppState::new(fs, client.clone(), app_session, languages));
-        updater::init(client, path::cache_dir().clone(), cx);
+        updater::init(client.clone(), path::cache_dir().clone(), cx);
+        reliability::init(client, cx);
         workspace::init(app_state.clone(), cx);
         project_panel::init(cx);
         editor::init(cx);
