@@ -75,6 +75,7 @@ if [[ "$arch" != "aarch64" && "$arch" != "x86_64" ]]; then
 fi
 
 target="${arch}-apple-darwin"
+target_directory="${CARGO_TARGET_DIR:-target}"
 version=$(cargo app-version show)
 long_version=$(cargo app-version show --long)
 long_version_without_prerelease="${long_version%%-*}"
@@ -87,6 +88,38 @@ rustup target add "$target"
 
 echo "Compiling Zaku"
 cargo build --release --package zaku --target "$target"
+
+binary_path="${target_directory}/${target}/release/zaku"
+if [[ ! -x "$binary_path" ]]; then
+  echo "Zaku executable was not created at $binary_path" >&2
+  exit 1
+fi
+
+if [[ -n "${SENTRY_AUTH_TOKEN:-}" ]]; then
+  if [[ -z "${SENTRY_ORG:-}" ]]; then
+    echo "SENTRY_ORG is required when SENTRY_AUTH_TOKEN is set" >&2
+    exit 1
+  fi
+  if [[ -z "${SENTRY_PROJECT:-}" ]]; then
+    echo "SENTRY_PROJECT is required when SENTRY_AUTH_TOKEN is set" >&2
+    exit 1
+  fi
+  if ! command -v sentry-cli >/dev/null 2>&1; then
+    echo "sentry-cli is required when SENTRY_AUTH_TOKEN is set" >&2
+    exit 1
+  fi
+
+  echo "Generating Zaku debug symbols"
+  dsymutil --flat "$binary_path"
+
+  echo "Uploading Zaku debug symbols to Sentry"
+  if ! sentry-cli debug-files upload --include-sources --wait -p "$SENTRY_PROJECT" -o "$SENTRY_ORG" "${binary_path}.dwarf"; then
+    echo "Could not upload Zaku debug symbols to Sentry" >&2
+    exit 1
+  fi
+else
+  echo "SENTRY_AUTH_TOKEN is not set; skipping Zaku debug symbol upload to Sentry"
+fi
 
 echo "Creating macOS application bundle"
 app_path=$(

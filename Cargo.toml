@@ -259,6 +259,7 @@ async-process = { git = "https://github.com/zed-industries/async-process", rev =
 async-task = { git = "https://github.com/smol-rs/async-task", rev = "b4486cd71e" }
 
 [profile.release]
+debug = "limited"
 lto = "thin"
 codegen-units = 1
 
