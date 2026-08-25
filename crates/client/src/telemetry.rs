@@ -14,7 +14,6 @@ use std::{
     fs::File,
     io::Write as _,
     mem,
-    path::PathBuf,
     sync::{Arc, LazyLock},
     time::{Duration, Instant},
 };
@@ -184,7 +183,7 @@ impl Telemetry {
             let state = state.clone();
             async move {
                 let os_version = os_version();
-                match File::create(Self::log_file_path()) {
+                match File::create(path::telemetry_log_file()) {
                     Ok(log_file) => {
                         let mut state = state.lock();
                         state.os_version = Some(os_version);
@@ -257,10 +256,6 @@ impl Telemetry {
         .detach();
 
         this
-    }
-
-    pub fn log_file_path() -> PathBuf {
-        path::logs_dir().join("telemetry.log")
     }
 
     pub fn start(

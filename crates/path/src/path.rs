@@ -592,6 +592,12 @@ pub fn old_updater_log_file() -> &'static PathBuf {
     OLD_UPDATER_LOG_FILE.get_or_init(|| logs_dir().join("Updater.log.old"))
 }
 
+/// Returns the path to the `telemetry.log` file.
+pub fn telemetry_log_file() -> &'static PathBuf {
+    static TELEMETRY_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+    TELEMETRY_LOG_FILE.get_or_init(|| logs_dir().join("telemetry.log"))
+}
+
 /// Returns the path to the `settings.jsonc` file.
 pub fn settings_file() -> &'static PathBuf {
     static SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();
