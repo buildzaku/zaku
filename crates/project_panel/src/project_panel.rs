@@ -4677,22 +4677,15 @@ mod tests {
             );
         });
 
-        panel
-            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
-                let visible_entries = panel.visible_entries(cx);
-                let contains_path = |path| {
-                    visible_entries
-                        .iter()
-                        .any(|entry| entry.path.as_ref() == rel_path(path))
-                };
-
-                contains_path("third.toml")
-                    && !contains_path("collection")
-                    && !contains_path("other.toml")
-            })
+        pane.condition::<PaneEvent>(cx, |pane, _| pane.items_len() == 0)
             .await;
 
-        pane.condition::<PaneEvent>(cx, |pane, _| pane.items_len() == 0)
+        panel
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                panel
+                    .selected_entry_project_path(cx)
+                    .is_some_and(|entry| entry.path.as_ref() == rel_path("third.toml"))
+            })
             .await;
 
         assert_eq!(
