@@ -344,6 +344,7 @@ mod tests {
     #[gpui::test]
     fn test_manual_check_with_multiple_windows(cx: &mut TestAppContext) {
         let updater = cx.new(|cx| {
+            settings::init(cx);
             metadata::init_test("26.1".parse().unwrap(), cx);
             let client = Client::test_new(
                 FakeHttpClient::create(|_| async { panic!("http client should not be used") }),

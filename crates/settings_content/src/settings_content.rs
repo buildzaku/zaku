@@ -2,6 +2,7 @@ mod editor;
 mod fallible_options;
 mod git;
 pub mod merge_from;
+mod telemetry;
 mod theme;
 mod ui;
 mod update;
@@ -10,6 +11,7 @@ pub use editor::*;
 pub use fallible_options::*;
 pub use git::*;
 pub use merge_from::MergeFrom as MergeFromTrait;
+pub use telemetry::*;
 pub use theme::*;
 pub use ui::*;
 pub use update::*;
@@ -35,5 +37,6 @@ pub struct SettingsContent {
     pub editor: Option<EditorSettingsContent>,
     pub git: Option<GitSettingsContent>,
     pub update: Option<UpdateSettingsContent>,
+    pub telemetry: Option<TelemetrySettingsContent>,
     pub log: Option<HashMap<String, String>>,
 }

@@ -1097,6 +1097,7 @@ dependencies = [
  "regex",
  "semver",
  "serde_json",
+ "settings",
  "sha2 0.11.0",
  "telemetry",
  "telemetry_events",

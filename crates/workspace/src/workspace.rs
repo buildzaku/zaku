@@ -211,6 +211,9 @@ impl AppState {
         http_client: Option<Arc<HttpClientWithUrl>>,
         cx: &mut App,
     ) -> Arc<Self> {
+        if !cx.has_global::<SettingsStore>() {
+            settings::init(cx);
+        }
         let http_client =
             http_client.unwrap_or_else(|| FakeHttpClient::with_response(StatusCode::NOT_FOUND));
         metadata::init_test(

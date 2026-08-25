@@ -14,12 +14,14 @@ use http_client::{AsyncBody, HttpClient, Request};
 use system_specs::GpuInfo;
 
 pub(crate) fn init(client: Arc<Client>, cx: &mut App) {
-    cx.background_spawn(async move {
-        if let Err(error) = upload_previous_minidumps(client).await {
-            log::warn!("Failed to upload previous minidumps: {error:#}");
-        }
-    })
-    .detach();
+    if client.telemetry().diagnostics_enabled() {
+        cx.background_spawn(async move {
+            if let Err(error) = upload_previous_minidumps(client).await {
+                log::warn!("Failed to upload previous minidumps: {error:#}");
+            }
+        })
+        .detach();
+    }
 }
 
 async fn upload_previous_minidumps(client: Arc<Client>) -> anyhow::Result<()> {
@@ -76,6 +78,10 @@ async fn upload_previous_minidumps(client: Arc<Client>) -> anyhow::Result<()> {
                 continue;
             }
         };
+
+        if !client.telemetry().diagnostics_enabled() {
+            break;
+        }
 
         if let Err(error) =
             upload_minidump(client.clone(), minidump_endpoint, minidump, &metadata).await

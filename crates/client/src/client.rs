@@ -7,8 +7,30 @@ use gpui::App;
 use std::sync::Arc;
 
 use http_client::{HttpClient, HttpClientWithUrl};
+use settings::{RegisterSetting, Settings, SettingsContent};
 
 use crate::telemetry::Telemetry;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RegisterSetting)]
+pub struct TelemetrySettings {
+    pub diagnostics: bool,
+    pub metrics: bool,
+}
+
+impl Settings for TelemetrySettings {
+    fn from_settings(content: &SettingsContent) -> Self {
+        let telemetry = content.telemetry.as_ref();
+
+        Self {
+            diagnostics: telemetry
+                .and_then(|telemetry| telemetry.diagnostics)
+                .expect("telemetry diagnostics should be defaulted"),
+            metrics: telemetry
+                .and_then(|telemetry| telemetry.metrics)
+                .expect("telemetry metrics should be defaulted"),
+        }
+    }
+}
 
 pub struct Client {
     http_client: Arc<HttpClientWithUrl>,

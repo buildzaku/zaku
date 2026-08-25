@@ -23,11 +23,15 @@ use windows::{Wdk::System::SystemServices, Win32::System::SystemInformation::OSV
 
 use app_version::{AppVersion, ReleaseChannel};
 use http_client::{AsyncBody, HttpClient, HttpClientWithUrl, Method, Request, StatusCode};
+use settings::{Settings, SettingsStore};
 #[cfg(not(any(test, feature = "test")))]
 use telemetry_events::FlexibleEvent;
 use telemetry_events::{Event, EventRequestBody, EventWrapper};
 
+use crate::TelemetrySettings;
+
 struct TelemetryState {
+    settings: TelemetrySettings,
     system_id: Option<Arc<str>>,
     installation_id: Option<Arc<str>>,
     session_id: Option<String>,
@@ -159,6 +163,7 @@ impl Telemetry {
             .release_channel()
             .expect("application version should have a release channel");
         let state = Arc::new(Mutex::new(TelemetryState {
+            settings: *TelemetrySettings::get_global(cx),
             system_id: None,
             installation_id: None,
             session_id: None,
@@ -190,6 +195,22 @@ impl Telemetry {
                         log::error!("Failed to open telemetry log: {error}");
                     }
                 }
+            }
+        })
+        .detach();
+
+        cx.observe_global::<SettingsStore>({
+            let state = state.clone();
+
+            move |cx| {
+                let settings = *TelemetrySettings::get_global(cx);
+                let mut state = state.lock();
+                if state.settings.metrics && !settings.metrics {
+                    state.events_queue.clear();
+                    state.scheduled_flush_task = None;
+                    state.first_event_at = None;
+                }
+                state.settings = settings;
             }
         })
         .detach();
@@ -254,9 +275,21 @@ impl Telemetry {
         state.session_id = Some(session_id);
     }
 
+    pub fn metrics_enabled(self: &Arc<Self>) -> bool {
+        self.state.lock().settings.metrics
+    }
+
+    pub fn diagnostics_enabled(self: &Arc<Self>) -> bool {
+        self.state.lock().settings.diagnostics
+    }
+
     fn report_event(self: &Arc<Self>, event: Event) {
         let mut state = self.state.lock();
         log::trace!(target: "telemetry", "{event:?}");
+
+        if !state.settings.metrics {
+            return;
+        }
 
         if state.scheduled_flush_task.is_none() {
             let this = self.clone();
@@ -316,6 +349,9 @@ impl Telemetry {
     pub async fn flush_events_inner(self: &Arc<Self>) -> anyhow::Result<()> {
         let (json_bytes, request_body) = {
             let mut state = self.state.lock();
+            if !state.settings.metrics {
+                return Ok(());
+            }
             state.first_event_at = None;
             let events = mem::take(&mut state.events_queue);
             state.scheduled_flush_task.take();
@@ -353,6 +389,10 @@ impl Telemetry {
                 },
             )
         };
+
+        if !self.metrics_enabled() {
+            return Ok(());
+        }
 
         let request = self.build_request(json_bytes, &request_body)?;
         let response = self.http_client.send(request).await?;
@@ -400,6 +440,7 @@ mod tests {
 
     fn init_test(cx: &mut TestAppContext) {
         cx.update(|cx| {
+            settings::init(cx);
             metadata::init_test(
                 env!("CARGO_PKG_VERSION")
                     .parse()
