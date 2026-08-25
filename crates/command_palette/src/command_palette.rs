@@ -485,6 +485,11 @@ impl PickerDelegate for CommandPaletteDelegate {
         }
 
         let command = self.commands.swap_remove(action_index);
+        telemetry::event!(
+            "Action Invoked",
+            source = "Command Palette",
+            action = command.name
+        );
         self.matches.clear();
         self.commands.clear();
         let command_name = command.name.clone();

@@ -1260,6 +1260,7 @@ dependencies = [
  "log",
  "picker",
  "smol",
+ "telemetry",
  "ui",
  "workspace",
 ]
@@ -5598,6 +5599,7 @@ dependencies = [
  "serde_json",
  "settings",
  "smallvec",
+ "telemetry",
  "theme",
  "ui",
  "util 26.0.0-dev",
@@ -8273,6 +8275,7 @@ dependencies = [
  "settings",
  "sha2 0.11.0",
  "smol",
+ "telemetry",
  "tempfile",
  "ui",
  "util 26.0.0-dev",

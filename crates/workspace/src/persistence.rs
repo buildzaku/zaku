@@ -1359,12 +1359,12 @@ mod tests {
         let docks = DockStructure {
             left: model::DockData {
                 visible: true,
-                active_panel: Some("ProjectPanel".to_string()),
+                active_panel: Some("Project Panel".to_string()),
                 auto_hidden: false,
             },
             bottom: model::DockData {
                 visible: false,
-                active_panel: Some("ResponsePanel".to_string()),
+                active_panel: Some("Response Panel".to_string()),
                 auto_hidden: true,
             },
         };

@@ -305,6 +305,8 @@ fn check_for_updates(
     window: &mut Window,
     cx: &mut App,
 ) {
+    telemetry::event!("Manual Update Check Requested");
+
     if let Some(updater) = Updater::get(cx) {
         let current_version = updater.read(cx).current_version();
         let settings = *UpdateSettings::get_global(cx);

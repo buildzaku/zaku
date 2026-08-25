@@ -6,6 +6,9 @@ use std::sync::OnceLock;
 
 /// Create a telemetry event and send it to the telemetry queue.
 ///
+/// Use the "Noun Verbed" convention for event names, such as "App Opened"
+/// or "Minidump Uploaded".
+///
 /// ```
 /// telemetry::event!("App Opened");
 /// telemetry::event!("Minidump Uploaded", crashed_version = "26.0");

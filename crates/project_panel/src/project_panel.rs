@@ -2682,7 +2682,7 @@ impl Focusable for ProjectPanel {
 
 impl Panel for ProjectPanel {
     fn persistent_name() -> &'static str {
-        Self::PANEL_KEY
+        "Project Panel"
     }
 
     fn panel_key() -> &'static str {
@@ -3101,6 +3101,10 @@ impl Render for ProjectPanel {
                                                 ),
                                         )
                                         .on_click(cx.listener(|this, _, window, cx| {
+                                            telemetry::event!(
+                                                "Open Project Clicked",
+                                                source = Self::persistent_name()
+                                            );
                                             this.focus_handle.dispatch_action(
                                                 &actions::workspace::Open::DEFAULT,
                                                 window,
