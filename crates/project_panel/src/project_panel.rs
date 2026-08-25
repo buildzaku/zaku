@@ -3051,6 +3051,10 @@ impl Render for ProjectPanel {
                                         .full_width()
                                         .child(Text::new("New Project"))
                                         .on_click(cx.listener(|this, _, window, cx| {
+                                            telemetry::event!(
+                                                "New Project Clicked",
+                                                source = Self::persistent_name()
+                                            );
                                             this.focus_handle.dispatch_action(
                                                 &actions::workspace::NewProject,
                                                 window,
