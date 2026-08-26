@@ -18,4 +18,5 @@ workspace = true
 gpui = { workspace = true }
 log = { workspace = true }
 settings = { workspace = true }
+telemetry = { workspace = true }
 theme = { workspace = true }

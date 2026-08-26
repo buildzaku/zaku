@@ -38,6 +38,33 @@ use util::ResultExt;
 use workspace::{Panel, Workspace, WorkspaceEvent};
 
 pub fn init(cx: &mut App) {
+    let mut previous_settings = *GitSettings::get_global(cx);
+    cx.observe_global::<SettingsStore>(move |cx| {
+        let current_settings = *GitSettings::get_global(cx);
+
+        for (setting, previous, current) in [
+            (
+                "git.enabled",
+                previous_settings.enabled,
+                current_settings.enabled,
+            ),
+            (
+                "git.status.enabled",
+                previous_settings.status.enabled,
+                current_settings.status.enabled,
+            ),
+        ] {
+            if previous != current {
+                cx.defer(move |_| {
+                    telemetry::event!("Settings Changed", setting, value = current);
+                });
+            }
+        }
+
+        previous_settings = current_settings;
+    })
+    .detach();
+
     cx.observe_new(
         |workspace: &mut Workspace, _window, _: &mut Context<Workspace>| {
             workspace.register_action(
@@ -239,11 +266,11 @@ impl ProjectPanel {
             )
             .detach();
 
-            let mut git_settings = *GitSettings::get_global(cx);
+            let mut previous_settings = *GitSettings::get_global(cx);
             cx.observe_global_in::<SettingsStore>(window, move |_, _, cx| {
-                let new_git_settings = *GitSettings::get_global(cx);
-                if git_settings != new_git_settings {
-                    git_settings = new_git_settings;
+                let current_settings = *GitSettings::get_global(cx);
+                if previous_settings != current_settings {
+                    previous_settings = current_settings;
                     cx.notify();
                 }
             })

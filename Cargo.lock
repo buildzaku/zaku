@@ -7617,6 +7617,7 @@ dependencies = [
  "gpui",
  "log",
  "settings",
+ "telemetry",
  "theme",
 ]
 

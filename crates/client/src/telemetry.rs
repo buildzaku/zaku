@@ -8,8 +8,10 @@ use parking_lot::Mutex;
 use regex::Regex;
 #[cfg(target_os = "windows")]
 use semver::Version;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
     env,
     fs::File,
     io::Write as _,
@@ -23,9 +25,7 @@ use windows::{Wdk::System::SystemServices, Win32::System::SystemInformation::OSV
 use app_version::{AppVersion, ReleaseChannel};
 use http_client::{AsyncBody, HttpClient, HttpClientWithUrl, Method, Request, StatusCode};
 use settings::{Settings, SettingsStore};
-#[cfg(not(any(test, feature = "test")))]
-use telemetry_events::FlexibleEvent;
-use telemetry_events::{Event, EventRequestBody, EventWrapper};
+use telemetry_events::{Event, EventRequestBody, EventWrapper, FlexibleEvent};
 
 use crate::TelemetrySettings;
 
@@ -198,28 +198,66 @@ impl Telemetry {
         })
         .detach();
 
-        cx.observe_global::<SettingsStore>({
-            let state = state.clone();
-
-            move |cx| {
-                let settings = *TelemetrySettings::get_global(cx);
-                let mut state = state.lock();
-                if state.settings.metrics && !settings.metrics {
-                    state.events_queue.clear();
-                    state.scheduled_flush_task = None;
-                    state.first_event_at = None;
-                }
-                state.settings = settings;
-            }
-        })
-        .detach();
-
         let this = Arc::new(Self {
             clock,
             http_client,
             executor: cx.background_executor().clone(),
             state,
         });
+
+        cx.observe_global::<SettingsStore>({
+            let this = Arc::downgrade(&this);
+
+            move |cx| {
+                let Some(this) = this.upgrade() else {
+                    return;
+                };
+                let current_settings = *TelemetrySettings::get_global(cx);
+                let mut state = this.state.lock();
+                let previous_settings = state.settings;
+                let did_disable_metrics = previous_settings.metrics && !current_settings.metrics;
+                let mut should_flush = false;
+
+                state.settings = current_settings;
+
+                if previous_settings.metrics || current_settings.metrics {
+                    for (setting, previous, current) in [
+                        (
+                            "telemetry.metrics",
+                            previous_settings.metrics,
+                            current_settings.metrics,
+                        ),
+                        (
+                            "telemetry.diagnostics",
+                            previous_settings.diagnostics,
+                            current_settings.diagnostics,
+                        ),
+                    ] {
+                        if previous != current {
+                            let event = Event::Flexible(FlexibleEvent {
+                                event_type: "Settings Changed".to_string(),
+                                event_properties: HashMap::from([
+                                    ("setting".to_string(), Value::String(setting.to_string())),
+                                    ("value".to_string(), Value::Bool(current)),
+                                ]),
+                            });
+                            log::trace!(target: "telemetry", "{event:?}");
+                            should_flush |= this.enqueue_event(&mut state, event);
+                        }
+                    }
+                }
+
+                if did_disable_metrics {
+                    state.scheduled_flush_task = None;
+                }
+                drop(state);
+
+                if did_disable_metrics || should_flush {
+                    this.flush_events().detach();
+                }
+            }
+        })
+        .detach();
 
         let (tx, mut rx) = mpsc::unbounded();
         ::telemetry::init(tx);
@@ -286,6 +324,15 @@ impl Telemetry {
             return;
         }
 
+        let should_flush = self.enqueue_event(&mut state, event);
+        drop(state);
+
+        if should_flush {
+            self.flush_events().detach();
+        }
+    }
+
+    fn enqueue_event(self: &Arc<Self>, state: &mut TelemetryState, event: Event) -> bool {
         if state.scheduled_flush_task.is_none() {
             let this = self.clone();
             state.scheduled_flush_task = Some(self.executor.spawn(async move {
@@ -309,10 +356,7 @@ impl Telemetry {
 
         state.events_queue.push(EventWrapper { elapsed_ms, event });
 
-        if state.installation_id.is_some() && state.events_queue.len() >= state.max_queue_size {
-            drop(state);
-            self.flush_events().detach();
-        }
+        state.installation_id.is_some() && state.events_queue.len() >= state.max_queue_size
     }
 
     pub fn system_id(self: &Arc<Self>) -> Option<Arc<str>> {
@@ -344,9 +388,6 @@ impl Telemetry {
     pub async fn flush_events_inner(self: &Arc<Self>) -> anyhow::Result<()> {
         let (json_bytes, request_body) = {
             let mut state = self.state.lock();
-            if !state.settings.metrics {
-                return Ok(());
-            }
             state.first_event_at = None;
             let events = mem::take(&mut state.events_queue);
             state.scheduled_flush_task.take();
@@ -384,10 +425,6 @@ impl Telemetry {
                 },
             )
         };
-
-        if !self.metrics_enabled() {
-            return Ok(());
-        }
 
         let request = self.build_request(json_bytes, &request_body)?;
         let response = self.http_client.send(request).await?;

@@ -273,25 +273,42 @@ pub fn init(client: Arc<Client>, cache_dir: PathBuf, cx: &mut App) {
             Arc::new(PlatformReleaseInstaller),
             cx,
         );
-        if should_poll_for_updates {
-            let mut beta_updates_enabled = settings.beta;
-            let mut update_subscription = settings.automatic.then(|| updater.start_polling(cx));
+        let mut previous_settings = settings;
+        let mut update_subscription =
+            (should_poll_for_updates && settings.automatic).then(|| updater.start_polling(cx));
 
-            cx.observe_global::<SettingsStore>(move |updater, cx| {
-                let settings = *UpdateSettings::get_global(cx);
-                if settings.automatic {
+        cx.observe_global::<SettingsStore>(move |updater, cx| {
+            let current_settings = *UpdateSettings::get_global(cx);
+
+            for (setting, previous, current) in [
+                (
+                    "update.automatic",
+                    previous_settings.automatic,
+                    current_settings.automatic,
+                ),
+                ("update.beta", previous_settings.beta, current_settings.beta),
+            ] {
+                if previous != current {
+                    cx.defer(move |_| {
+                        telemetry::event!("Settings Changed", setting, value = current);
+                    });
+                }
+            }
+
+            if should_poll_for_updates {
+                if current_settings.automatic {
                     if update_subscription.is_none() {
                         update_subscription = Some(updater.start_polling(cx));
-                    } else if beta_updates_enabled != settings.beta {
+                    } else if previous_settings.beta != current_settings.beta {
                         updater.poll(UpdateCheckType::Automatic, cx);
                     }
                 } else {
                     update_subscription.take();
                 }
-                beta_updates_enabled = settings.beta;
-            })
-            .detach();
-        }
+            }
+            previous_settings = current_settings;
+        })
+        .detach();
 
         updater
     });
