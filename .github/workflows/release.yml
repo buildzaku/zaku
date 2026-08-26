@@ -275,7 +275,7 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           ZAKU_CHECKSUM_SEED: ${{ secrets.ZAKU_CHECKSUM_SEED }}
-          ZAKU_MINIDUMP_ENDPOINT: ${{ secrets.ZAKU_MINIDUMP_ENDPOINT }}
+          ZAKU_MINIDUMP_ENDPOINT: ${{ vars.ZAKU_MINIDUMP_ENDPOINT }}
         run: |
           for variable in SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT ZAKU_CHECKSUM_SEED ZAKU_MINIDUMP_ENDPOINT; do
             if [[ -z "${!variable:-}" ]]; then
@@ -417,7 +417,7 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           ZAKU_CHECKSUM_SEED: ${{ secrets.ZAKU_CHECKSUM_SEED }}
-          ZAKU_MINIDUMP_ENDPOINT: ${{ secrets.ZAKU_MINIDUMP_ENDPOINT }}
+          ZAKU_MINIDUMP_ENDPOINT: ${{ vars.ZAKU_MINIDUMP_ENDPOINT }}
         run: "./script/bundle-${PLATFORM} --arch ${ARCH}"
         shell: bash
 
@@ -429,7 +429,7 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           ZAKU_CHECKSUM_SEED: ${{ secrets.ZAKU_CHECKSUM_SEED }}
-          ZAKU_MINIDUMP_ENDPOINT: ${{ secrets.ZAKU_MINIDUMP_ENDPOINT }}
+          ZAKU_MINIDUMP_ENDPOINT: ${{ vars.ZAKU_MINIDUMP_ENDPOINT }}
         run: ./script/bundle-windows.ps1 -Arch $env:ARCH
         shell: pwsh
 
