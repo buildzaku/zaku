@@ -40,5 +40,9 @@
     "automatic": true,
     "beta": false
   },
+  "telemetry": {
+    "diagnostics": true,
+    "metrics": true
+  },
   "log": {}
 }

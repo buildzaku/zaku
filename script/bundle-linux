@@ -91,6 +91,31 @@ if [[ ! -x "$binary_path" ]]; then
   exit 1
 fi
 
+if [[ -n "${SENTRY_AUTH_TOKEN:-}" ]]; then
+  if [[ -z "${SENTRY_ORG:-}" ]]; then
+    echo "SENTRY_ORG is required when SENTRY_AUTH_TOKEN is set" >&2
+    exit 1
+  fi
+  if [[ -z "${SENTRY_PROJECT:-}" ]]; then
+    echo "SENTRY_PROJECT is required when SENTRY_AUTH_TOKEN is set" >&2
+    exit 1
+  fi
+  if ! command -v sentry-cli >/dev/null 2>&1; then
+    echo "sentry-cli is required when SENTRY_AUTH_TOKEN is set" >&2
+    exit 1
+  fi
+
+  echo "Uploading Zaku debug symbols to Sentry"
+  if ! sentry-cli debug-files upload --include-sources --wait -p "$SENTRY_PROJECT" -o "$SENTRY_ORG" "$binary_path"; then
+    echo "Could not upload Zaku debug symbols to Sentry" >&2
+    exit 1
+  fi
+else
+  echo "SENTRY_AUTH_TOKEN is not set; skipping Zaku debug symbol upload to Sentry"
+fi
+
+llvm-objcopy --strip-debug "$binary_path"
+
 echo "Creating Linux application bundle"
 bundle_directory=$(mktemp -d)
 archive_directory=""

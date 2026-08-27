@@ -316,6 +316,7 @@ mod tests {
     use gpui::{AppContext, TestAppContext};
     use std::path::PathBuf;
 
+    use client::Client;
     use http_client::FakeHttpClient;
 
     use crate::PlatformReleaseInstaller;
@@ -343,11 +344,18 @@ mod tests {
     #[gpui::test]
     fn test_manual_check_with_multiple_windows(cx: &mut TestAppContext) {
         let updater = cx.new(|cx| {
+            settings::init(cx);
+            metadata::init_test("26.1".parse().unwrap(), cx);
+            let client = Client::test_new(
+                FakeHttpClient::create(|_| async { panic!("http client should not be used") }),
+                cx,
+            );
+            let installer = Arc::new(PlatformReleaseInstaller);
             Updater::new(
                 "26.1".parse().unwrap(),
-                FakeHttpClient::create(|_| async { panic!("http client should not be used") }),
+                client,
                 PathBuf::new(),
-                Arc::new(PlatformReleaseInstaller),
+                installer,
                 cx,
             )
         });

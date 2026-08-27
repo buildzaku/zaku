@@ -19,7 +19,32 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
 
     reload_theme(cx);
 
-    cx.observe_global::<SettingsStore>(reload_theme).detach();
+    let mut previous_mode = cx
+        .global::<SettingsStore>()
+        .content()
+        .theme
+        .as_ref()
+        .and_then(|theme| theme.mode)
+        .expect("theme mode should be defaulted");
+    cx.observe_global::<SettingsStore>(move |cx| {
+        reload_theme(cx);
+
+        let current_mode = cx
+            .global::<SettingsStore>()
+            .content()
+            .theme
+            .as_ref()
+            .and_then(|theme| theme.mode)
+            .expect("theme mode should be defaulted");
+        if previous_mode != current_mode {
+            previous_mode = current_mode;
+            let value = current_mode;
+            cx.defer(move |_| {
+                telemetry::event!("Settings Changed", setting = "theme.mode", value);
+            });
+        }
+    })
+    .detach();
 }
 
 fn configured_theme(cx: &mut App) -> Arc<Theme> {

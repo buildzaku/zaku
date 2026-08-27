@@ -23,13 +23,16 @@ pub fn version(cx: &App) -> AppVersion {
     cx.global::<GlobalAppVersion>().0.clone()
 }
 
-pub fn init(cx: &mut App) {
-    let version = if let Ok(from_env) = env::var("ZAKU_APP_VERSION") {
+pub fn init(version: AppVersion, cx: &mut App) {
+    cx.set_global(GlobalAppVersion(version));
+}
+
+pub fn load_version() -> AppVersion {
+    if let Ok(from_env) = env::var("ZAKU_APP_VERSION") {
         from_env.parse().expect("invalid ZAKU_APP_VERSION")
     } else {
         ZAKU_VERSION.parse().expect("invalid version in Cargo.toml")
-    };
-    cx.set_global(GlobalAppVersion(version));
+    }
 }
 
 pub fn init_test(version: AppVersion, cx: &mut App) {

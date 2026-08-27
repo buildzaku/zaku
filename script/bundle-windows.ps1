@@ -114,13 +114,43 @@ try {
         throw "Could not compile Zaku for $target"
     }
 
+    $zakuExecutable = Join-Path $releaseDirectory "zaku.exe"
+    $zakuPdb = Join-Path $releaseDirectory "zaku.pdb"
+    if (-not (Test-Path $zakuExecutable -PathType Leaf)) {
+        throw "Zaku executable was not created at $zakuExecutable"
+    }
+    if (-not (Test-Path $zakuPdb -PathType Leaf)) {
+        throw "Zaku debug symbols were not created at $zakuPdb"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:SENTRY_AUTH_TOKEN)) {
+        if ([string]::IsNullOrWhiteSpace($env:SENTRY_ORG)) {
+            throw "SENTRY_ORG is required when SENTRY_AUTH_TOKEN is set"
+        }
+        if ([string]::IsNullOrWhiteSpace($env:SENTRY_PROJECT)) {
+            throw "SENTRY_PROJECT is required when SENTRY_AUTH_TOKEN is set"
+        }
+        if (-not (Get-Command "sentry-cli" -ErrorAction SilentlyContinue)) {
+            throw "sentry-cli is required when SENTRY_AUTH_TOKEN is set"
+        }
+
+        Write-Output "Uploading Zaku debug symbols to Sentry"
+        sentry-cli debug-files upload --include-sources --wait -p $env:SENTRY_PROJECT -o $env:SENTRY_ORG $zakuExecutable $zakuPdb
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not upload Zaku debug symbols to Sentry"
+        }
+    }
+    else {
+        Write-Output "SENTRY_AUTH_TOKEN is not set; skipping Zaku debug symbol upload to Sentry"
+    }
+
     if (Test-Path $bundleDirectory) {
         Remove-Item $bundleDirectory -Recurse -Force
     }
     New-Item (Join-Path $sourceDirectory "tools") -ItemType Directory -Force | Out-Null
     New-Item $outputDirectory -ItemType Directory -Force | Out-Null
 
-    Copy-Item (Join-Path $releaseDirectory "zaku.exe") (Join-Path $sourceDirectory "Zaku.exe")
+    Copy-Item $zakuExecutable (Join-Path $sourceDirectory "Zaku.exe")
     Copy-Item (Join-Path $releaseDirectory "updater_windows.exe") (Join-Path $sourceDirectory "tools/updater_windows.exe")
     Copy-Item "crates/zaku/resources/windows/app-icon.ico" (Join-Path $sourceDirectory "app-icon.ico")
 

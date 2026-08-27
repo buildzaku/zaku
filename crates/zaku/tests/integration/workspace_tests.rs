@@ -279,20 +279,16 @@ async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
 
     let app_db = AppDatabase::test_new();
     let temp_fs = TempFs::new(cx.executor());
-    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
-    let app_state =
-        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
     let (tx, rx) = oneshot::channel();
     let rx = Arc::new(Mutex::new(Some(rx)));
 
-    http_client.replace_handler({
-        move |_, request| {
-            assert_eq!(request.uri().path(), "/me");
-            let rx = rx.lock().take().unwrap();
+    let http_client = FakeHttpClient::create(move |request| {
+        assert_eq!(request.uri().path(), "/me");
+        let rx = rx.lock().take().unwrap();
 
-            async move { Ok(rx.await.unwrap()) }
-        }
+        async move { Ok(rx.await.unwrap()) }
     });
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
 
     init_test(app_state.clone(), app_db, cx);
 
@@ -358,9 +354,6 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
 
     let app_db = AppDatabase::test_new();
     let temp_fs = TempFs::new(cx.executor());
-    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
-    let app_state =
-        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
     let (first_tx, first_rx) = oneshot::channel();
     let (second_tx, second_rx) = oneshot::channel();
     let first_rx = Arc::new(Mutex::new(Some(first_rx)));
@@ -369,22 +362,21 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
     let second_response_delay = Duration::from_secs(3);
     let executor = cx.executor();
 
-    http_client.replace_handler({
-        move |_, request| {
-            let (rx, response_delay) = match request.uri().path() {
-                "/first" => (first_rx.lock().take().unwrap(), first_response_delay),
-                "/second" => (second_rx.lock().take().unwrap(), second_response_delay),
-                path => panic!("Unexpected request path: {path}"),
-            };
-            let executor = executor.clone();
+    let http_client = FakeHttpClient::create(move |request| {
+        let (rx, response_delay) = match request.uri().path() {
+            "/first" => (first_rx.lock().take().unwrap(), first_response_delay),
+            "/second" => (second_rx.lock().take().unwrap(), second_response_delay),
+            path => panic!("Unexpected request path: {path}"),
+        };
+        let executor = executor.clone();
 
-            async move {
-                let response = rx.await.unwrap();
-                executor.timer(response_delay).await;
-                Ok(response)
-            }
+        async move {
+            let response = rx.await.unwrap();
+            executor.timer(response_delay).await;
+            Ok(response)
         }
     });
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
 
     init_test(app_state.clone(), app_db, cx);
 
@@ -486,24 +478,20 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
 
     let app_db = AppDatabase::test_new();
     let temp_fs = TempFs::new(cx.executor());
-    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
-    let app_state =
-        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
     let (first_tx, first_rx) = oneshot::channel();
     let (second_tx, second_rx) = oneshot::channel();
     let first_rx = Arc::new(Mutex::new(Some(first_rx)));
     let second_rx = Arc::new(Mutex::new(Some(second_rx)));
 
-    http_client.replace_handler({
-        move |_, request| {
-            let rx = match request.uri().path() {
-                "/first" => first_rx.lock().take().unwrap(),
-                "/second" => second_rx.lock().take().unwrap(),
-                path => panic!("Unexpected request path: {path}"),
-            };
-            async move { Ok(rx.await.unwrap()) }
-        }
+    let http_client = FakeHttpClient::create(move |request| {
+        let rx = match request.uri().path() {
+            "/first" => first_rx.lock().take().unwrap(),
+            "/second" => second_rx.lock().take().unwrap(),
+            path => panic!("Unexpected request path: {path}"),
+        };
+        async move { Ok(rx.await.unwrap()) }
     });
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
 
     init_test(app_state.clone(), app_db, cx);
 
@@ -614,42 +602,38 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
 
     let app_db = AppDatabase::test_new();
     let temp_fs = TempFs::new(cx.executor());
-    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
-    let app_state =
-        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
 
-    http_client.replace_handler({
-        move |_, request| {
-            let prefix = match request.uri().path() {
-                "/first" => "first",
-                "/second" => "second",
-                path => panic!("Unexpected request path: {path}"),
-            };
+    let http_client = FakeHttpClient::create(move |request| {
+        let prefix = match request.uri().path() {
+            "/first" => "first",
+            "/second" => "second",
+            path => panic!("Unexpected request path: {path}"),
+        };
 
-            async move {
-                let mut response = Response::builder().status(StatusCode::OK);
-                for header_index in 0..50 {
-                    response = response.header(
-                        format!("x-{prefix}-header-{header_index}"),
-                        format!("{prefix} header {header_index}"),
-                    );
-                }
-                for cookie_index in 0..25 {
-                    response = response.header(
-                        "set-cookie",
-                        format!(
-                            "{prefix}-cookie-{cookie_index}=value-{cookie_index}; \
-                            Path=/; Domain=zaku.dev; Secure; HttpOnly; SameSite=Lax"
-                        ),
-                    );
-                }
-
-                Ok(response
-                    .body(AsyncBody::from(format!("{prefix} response")))
-                    .unwrap())
+        async move {
+            let mut response = Response::builder().status(StatusCode::OK);
+            for header_index in 0..50 {
+                response = response.header(
+                    format!("x-{prefix}-header-{header_index}"),
+                    format!("{prefix} header {header_index}"),
+                );
             }
+            for cookie_index in 0..25 {
+                response = response.header(
+                    "set-cookie",
+                    format!(
+                        "{prefix}-cookie-{cookie_index}=value-{cookie_index}; \
+                        Path=/; Domain=zaku.dev; Secure; HttpOnly; SameSite=Lax"
+                    ),
+                );
+            }
+
+            Ok(response
+                .body(AsyncBody::from(format!("{prefix} response")))
+                .unwrap())
         }
     });
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
 
     init_test(app_state.clone(), app_db, cx);
 
@@ -910,26 +894,22 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
 
     let app_db = AppDatabase::test_new();
     let temp_fs = TempFs::new(cx.executor());
-    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
-    let app_state =
-        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
 
-    http_client.replace_handler({
-        move |_, request| {
-            let response = match request.uri().path() {
-                "/first" => "first response",
-                "/second" => "second response",
-                path => panic!("Unexpected request path: {path}"),
-            };
+    let http_client = FakeHttpClient::create(move |request| {
+        let response = match request.uri().path() {
+            "/first" => "first response",
+            "/second" => "second response",
+            path => panic!("Unexpected request path: {path}"),
+        };
 
-            async move {
-                Ok(Response::builder()
-                    .status(StatusCode::OK)
-                    .body(AsyncBody::from(response))
-                    .unwrap())
-            }
+        async move {
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .body(AsyncBody::from(response))
+                .unwrap())
         }
     });
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
 
     init_test(app_state.clone(), app_db, cx);
 
@@ -1127,22 +1107,18 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
 
     let app_db = AppDatabase::test_new();
     let temp_fs = TempFs::new(cx.executor());
-    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
-    let app_state =
-        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
 
-    http_client.replace_handler({
-        move |_, request| {
-            assert_eq!(request.uri().path(), "/valid");
+    let http_client = FakeHttpClient::create(move |request| {
+        assert_eq!(request.uri().path(), "/valid");
 
-            async move {
-                Ok(Response::builder()
-                    .status(StatusCode::OK)
-                    .body(AsyncBody::from("valid response"))
-                    .unwrap())
-            }
+        async move {
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .body(AsyncBody::from("valid response"))
+                .unwrap())
         }
     });
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
 
     init_test(app_state.clone(), app_db, cx);
 

@@ -38,6 +38,33 @@ use util::ResultExt;
 use workspace::{Panel, Workspace, WorkspaceEvent};
 
 pub fn init(cx: &mut App) {
+    let mut previous_settings = *GitSettings::get_global(cx);
+    cx.observe_global::<SettingsStore>(move |cx| {
+        let current_settings = *GitSettings::get_global(cx);
+
+        for (setting, previous, current) in [
+            (
+                "git.enabled",
+                previous_settings.enabled,
+                current_settings.enabled,
+            ),
+            (
+                "git.status.enabled",
+                previous_settings.status.enabled,
+                current_settings.status.enabled,
+            ),
+        ] {
+            if previous != current {
+                cx.defer(move |_| {
+                    telemetry::event!("Settings Changed", setting, value = current);
+                });
+            }
+        }
+
+        previous_settings = current_settings;
+    })
+    .detach();
+
     cx.observe_new(
         |workspace: &mut Workspace, _window, _: &mut Context<Workspace>| {
             workspace.register_action(
@@ -239,11 +266,11 @@ impl ProjectPanel {
             )
             .detach();
 
-            let mut git_settings = *GitSettings::get_global(cx);
+            let mut previous_settings = *GitSettings::get_global(cx);
             cx.observe_global_in::<SettingsStore>(window, move |_, _, cx| {
-                let new_git_settings = *GitSettings::get_global(cx);
-                if git_settings != new_git_settings {
-                    git_settings = new_git_settings;
+                let current_settings = *GitSettings::get_global(cx);
+                if previous_settings != current_settings {
+                    previous_settings = current_settings;
                     cx.notify();
                 }
             })
@@ -2682,7 +2709,7 @@ impl Focusable for ProjectPanel {
 
 impl Panel for ProjectPanel {
     fn persistent_name() -> &'static str {
-        Self::PANEL_KEY
+        "Project Panel"
     }
 
     fn panel_key() -> &'static str {
@@ -3051,6 +3078,10 @@ impl Render for ProjectPanel {
                                         .full_width()
                                         .child(Text::new("New Project"))
                                         .on_click(cx.listener(|this, _, window, cx| {
+                                            telemetry::event!(
+                                                "New Project Clicked",
+                                                source = Self::persistent_name()
+                                            );
                                             this.focus_handle.dispatch_action(
                                                 &actions::workspace::NewProject,
                                                 window,
@@ -3101,6 +3132,10 @@ impl Render for ProjectPanel {
                                                 ),
                                         )
                                         .on_click(cx.listener(|this, _, window, cx| {
+                                            telemetry::event!(
+                                                "Open Project Clicked",
+                                                source = Self::persistent_name()
+                                            );
                                             this.focus_handle.dispatch_action(
                                                 &actions::workspace::Open::DEFAULT,
                                                 window,
@@ -4669,22 +4704,15 @@ mod tests {
             );
         });
 
-        panel
-            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
-                let visible_entries = panel.visible_entries(cx);
-                let contains_path = |path| {
-                    visible_entries
-                        .iter()
-                        .any(|entry| entry.path.as_ref() == rel_path(path))
-                };
-
-                contains_path("third.toml")
-                    && !contains_path("collection")
-                    && !contains_path("other.toml")
-            })
+        pane.condition::<PaneEvent>(cx, |pane, _| pane.items_len() == 0)
             .await;
 
-        pane.condition::<PaneEvent>(cx, |pane, _| pane.items_len() == 0)
+        panel
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                panel
+                    .selected_entry_project_path(cx)
+                    .is_some_and(|entry| entry.path.as_ref() == rel_path("third.toml"))
+            })
             .await;
 
         assert_eq!(

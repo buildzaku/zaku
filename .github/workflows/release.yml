@@ -269,6 +269,97 @@ jobs:
       - name: "Checkout repository"
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: "Check diagnostics configuration"
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          ZAKU_CHECKSUM_SEED: ${{ secrets.ZAKU_CHECKSUM_SEED }}
+          ZAKU_MINIDUMP_ENDPOINT: ${{ vars.ZAKU_MINIDUMP_ENDPOINT }}
+        run: |
+          for variable in SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT ZAKU_CHECKSUM_SEED ZAKU_MINIDUMP_ENDPOINT; do
+            if [[ -z "${!variable:-}" ]]; then
+              echo "::error::$variable is not configured"
+              exit 1
+            fi
+          done
+        shell: bash
+
+      - name: "Install sentry-cli (Linux and macOS)"
+        if: runner.os != 'Windows'
+        env:
+          ARCH: ${{ matrix.arch }}
+          SENTRY_CLI_VERSION: "3.6.2"
+        run: |
+          case "${RUNNER_OS}-${ARCH}" in
+            Linux-aarch64)
+              artifact=sentry-cli-Linux-aarch64
+              expected_sha256=ff112ecf694b7d6b3629a6228ed4e3f7a0d51401bdf48a5051a79d8749dccd06
+              ;;
+            Linux-x86_64)
+              artifact=sentry-cli-Linux-x86_64
+              expected_sha256=3a4bbf2c0d06378d4e59b337647483751a0a2b1603db5fd4991847d0cfd6478c
+              ;;
+            macOS-aarch64)
+              artifact=sentry-cli-Darwin-arm64
+              expected_sha256=5a497deb1e388cc6445c09ddd6d2da4fc2aae8295405d6393c2e0ee635ca3687
+              ;;
+            macOS-x86_64)
+              artifact=sentry-cli-Darwin-x86_64
+              expected_sha256=efe0a5289cdd0ea8ff727b1228a1bea6c840f2da38152e8f9f5ced05bd6659cd
+              ;;
+            *)
+              echo "::error::Unsupported sentry-cli target: ${RUNNER_OS}-${ARCH}"
+              exit 1
+              ;;
+          esac
+
+          sentry_cli_path="${RUNNER_TEMP}/sentry-cli"
+          curl -fsSL "https://downloads.sentry-cdn.com/sentry-cli/${SENTRY_CLI_VERSION}/${artifact}" -o "$sentry_cli_path"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            sha256=$(shasum -a 256 "$sentry_cli_path")
+          else
+            sha256=$(sha256sum "$sentry_cli_path")
+          fi
+          sha256="${sha256%% *}"
+          if [[ "$sha256" != "$expected_sha256" ]]; then
+            echo "::error::Unexpected sentry-cli checksum: $sha256"
+            exit 1
+          fi
+
+          chmod +x "$sentry_cli_path"
+          echo "$RUNNER_TEMP" >>"$GITHUB_PATH"
+        shell: bash
+
+      - name: "Install sentry-cli (Windows)"
+        if: runner.os == 'Windows'
+        env:
+          ARCH: ${{ matrix.arch }}
+          SENTRY_CLI_VERSION: "3.6.2"
+        run: |
+          $artifact, $expectedSha256 = switch ($env:ARCH) {
+              "aarch64" {
+                  "sentry-cli-Windows-aarch64.exe"
+                  "93ee7916c05c113a35daccf107c034af96f279561c103aa832668e4eecca3fb4"
+              }
+              "x86_64" {
+                  "sentry-cli-Windows-x86_64.exe"
+                  "5c90cb0045cef3d3c36113c2aa21a7dcae11627d2d6e3098b679dea5b6681be3"
+              }
+              default { throw "Unsupported sentry-cli target: Windows-$env:ARCH" }
+          }
+
+          $sentryCliPath = Join-Path $env:RUNNER_TEMP "sentry-cli.exe"
+          $url = "https://downloads.sentry-cdn.com/sentry-cli/$env:SENTRY_CLI_VERSION/$artifact"
+          Invoke-WebRequest -Uri $url -OutFile $sentryCliPath
+          $sha256 = (Get-FileHash -Algorithm SHA256 -Path $sentryCliPath).Hash.ToLowerInvariant()
+          if ($sha256 -ne $expectedSha256) {
+              throw "Unexpected sentry-cli checksum: $sha256"
+          }
+
+          $env:RUNNER_TEMP >> $env:GITHUB_PATH
+        shell: pwsh
+
       - name: "Install Bash (macOS)"
         if: runner.os == 'macOS'
         run: brew install bash
@@ -322,6 +413,11 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           PLATFORM: ${{ matrix.platform }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          ZAKU_CHECKSUM_SEED: ${{ secrets.ZAKU_CHECKSUM_SEED }}
+          ZAKU_MINIDUMP_ENDPOINT: ${{ vars.ZAKU_MINIDUMP_ENDPOINT }}
         run: "./script/bundle-${PLATFORM} --arch ${ARCH}"
         shell: bash
 
@@ -329,6 +425,11 @@ jobs:
         if: runner.os == 'Windows'
         env:
           ARCH: ${{ matrix.arch }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          ZAKU_CHECKSUM_SEED: ${{ secrets.ZAKU_CHECKSUM_SEED }}
+          ZAKU_MINIDUMP_ENDPOINT: ${{ vars.ZAKU_MINIDUMP_ENDPOINT }}
         run: ./script/bundle-windows.ps1 -Arch $env:ARCH
         shell: pwsh
 

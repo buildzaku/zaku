@@ -5,8 +5,8 @@ use windows::{
         Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::Gdi::{
             BeginPaint, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_WINDOW, CreateFontW,
-            DEFAULT_CHARSET, EndPaint, FW_NORMAL, GetSysColorBrush, HDC, HFONT, HGDIOBJ, LOGFONTW,
-            InvalidateRect, OUT_TT_ONLY_PRECIS, PAINTSTRUCT, SelectObject, TextOutW,
+            DEFAULT_CHARSET, EndPaint, FW_NORMAL, GetSysColorBrush, HDC, HFONT, HGDIOBJ,
+            InvalidateRect, LOGFONTW, OUT_TT_ONLY_PRECIS, PAINTSTRUCT, SelectObject, TextOutW,
         },
         System::{LibraryLoader::GetModuleHandleW, WindowsProgramming::MulDiv},
         UI::{
@@ -19,7 +19,7 @@ use windows::{
                 CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow,
                 FindWindowExW, GetDesktopWindow, GetWindowRect, HICON, IDC_ARROW, IMAGE_ICON,
                 LR_DEFAULTSIZE, LR_SHARED, LoadCursorW, LoadImageW, PostQuitMessage,
-                RegisterClassW, SPI_GETICONTITLELOGFONT, SWP_NOACTIVATE, SWP_NOZORDER, SW_SHOW,
+                RegisterClassW, SPI_GETICONTITLELOGFONT, SW_SHOW, SWP_NOACTIVATE, SWP_NOZORDER,
                 SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetWindowPos, ShowWindow,
                 SystemParametersInfoW, USER_DEFAULT_SCREEN_DPI, WINDOW_EX_STYLE, WM_CLOSE,
                 WM_DESTROY, WM_DPICHANGED, WM_PAINT, WNDCLASSW, WS_CAPTION, WS_CHILD,
@@ -201,8 +201,7 @@ pub(crate) fn create_dialog_window() -> anyhow::Result<DialogWindow> {
     // SAFETY: `window_class` and the resources it references remain valid for the duration of
     // this call.
     if unsafe { RegisterClassW(&raw const window_class) } == 0 {
-        return Err(WindowsError::from_thread())
-            .context("failed to register updater window class");
+        return Err(WindowsError::from_thread()).context("failed to register updater window class");
     }
 
     let mut desktop = RECT::default();
@@ -284,6 +283,11 @@ pub(crate) fn create_dialog_window() -> anyhow::Result<DialogWindow> {
     })
 }
 
+/// Process messages for the updater window.
+///
+/// # Safety
+///
+/// Call this function with arguments provided by Windows for the registered window procedure.
 unsafe extern "system" fn window_proc(
     window: HWND,
     message: u32,
@@ -325,13 +329,7 @@ unsafe extern "system" fn window_proc(
                     let text = HSTRING::from("Updating Zaku...");
                     // SAFETY: `paint.device_context` is a valid `HDC`.
                     let result = unsafe {
-                        TextOutW(
-                            paint.device_context,
-                            layout.text_x,
-                            layout.text_y,
-                            &text,
-                        )
-                        .ok()
+                        TextOutW(paint.device_context, layout.text_x, layout.text_y, &text).ok()
                     };
                     if let Err(error) = result {
                         log::error!("Failed to draw updater window text: {error}");
@@ -382,7 +380,9 @@ unsafe extern "system" fn window_proc(
                             SWP_NOACTIVATE | SWP_NOZORDER,
                         )
                     } {
-                        log::error!("Failed to resize updater progress bar for DPI change: {error}");
+                        log::error!(
+                            "Failed to resize updater progress bar for DPI change: {error}"
+                        );
                     }
                 }
                 Err(error) => {
@@ -430,8 +430,7 @@ fn system_ui_font_name() -> String {
             Some(std::ptr::from_mut(&mut font).cast()),
             SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
         )
-    }
-    {
+    } {
         log::warn!("Failed to read system UI font: {error}");
         return "MS Shell Dlg".to_string();
     }

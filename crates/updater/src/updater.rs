@@ -26,9 +26,9 @@ use std::{
 use std::{error, fmt};
 
 use app_version::{AppVersion, ReleaseChannel};
+use client::Client;
 use db::kv::KeyValueStore;
 use http_client::{AsyncBody, HttpClient, http::StatusCode};
-use metadata::ZAKU_SERVER_URL;
 use settings::{RegisterSetting, Settings, SettingsStore};
 use workspace::Workspace;
 
@@ -234,7 +234,7 @@ struct GlobalUpdater(Option<Entity<Updater>>);
 
 impl Global for GlobalUpdater {}
 
-pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
+pub fn init(client: Arc<Client>, cache_dir: PathBuf, cx: &mut App) {
     cx.observe_new(|workspace: &mut Workspace, window, cx| {
         let Some(window) = window else {
             return;
@@ -273,25 +273,42 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
             Arc::new(PlatformReleaseInstaller),
             cx,
         );
-        if should_poll_for_updates {
-            let mut beta_updates_enabled = settings.beta;
-            let mut update_subscription = settings.automatic.then(|| updater.start_polling(cx));
+        let mut previous_settings = settings;
+        let mut update_subscription =
+            (should_poll_for_updates && settings.automatic).then(|| updater.start_polling(cx));
 
-            cx.observe_global::<SettingsStore>(move |updater, cx| {
-                let settings = *UpdateSettings::get_global(cx);
-                if settings.automatic {
+        cx.observe_global::<SettingsStore>(move |updater, cx| {
+            let current_settings = *UpdateSettings::get_global(cx);
+
+            for (setting, previous, current) in [
+                (
+                    "update.automatic",
+                    previous_settings.automatic,
+                    current_settings.automatic,
+                ),
+                ("update.beta", previous_settings.beta, current_settings.beta),
+            ] {
+                if previous != current {
+                    cx.defer(move |_| {
+                        telemetry::event!("Settings Changed", setting, value = current);
+                    });
+                }
+            }
+
+            if should_poll_for_updates {
+                if current_settings.automatic {
                     if update_subscription.is_none() {
                         update_subscription = Some(updater.start_polling(cx));
-                    } else if beta_updates_enabled != settings.beta {
+                    } else if previous_settings.beta != current_settings.beta {
                         updater.poll(UpdateCheckType::Automatic, cx);
                     }
                 } else {
                     update_subscription.take();
                 }
-                beta_updates_enabled = settings.beta;
-            })
-            .detach();
-        }
+            }
+            previous_settings = current_settings;
+        })
+        .detach();
 
         updater
     });
@@ -305,6 +322,8 @@ fn check_for_updates(
     window: &mut Window,
     cx: &mut App,
 ) {
+    telemetry::event!("Manual Update Check Requested");
+
     if let Some(updater) = Updater::get(cx) {
         let current_version = updater.read(cx).current_version();
         let settings = *UpdateSettings::get_global(cx);
@@ -439,7 +458,7 @@ impl UpdateCheckType {
 pub struct Updater {
     status: UpdateStatus,
     current_version: AppVersion,
-    client: Arc<dyn HttpClient>,
+    client: Arc<Client>,
     cache_dir: PathBuf,
     installer: Arc<dyn ReleaseInstaller>,
     pending_poll: Option<Task<Option<()>>>,
@@ -459,7 +478,7 @@ impl Updater {
 
     fn new(
         current_version: AppVersion,
-        client: Arc<dyn HttpClient>,
+        client: Arc<Client>,
         cache_dir: PathBuf,
         installer: Arc<dyn ReleaseInstaller>,
         #[cfg(any(target_os = "linux", target_os = "macos"))] _: &mut Context<Self>,
@@ -595,10 +614,10 @@ impl Updater {
         arch: &str,
         cx: &mut AsyncApp,
     ) -> anyhow::Result<Option<ReleaseArtifact>> {
-        let client = this.read_with(cx, |this, _| this.client.clone());
-        let url = format!("{ZAKU_SERVER_URL}/releases/{channel}/latest/{os}-{arch}");
+        let http_client = this.read_with(cx, |this, _| this.client.http_client());
+        let url = http_client.build_url(&format!("/releases/{channel}/latest/{os}-{arch}"));
 
-        let mut response = client.get(&url, AsyncBody::default(), true).await?;
+        let mut response = http_client.get(&url, AsyncBody::default(), true).await?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -637,10 +656,10 @@ impl Updater {
     }
 
     async fn update(this: Entity<Self>, cx: &mut AsyncApp) -> anyhow::Result<()> {
-        let (client, installed_version, previous_status, installer) =
+        let (http_client, installed_version, previous_status, installer) =
             this.read_with(cx, |this, _| {
                 (
-                    this.client.clone(),
+                    this.client.http_client(),
                     this.current_version.clone(),
                     this.status.clone(),
                     this.installer.clone(),
@@ -714,18 +733,23 @@ impl Updater {
         let target_path = Self::target_path(&installer_dir)?;
         let progress_entity = this.clone();
         let mut progress_cx = cx.clone();
-        download_release(&target_path, release_artifact, client, move |progress| {
-            progress_entity.update(&mut progress_cx, |this, cx| {
-                if let UpdateStatus::Downloading {
-                    progress: current_progress,
-                    ..
-                } = &mut this.status
-                {
-                    *current_progress = progress;
-                    cx.notify();
-                }
-            });
-        })
+        download_release(
+            &target_path,
+            release_artifact,
+            http_client,
+            move |progress| {
+                progress_entity.update(&mut progress_cx, |this, cx| {
+                    if let UpdateStatus::Downloading {
+                        progress: current_progress,
+                        ..
+                    } = &mut this.status
+                    {
+                        *current_progress = progress;
+                        cx.notify();
+                    }
+                });
+            },
+        )
         .await
         .with_context(|| format!("failed to download update to {}", target_path.display()))?;
 
@@ -1171,6 +1195,7 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use http_client::{FakeHttpClient, Response};
+    use metadata::ZAKU_SERVER_URL;
 
     struct TestReleaseInstaller {
         installed_dir: Arc<TempDir>,
@@ -1223,6 +1248,8 @@ mod tests {
 
         let (updater, _polling) = cx.update(|cx| {
             settings::init(cx);
+            metadata::init_test("26.0-beta.1".parse().unwrap(), cx);
+
             cx.update_global::<SettingsStore, _>(|store, cx| {
                 store
                     .set_user_settings(r#"{ "update": { "beta": true } }"#, cx)
@@ -1297,13 +1324,15 @@ mod tests {
                 }
             });
             let updater = cx.new(|cx| {
+                let client = Client::test_new(http_client, cx);
+                let installer = Arc::new(TestReleaseInstaller {
+                    installed_dir: installed_dir.clone(),
+                });
                 Updater::new(
                     "26.0-beta.1".parse().unwrap(),
-                    http_client,
+                    client,
                     cache_dir.path().to_path_buf(),
-                    Arc::new(TestReleaseInstaller {
-                        installed_dir: installed_dir.clone(),
-                    }),
+                    installer,
                     cx,
                 )
             });
@@ -1362,7 +1391,9 @@ mod tests {
 
         let will_restart = cx.expect_restart();
         cx.update(|cx| cx.restart());
-        let installed_path = will_restart.await.unwrap().unwrap();
+        let (installed_path, arguments) = will_restart.await.unwrap();
+        assert!(arguments.is_empty());
+        let installed_path = installed_path.unwrap();
         assert_eq!(installed_path, installed_dir.path().join("zaku"));
         assert_eq!(std::fs::read(installed_path).unwrap(), update_contents);
     }
@@ -1415,7 +1446,8 @@ mod tests {
                         .unwrap())
                 }
             });
-            crate::init(http_client, cache_dir.path().to_path_buf(), cx);
+            let client = Client::test_new(http_client, cx);
+            crate::init(client, cache_dir.path().to_path_buf(), cx);
         });
 
         let updater = cx.update(|cx| Updater::get(cx).unwrap());
@@ -1526,7 +1558,8 @@ mod tests {
                         .unwrap())
                 }
             });
-            crate::init(http_client, cache_dir.path().to_path_buf(), cx);
+            let client = Client::test_new(http_client, cx);
+            crate::init(client, cache_dir.path().to_path_buf(), cx);
             Updater::get(cx).unwrap()
         });
 
@@ -1590,11 +1623,17 @@ mod tests {
 
         for (version, channel) in [("26.1-dev", "dev"), ("26.1-nightly.2026-08-11", "nightly")] {
             let updater = cx.new(|cx| {
+                metadata::init_test(version.parse().unwrap(), cx);
+                let client = Client::test_new(
+                    FakeHttpClient::create(|_| async { panic!("http client should not be used") }),
+                    cx,
+                );
+                let installer = Arc::new(PlatformReleaseInstaller);
                 Updater::new(
                     version.parse().unwrap(),
-                    FakeHttpClient::create(|_| async { panic!("http client should not be used") }),
+                    client,
                     PathBuf::new(),
-                    Arc::new(PlatformReleaseInstaller),
+                    installer,
                     cx,
                 )
             });

@@ -357,7 +357,7 @@ impl MutableSelectionsCollection<'_, '_> {
             .all_display(&display_map)
             .into_iter()
             .map(|selection| {
-                let mut moved = selection.clone();
+                let mut moved = selection;
                 move_selection(&display_map, &mut moved);
                 if selection != moved {
                     changed = true;
@@ -382,7 +382,7 @@ impl MutableSelectionsCollection<'_, '_> {
             .all::<MultiBufferOffset>(&display_map)
             .into_iter()
             .map(|selection| {
-                let mut moved = selection.clone();
+                let mut moved = selection;
                 move_selection(self.snapshot.buffer_snapshot(), &mut moved);
                 if selection != moved {
                     changed = true;

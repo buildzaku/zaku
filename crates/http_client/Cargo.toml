@@ -20,9 +20,9 @@ test = []
 [dependencies]
 anyhow = { workspace = true }
 bytes = { workspace = true }
+derive_more = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 http-body = { workspace = true }
 log = { workspace = true }
-parking_lot = { workspace = true }
 url = { workspace = true }

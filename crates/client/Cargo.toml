@@ -1,0 +1,51 @@
+[package]
+name = "client"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "client"
+path = "src/client.rs"
+
+[lints]
+workspace = true
+
+[features]
+test = ["clock/test-support"]
+
+[dependencies]
+anyhow = { workspace = true }
+app_version = { workspace = true }
+clock = { workspace = true }
+futures = { workspace = true }
+gpui = { workspace = true }
+hex = { workspace = true }
+http_client = { workspace = true }
+jiff = { workspace = true }
+log = { workspace = true }
+metadata = { workspace = true }
+parking_lot = { workspace = true }
+path = { workspace = true }
+serde_json = { workspace = true }
+settings = { workspace = true }
+sha2 = { workspace = true }
+telemetry = { workspace = true }
+telemetry_events = { workspace = true }
+util = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { workspace = true }
+regex = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+semver = { workspace = true }
+windows = { workspace = true }
+
+[dev-dependencies]
+clock = { workspace = true, features = ["test-support"] }
+gpui = { workspace = true, features = ["test-support"] }
+http_client = { workspace = true, features = ["test"] }

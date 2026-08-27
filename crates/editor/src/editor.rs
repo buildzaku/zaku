@@ -2246,7 +2246,7 @@ impl Editor {
             SelectMode::Character | SelectMode::All => tail_anchor..tail_anchor,
             SelectMode::Word(range) | SelectMode::Line(range) => range.clone(),
         };
-        let Some(mut pending_selection) = self.selections.pending_anchor().cloned() else {
+        let Some(mut pending_selection) = self.selections.pending_anchor().copied() else {
             return;
         };
 
@@ -2273,14 +2273,14 @@ impl Editor {
         }
 
         self.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
-            selections.set_pending(pending_selection.clone(), pending_mode);
+            selections.set_pending(pending_selection, pending_mode);
             selections.set_is_extending(true);
         });
     }
 
     pub fn update_selection(&mut self, position: DisplayPoint, cx: &mut Context<Self>) {
         let display_snapshot = self.display_snapshot(cx);
-        let Some(mut pending) = self.selections.pending_anchor().cloned() else {
+        let Some(mut pending) = self.selections.pending_anchor().copied() else {
             return;
         };
 
@@ -2361,7 +2361,7 @@ impl Editor {
         }
 
         self.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
-            selections.set_pending(pending.clone(), mode);
+            selections.set_pending(pending, mode);
         });
     }
 

@@ -20,4 +20,10 @@ default = []
 [dependencies]
 gpui = { workspace = true }
 metadata = { workspace = true }
+serde = { workspace = true }
 sysinfo = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+anyhow = { workspace = true }
+log = { workspace = true }
+pciid-parser = { workspace = true }

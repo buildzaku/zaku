@@ -1,0 +1,594 @@
+use clock::SystemClock;
+use futures::{StreamExt, channel::mpsc};
+use gpui::{App, AppContext, BackgroundExecutor, Task};
+#[cfg(target_os = "macos")]
+use objc2_foundation::NSProcessInfo;
+use parking_lot::Mutex;
+#[cfg(target_os = "macos")]
+use regex::Regex;
+#[cfg(target_os = "windows")]
+use semver::Version;
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::{
+    collections::HashMap,
+    env,
+    fs::File,
+    io::Write as _,
+    mem,
+    sync::{Arc, LazyLock},
+    time::{Duration, Instant},
+};
+#[cfg(target_os = "windows")]
+use windows::{Wdk::System::SystemServices, Win32::System::SystemInformation::OSVERSIONINFOW};
+
+use app_version::{AppVersion, ReleaseChannel};
+use http_client::{AsyncBody, HttpClient, HttpClientWithUrl, Method, Request, StatusCode};
+use settings::{Settings, SettingsStore};
+use telemetry_events::{Event, EventRequestBody, EventWrapper, FlexibleEvent};
+
+use crate::TelemetrySettings;
+
+struct TelemetryState {
+    settings: TelemetrySettings,
+    system_id: Option<Arc<str>>,
+    installation_id: Option<Arc<str>>,
+    session_id: Option<String>,
+    release_channel: ReleaseChannel,
+    arch: &'static str,
+    events_queue: Vec<EventWrapper>,
+    scheduled_flush_task: Option<Task<()>>,
+    log_file: Option<File>,
+    first_event_at: Option<Instant>,
+    max_queue_size: usize,
+    os_name: String,
+    app_version: AppVersion,
+    os_version: Option<String>,
+}
+
+#[cfg(debug_assertions)]
+const MAX_QUEUE_SIZE: usize = 5;
+
+#[cfg(not(debug_assertions))]
+const MAX_QUEUE_SIZE: usize = 50;
+
+#[cfg(debug_assertions)]
+const FLUSH_INTERVAL: Duration = Duration::from_secs(1);
+
+#[cfg(not(debug_assertions))]
+const FLUSH_INTERVAL: Duration = Duration::from_mins(5);
+
+static CHECKSUM_SEED: LazyLock<Option<&'static [u8]>> =
+    LazyLock::new(|| option_env!("ZAKU_CHECKSUM_SEED").map(str::as_bytes));
+
+pub static MINIDUMP_ENDPOINT: LazyLock<Option<String>> = LazyLock::new(|| {
+    option_env!("ZAKU_MINIDUMP_ENDPOINT")
+        .map(str::to_string)
+        .or_else(|| env::var("ZAKU_MINIDUMP_ENDPOINT").ok())
+});
+
+pub fn should_install_crash_handler(channel: ReleaseChannel) -> bool {
+    env::var("ZAKU_GENERATE_MINIDUMPS").is_ok_and(|value| value == "1")
+        || (channel != ReleaseChannel::Dev && MINIDUMP_ENDPOINT.is_some())
+}
+
+pub fn os_name() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        format!("Linux {}", gpui::guess_compositor())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        "macOS".to_string()
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        "Windows".to_string()
+    }
+}
+
+pub fn os_version() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        let content = if let Ok(file) = std::fs::read_to_string("/etc/os-release") {
+            file
+        } else if let Ok(file) = std::fs::read_to_string("/usr/lib/os-release") {
+            file
+        } else if let Ok(file) = std::fs::read_to_string("/var/run/os-release") {
+            file
+        } else {
+            log::error!(
+                "Failed to load /etc/os-release, /usr/lib/os-release, or /var/run/os-release"
+            );
+            String::new()
+        };
+        util::parse_os_version(&content).unwrap_or_else(|| "unknown".to_string())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        static MACOS_VERSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r"(\s*\(Build [^)]*[0-9]\))").expect("macOS version regex should be valid")
+        });
+        let process_info = NSProcessInfo::processInfo();
+        let version_string = process_info
+            .operatingSystemVersionString()
+            .to_string()
+            .replace("Version ", "");
+        MACOS_VERSION_REGEX
+            .replace_all(&version_string, "")
+            .to_string()
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut info = OSVERSIONINFOW::default();
+        info.dwOSVersionInfoSize = u32::try_from(std::mem::size_of_val(&info))
+            .expect("operating system version information size should fit in u32");
+
+        // SAFETY: RtlGetVersion writes to the provided output buffer, and `info`
+        // remains valid for the duration of the call.
+        let status = unsafe { SystemServices::RtlGetVersion(&raw mut info) };
+        if status.is_ok() {
+            Version::new(
+                u64::from(info.dwMajorVersion),
+                u64::from(info.dwMinorVersion),
+                u64::from(info.dwBuildNumber),
+            )
+            .to_string()
+        } else {
+            "unknown".to_string()
+        }
+    }
+}
+
+pub struct Telemetry {
+    clock: Arc<dyn SystemClock>,
+    http_client: Arc<HttpClientWithUrl>,
+    executor: BackgroundExecutor,
+    state: Arc<Mutex<TelemetryState>>,
+}
+
+impl Telemetry {
+    pub fn new(
+        clock: Arc<dyn SystemClock>,
+        http_client: Arc<HttpClientWithUrl>,
+        cx: &mut App,
+    ) -> Arc<Self> {
+        let app_version = metadata::version(cx);
+        let release_channel = app_version
+            .release_channel()
+            .expect("application version should have a release channel");
+        let state = Arc::new(Mutex::new(TelemetryState {
+            settings: *TelemetrySettings::get_global(cx),
+            system_id: None,
+            installation_id: None,
+            session_id: None,
+            release_channel,
+            arch: env::consts::ARCH,
+            events_queue: Vec::new(),
+            scheduled_flush_task: None,
+            log_file: None,
+            first_event_at: None,
+            max_queue_size: MAX_QUEUE_SIZE,
+            os_name: os_name(),
+            app_version,
+            os_version: None,
+        }));
+
+        #[cfg(not(any(test, feature = "test")))]
+        cx.background_spawn({
+            let state = state.clone();
+            async move {
+                let os_version = os_version();
+                match File::create(path::telemetry_log_file()) {
+                    Ok(log_file) => {
+                        let mut state = state.lock();
+                        state.os_version = Some(os_version);
+                        state.log_file = Some(log_file);
+                    }
+                    Err(error) => {
+                        state.lock().os_version = Some(os_version);
+                        log::error!("Failed to open telemetry log: {error}");
+                    }
+                }
+            }
+        })
+        .detach();
+
+        let this = Arc::new(Self {
+            clock,
+            http_client,
+            executor: cx.background_executor().clone(),
+            state,
+        });
+
+        cx.observe_global::<SettingsStore>({
+            let this = Arc::downgrade(&this);
+
+            move |cx| {
+                let Some(this) = this.upgrade() else {
+                    return;
+                };
+                let current_settings = *TelemetrySettings::get_global(cx);
+                let mut state = this.state.lock();
+                let previous_settings = state.settings;
+                let did_disable_metrics = previous_settings.metrics && !current_settings.metrics;
+                let mut should_flush = false;
+
+                state.settings = current_settings;
+
+                if previous_settings.metrics || current_settings.metrics {
+                    for (setting, previous, current) in [
+                        (
+                            "telemetry.metrics",
+                            previous_settings.metrics,
+                            current_settings.metrics,
+                        ),
+                        (
+                            "telemetry.diagnostics",
+                            previous_settings.diagnostics,
+                            current_settings.diagnostics,
+                        ),
+                    ] {
+                        if previous != current {
+                            let event = Event::Flexible(FlexibleEvent {
+                                event_type: "Settings Changed".to_string(),
+                                event_properties: HashMap::from([
+                                    ("setting".to_string(), Value::String(setting.to_string())),
+                                    ("value".to_string(), Value::Bool(current)),
+                                ]),
+                            });
+                            log::trace!(target: "telemetry", "{event:?}");
+                            should_flush |= this.enqueue_event(&mut state, event);
+                        }
+                    }
+                }
+
+                if did_disable_metrics {
+                    state.scheduled_flush_task = None;
+                }
+                drop(state);
+
+                if did_disable_metrics || should_flush {
+                    this.flush_events().detach();
+                }
+            }
+        })
+        .detach();
+
+        let (tx, mut rx) = mpsc::unbounded();
+        ::telemetry::init(tx);
+
+        cx.background_spawn({
+            let this = Arc::downgrade(&this);
+            async move {
+                if cfg!(any(test, feature = "test")) {
+                    return;
+                }
+
+                while let Some(event) = rx.next().await {
+                    let Some(this) = this.upgrade() else {
+                        break;
+                    };
+                    this.report_event(Event::Flexible(event));
+                }
+            }
+        })
+        .detach();
+
+        #[cfg(not(any(test, feature = "test")))]
+        cx.on_app_quit({
+            let this = this.clone();
+
+            move |_| {
+                this.report_event(Event::Flexible(FlexibleEvent {
+                    event_type: "App Closed".to_string(),
+                    event_properties: std::collections::HashMap::new(),
+                }));
+                this.flush_events()
+            }
+        })
+        .detach();
+
+        this
+    }
+
+    pub fn start(
+        self: &Arc<Self>,
+        system_id: Option<String>,
+        installation_id: Option<String>,
+        session_id: String,
+    ) {
+        let mut state = self.state.lock();
+        state.system_id = system_id.map(Into::into);
+        state.installation_id = installation_id.map(Into::into);
+        state.session_id = Some(session_id);
+    }
+
+    pub fn metrics_enabled(self: &Arc<Self>) -> bool {
+        self.state.lock().settings.metrics
+    }
+
+    pub fn diagnostics_enabled(self: &Arc<Self>) -> bool {
+        self.state.lock().settings.diagnostics
+    }
+
+    fn report_event(self: &Arc<Self>, event: Event) {
+        let mut state = self.state.lock();
+        log::trace!(target: "telemetry", "{event:?}");
+
+        if !state.settings.metrics {
+            return;
+        }
+
+        let should_flush = self.enqueue_event(&mut state, event);
+        drop(state);
+
+        if should_flush {
+            self.flush_events().detach();
+        }
+    }
+
+    fn enqueue_event(self: &Arc<Self>, state: &mut TelemetryState, event: Event) -> bool {
+        if state.scheduled_flush_task.is_none() {
+            let this = self.clone();
+            state.scheduled_flush_task = Some(self.executor.spawn(async move {
+                this.executor.timer(FLUSH_INTERVAL).await;
+                this.flush_events().detach();
+            }));
+        }
+
+        let now = self.clock.utc_now();
+        let elapsed_ms = if let Some(first_event_at) = state.first_event_at {
+            u32::try_from(
+                now.saturating_duration_since(first_event_at)
+                    .min(Duration::from_hours(24))
+                    .as_millis(),
+            )
+            .expect("elapsed event time should fit in u32")
+        } else {
+            state.first_event_at = Some(now);
+            0
+        };
+
+        state.events_queue.push(EventWrapper { elapsed_ms, event });
+
+        state.installation_id.is_some() && state.events_queue.len() >= state.max_queue_size
+    }
+
+    pub fn system_id(self: &Arc<Self>) -> Option<Arc<str>> {
+        self.state.lock().system_id.clone()
+    }
+
+    pub fn installation_id(self: &Arc<Self>) -> Option<Arc<str>> {
+        self.state.lock().installation_id.clone()
+    }
+
+    fn build_request(
+        self: &Arc<Self>,
+        mut json_bytes: Vec<u8>,
+        event_request: &EventRequestBody,
+    ) -> anyhow::Result<Request<AsyncBody>> {
+        json_bytes.clear();
+        serde_json::to_writer(&mut json_bytes, event_request)?;
+
+        let checksum = calculate_json_checksum(&json_bytes).unwrap_or_default();
+
+        Ok(Request::builder()
+            .method(Method::POST)
+            .uri(self.http_client.build_url("/telemetry/events"))
+            .header("Content-Type", "application/json")
+            .header("x-zaku-checksum", checksum)
+            .body(json_bytes.into())?)
+    }
+
+    pub async fn flush_events_inner(self: &Arc<Self>) -> anyhow::Result<()> {
+        let (json_bytes, request_body) = {
+            let mut state = self.state.lock();
+            state.first_event_at = None;
+            let events = mem::take(&mut state.events_queue);
+            state.scheduled_flush_task.take();
+            if events.is_empty() {
+                return Ok(());
+            }
+
+            let mut json_bytes = Vec::new();
+            if let Some(file) = &mut state.log_file {
+                let log_result = events.iter().try_for_each(|event| -> anyhow::Result<()> {
+                    json_bytes.clear();
+                    serde_json::to_writer(&mut json_bytes, event)?;
+                    file.write_all(&json_bytes)?;
+                    file.write_all(b"\n")?;
+                    Ok(())
+                });
+                if let Err(error) = log_result {
+                    log::error!("Failed to write telemetry log: {error:#}");
+                    state.log_file = None;
+                }
+            }
+
+            (
+                json_bytes,
+                EventRequestBody {
+                    system_id: state.system_id.as_deref().map(Into::into),
+                    installation_id: state.installation_id.as_deref().map(Into::into),
+                    session_id: state.session_id.clone(),
+                    app_version: state.app_version.to_string(),
+                    os_name: state.os_name.clone(),
+                    os_version: state.os_version.clone(),
+                    arch: state.arch.to_string(),
+                    release_channel: state.release_channel.to_string(),
+                    events,
+                },
+            )
+        };
+
+        let request = self.build_request(json_bytes, &request_body)?;
+        let response = self.http_client.send(request).await?;
+        if response.status() != StatusCode::OK {
+            log::error!(
+                "Failed to send telemetry events: HTTP {:?}",
+                response.status()
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn flush_events(self: &Arc<Self>) -> Task<()> {
+        let this = self.clone();
+        self.executor.spawn(async move {
+            if let Err(error) = this.flush_events_inner().await {
+                log::error!("Failed to flush telemetry events: {error:#}");
+            }
+        })
+    }
+}
+
+pub fn calculate_json_checksum(json: &[u8]) -> Option<String> {
+    let checksum_seed = CHECKSUM_SEED.as_ref()?;
+
+    let mut digest = Sha256::new();
+    digest.update(checksum_seed);
+    digest.update(json);
+    digest.update(checksum_seed);
+
+    Some(hex::encode(digest.finalize()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use clock::FakeSystemClock;
+    use gpui::TestAppContext;
+    use std::collections::HashMap;
+
+    use http_client::FakeHttpClient;
+    use telemetry_events::FlexibleEvent;
+
+    fn init_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            settings::init(cx);
+            metadata::init_test(
+                env!("CARGO_PKG_VERSION")
+                    .parse()
+                    .expect("invalid version in Cargo.toml"),
+                cx,
+            );
+        });
+    }
+
+    fn is_empty_state(telemetry: &Telemetry) -> bool {
+        let state = telemetry.state.lock();
+        state.events_queue.is_empty()
+            && state.scheduled_flush_task.is_none()
+            && state.first_event_at.is_none()
+    }
+
+    #[gpui::test]
+    fn test_telemetry_flush_on_max_queue_size(cx: &mut TestAppContext) {
+        init_test(cx);
+        let executor = cx.executor();
+        let clock = Arc::new(FakeSystemClock::new());
+        let http_client = FakeHttpClient::with_response(StatusCode::OK);
+        let system_id = Some("system_id".to_string());
+        let installation_id = Some("installation_id".to_string());
+        let session_id = "session_id".to_string();
+
+        let (telemetry, first_event_at, event) = cx.update(|cx| {
+            let telemetry = Telemetry::new(clock.clone(), http_client, cx);
+            telemetry.state.lock().max_queue_size = 4;
+            telemetry.start(system_id, installation_id, session_id);
+
+            assert!(is_empty_state(&telemetry));
+
+            let first_event_at = clock.utc_now();
+            let event = FlexibleEvent {
+                event_type: "test".to_string(),
+                event_properties: HashMap::from([(
+                    "test_key".to_string(),
+                    serde_json::Value::String("test_value".to_string()),
+                )]),
+            };
+
+            (telemetry, first_event_at, event)
+        });
+
+        cx.update(|_| {
+            telemetry.report_event(Event::Flexible(event.clone()));
+            assert_eq!(telemetry.state.lock().events_queue.len(), 1);
+            assert!(telemetry.state.lock().scheduled_flush_task.is_some());
+            assert_eq!(telemetry.state.lock().first_event_at, Some(first_event_at));
+
+            clock.advance(Duration::from_millis(100));
+
+            telemetry.report_event(Event::Flexible(event.clone()));
+            assert_eq!(telemetry.state.lock().events_queue.len(), 2);
+            assert!(telemetry.state.lock().scheduled_flush_task.is_some());
+            assert_eq!(telemetry.state.lock().first_event_at, Some(first_event_at));
+
+            clock.advance(Duration::from_millis(100));
+
+            telemetry.report_event(Event::Flexible(event.clone()));
+            assert_eq!(telemetry.state.lock().events_queue.len(), 3);
+            assert!(telemetry.state.lock().scheduled_flush_task.is_some());
+            assert_eq!(telemetry.state.lock().first_event_at, Some(first_event_at));
+
+            clock.advance(Duration::from_millis(100));
+            telemetry.report_event(Event::Flexible(event));
+        });
+
+        executor.run_until_parked();
+
+        cx.update(|_| {
+            assert!(is_empty_state(&telemetry));
+        });
+    }
+
+    #[gpui::test]
+    fn test_telemetry_flush_on_flush_interval(cx: &mut TestAppContext) {
+        init_test(cx);
+        let executor = cx.executor();
+        let clock = Arc::new(FakeSystemClock::new());
+        let http_client = FakeHttpClient::with_response(StatusCode::OK);
+        let system_id = Some("system_id".to_string());
+        let installation_id = Some("installation_id".to_string());
+        let session_id = "session_id".to_string();
+
+        cx.update(|cx| {
+            let telemetry = Telemetry::new(clock.clone(), http_client, cx);
+            telemetry.state.lock().max_queue_size = 4;
+            telemetry.start(system_id, installation_id, session_id);
+
+            assert!(is_empty_state(&telemetry));
+            let first_event_at = clock.utc_now();
+            let event = FlexibleEvent {
+                event_type: "test".to_string(),
+                event_properties: HashMap::from([(
+                    "test_key".to_string(),
+                    serde_json::Value::String("test_value".to_string()),
+                )]),
+            };
+
+            telemetry.report_event(Event::Flexible(event));
+            assert_eq!(telemetry.state.lock().events_queue.len(), 1);
+            assert!(telemetry.state.lock().scheduled_flush_task.is_some());
+            assert_eq!(telemetry.state.lock().first_event_at, Some(first_event_at));
+
+            let duration = Duration::from_millis(1);
+            executor.advance_clock(
+                FLUSH_INTERVAL
+                    .checked_sub(duration)
+                    .expect("flush interval should exceed test duration"),
+            );
+            assert!(!is_empty_state(&telemetry));
+
+            executor.advance_clock(duration);
+            assert!(is_empty_state(&telemetry));
+        });
+    }
+}

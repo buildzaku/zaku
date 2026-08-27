@@ -57,10 +57,10 @@ use std::{
 };
 use uuid::Uuid;
 
+use client::Client;
 use db::{Bind, Column, Row, Statement, StaticColumnCount, kv::KeyValueStore};
-use http_client::HttpClient;
 #[cfg(any(test, feature = "test"))]
-use http_client::{FakeHttpClient, StatusCode};
+use http_client::{FakeHttpClient, HttpClientWithUrl, StatusCode};
 use language::LanguageRegistry;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
@@ -185,7 +185,7 @@ pub struct OpenResult {
 #[derive(Clone)]
 pub struct AppState {
     pub fs: Arc<dyn fs::Fs>,
-    pub http_client: Arc<dyn HttpClient>,
+    pub client: Arc<Client>,
     pub languages: Arc<LanguageRegistry>,
     pub session: Entity<AppSession>,
 }
@@ -193,13 +193,13 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         fs: Arc<dyn fs::Fs>,
-        http_client: Arc<dyn HttpClient>,
+        client: Arc<Client>,
         session: Entity<AppSession>,
         languages: Arc<LanguageRegistry>,
     ) -> Self {
         Self {
             fs,
-            http_client,
+            client,
             languages,
             session,
         }
@@ -208,17 +208,27 @@ impl AppState {
     #[cfg(any(test, feature = "test"))]
     pub fn test_new(
         fs: Arc<dyn fs::Fs>,
-        http_client: Option<Arc<dyn HttpClient>>,
+        http_client: Option<Arc<HttpClientWithUrl>>,
         cx: &mut App,
     ) -> Arc<Self> {
+        if !cx.has_global::<SettingsStore>() {
+            settings::init(cx);
+        }
         let http_client =
             http_client.unwrap_or_else(|| FakeHttpClient::with_response(StatusCode::NOT_FOUND));
+        metadata::init_test(
+            env!("CARGO_PKG_VERSION")
+                .parse()
+                .expect("invalid version in Cargo.toml"),
+            cx,
+        );
+        let client = Client::test_new(http_client, cx);
         let languages = Arc::new(LanguageRegistry::test_new(cx.background_executor().clone()));
         let session = cx.new(|cx| AppSession::new(Session::test_new(), cx));
 
         Arc::new(Self {
             fs,
-            http_client,
+            client,
             languages,
             session,
         })
@@ -1634,6 +1644,7 @@ impl Workspace {
                 .update(|_, cx| Workspace::open(path, app_state, requesting_window, open_mode, cx))?
                 .await?;
 
+            telemetry::event!("Project Opened");
             window
                 .update(cx, |_, window, _cx| {
                     window.activate_window();

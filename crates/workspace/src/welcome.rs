@@ -59,6 +59,7 @@ struct SectionButton {
     secondary_text: Option<SharedString>,
     icon: IconAsset,
     action: Box<dyn Action>,
+    event_type: &'static str,
 }
 
 impl SectionButton {
@@ -67,6 +68,7 @@ impl SectionButton {
         secondary_text: Option<SharedString>,
         icon: IconAsset,
         action: &dyn Action,
+        event_type: &'static str,
         tab_index: usize,
         focus_handle: FocusHandle,
     ) -> Self {
@@ -77,6 +79,7 @@ impl SectionButton {
             secondary_text,
             icon,
             action: action.boxed_clone(),
+            event_type,
         }
     }
 }
@@ -135,6 +138,7 @@ impl RenderOnce for SectionButton {
                     ),
             )
             .on_click(move |_, window, cx| {
+                telemetry::event!(self.event_type, source = "Welcome Page");
                 self.focus_handle.dispatch_action(&*self.action, window, cx);
             })
     }
@@ -144,6 +148,7 @@ struct SectionEntry {
     icon: IconAsset,
     title: &'static str,
     action: &'static dyn Action,
+    event_type: &'static str,
 }
 
 impl SectionEntry {
@@ -153,6 +158,7 @@ impl SectionEntry {
             None,
             self.icon,
             self.action,
+            self.event_type,
             button_index,
             focus.clone(),
         )
@@ -187,16 +193,19 @@ const CONTENT: Section<3> = Section {
             icon: IconAsset::Plus,
             title: "New Project",
             action: &actions::workspace::NewProject,
+            event_type: "New Project Clicked",
         },
         SectionEntry {
             icon: IconAsset::FolderOpen,
             title: "Open Project",
             action: &actions::workspace::Open::DEFAULT,
+            event_type: "Open Project Clicked",
         },
         SectionEntry {
             icon: IconAsset::ListSearch,
             title: "Open Command Palette",
             action: &actions::command_palette::Toggle,
+            event_type: "Command Palette Opened",
         },
     ],
 };
@@ -223,6 +232,7 @@ impl WelcomePage {
             recent_workspaces: None,
         };
         welcome_page.reload_recent_workspaces(window, cx);
+        telemetry::event!("Welcome Page Opened");
         welcome_page
     }
 
@@ -313,20 +323,24 @@ impl WelcomePage {
         tab_index: usize,
         path: &Path,
     ) -> impl IntoElement {
-        let title = path.file_name().map_or_else(
+        let text = path.file_name().map_or_else(
             || path.to_string_lossy().into_owned(),
             |file_name| file_name.to_string_lossy().into_owned(),
         );
+        let secondary_text = path
+            .parent()
+            .filter(|location| !location.as_os_str().is_empty())
+            .map(|location| location.compact().to_string_lossy().into_owned().into());
+        let event_type = "Recent Project Clicked";
 
         SectionButton::new(
-            title,
-            path.parent()
-                .filter(|location| !location.as_os_str().is_empty())
-                .map(|location| location.compact().to_string_lossy().into_owned().into()),
+            text,
+            secondary_text,
             IconAsset::Folder,
             &actions::workspace::OpenRecentProject {
                 index: project_index,
             },
+            event_type,
             tab_index,
             self.focus_handle.clone(),
         )

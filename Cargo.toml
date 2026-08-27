@@ -4,9 +4,11 @@ members = [
   "crates/actions",
   "crates/app_version",
   "crates/assets",
+  "crates/client",
   "crates/collections",
   "crates/command_palette",
   "crates/command_palette_hooks",
+  "crates/crash_diagnostics",
   "crates/db",
   "crates/editor",
   "crates/fs",
@@ -42,6 +44,8 @@ members = [
   "crates/svg",
   "crates/syntax_theme",
   "crates/system_specs",
+  "crates/telemetry",
+  "crates/telemetry_events",
   "crates/theme",
   "crates/theme_settings",
   "crates/title_bar",
@@ -76,20 +80,22 @@ ashpd = { version = "0.13", default-features = false, features = [
   "notification",
 ] }
 async-lock = { version = "3.4" }
+async-process = { version = "2.5" }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
 clap = { version = "4.6", features = ["derive"] }
-clock = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "clock" }
+clock = { git = "https://github.com/zed-industries/zed", rev = "f66ed399cd", package = "clock" }
 cookie = { version = "0.18" }
+crash-handler = { version = "0.8" }
 derive_more = { version = "2.1", features = ["deref", "deref_mut"] }
 dirs = { version = "6.0" }
 dunce = { version = "1.0" }
 embed-resource = { version = "3.0" }
 futures = { version = "0.3" }
-fuzzy_nucleo = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "fuzzy_nucleo" }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "gpui" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "gpui_platform" }
-gpui_util = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "gpui_util" }
+fuzzy_nucleo = { git = "https://github.com/zed-industries/zed", rev = "f66ed399cd", package = "fuzzy_nucleo" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "f66ed399cd", package = "gpui" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "f66ed399cd", package = "gpui_platform" }
+gpui_util = { git = "https://github.com/zed-industries/zed", rev = "f66ed399cd", package = "gpui_util" }
 hex = { version = "0.4" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
@@ -110,11 +116,19 @@ jsonc-parser = { version = "0.32", features = [
 libc = { version = "0.2" }
 libsqlite3-sys = { version = "0.38", features = ["bundled"] }
 log = { version = "0.4" }
+mach2 = { version = "0.6" }
 mimalloc = { version = "0.1" }
+minidumper = { version = "0.11" }
 notify = { version = "8.2" }
 num-traits = { version = "0.2" }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "NSProcessInfo",
+  "NSString",
+  "std",
+] }
 palette = { version = "0.7", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12" }
+pciid-parser = { version = "0.8" }
 pretty_assertions = { version = "1.4", features = ["unstable"] }
 proc-macro2 = { version = "1.0" }
 quote = { version = "1.0" }
@@ -142,12 +156,12 @@ smol = { version = "2.0" }
 sqlformat = { version = "0.5" }
 streaming-iterator = { version = "0.1" }
 strum = { version = "0.28", features = ["derive"] }
-sum_tree = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "sum_tree" }
+sum_tree = { git = "https://github.com/zed-industries/zed", rev = "f66ed399cd", package = "sum_tree" }
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
 sysinfo = { version = "0.39" }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
-text = { git = "https://github.com/zed-industries/zed", rev = "d71f146104", package = "text" }
+text = { git = "https://github.com/zed-industries/zed", rev = "f66ed399cd", package = "text" }
 thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
 toml = { version = "1.1" }
@@ -159,31 +173,37 @@ tree-sitter-json = { version = "0.24" }
 tree-sitter-xml = { version = "0.7" }
 unicode-segmentation = { version = "1.13" }
 url = { version = "2.5" }
-uuid = { version = "1.23", features = ["v4"] }
+uuid = { version = "1.24", features = ["v4"] }
 which = { version = "8.0" }
 windows = { version = "0.62", features = [
   "Wdk_System_SystemServices",
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
   "Win32_Storage_FileSystem",
+  "Win32_System_Console",
+  "Win32_System_IO",
   "Win32_System_LibraryLoader",
   "Win32_System_RestartManager",
   "Win32_System_SystemInformation",
+  "Win32_System_Threading",
   "Win32_System_WindowsProgramming",
   "Win32_UI_Controls",
   "Win32_UI_HiDpi",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
+zstd = { version = "0.13" }
 ##################################################
 # Workspace member crates
 ##################################################
 actions = { path = "crates/actions" }
 app_version = { path = "crates/app_version" }
 assets = { path = "crates/assets" }
+client = { path = "crates/client" }
 collections = { path = "crates/collections" }
 command_palette = { path = "crates/command_palette" }
 command_palette_hooks = { path = "crates/command_palette_hooks" }
+crash_diagnostics = { path = "crates/crash_diagnostics" }
 db = { path = "crates/db" }
 editor = { path = "crates/editor" }
 fs = { path = "crates/fs" }
@@ -219,6 +239,8 @@ sql_macros = { path = "crates/sql_macros" }
 svg = { path = "crates/svg" }
 syntax_theme = { path = "crates/syntax_theme" }
 system_specs = { path = "crates/system_specs" }
+telemetry = { path = "crates/telemetry" }
+telemetry_events = { path = "crates/telemetry_events" }
 theme = { path = "crates/theme" }
 theme_settings = { path = "crates/theme_settings" }
 title_bar = { path = "crates/title_bar" }
@@ -237,6 +259,7 @@ async-process = { git = "https://github.com/zed-industries/async-process", rev =
 async-task = { git = "https://github.com/smol-rs/async-task", rev = "b4486cd71e" }
 
 [profile.release]
+debug = "limited"
 lto = "thin"
 codegen-units = 1
 
