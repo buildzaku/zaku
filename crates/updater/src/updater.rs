@@ -1391,7 +1391,9 @@ mod tests {
 
         let will_restart = cx.expect_restart();
         cx.update(|cx| cx.restart());
-        let installed_path = will_restart.await.unwrap().unwrap();
+        let (installed_path, arguments) = will_restart.await.unwrap();
+        assert!(arguments.is_empty());
+        let installed_path = installed_path.unwrap();
         assert_eq!(installed_path, installed_dir.path().join("zaku"));
         assert_eq!(std::fs::read(installed_path).unwrap(), update_contents);
     }
