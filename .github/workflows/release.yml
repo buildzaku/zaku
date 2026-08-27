@@ -37,29 +37,29 @@ env:
   RUST_BACKTRACE: "1"
 
 jobs:
-  start_release:
-    name: "Start release"
+  prepare_release:
+    name: "Prepare release"
     if: github.repository == 'buildzaku/zaku' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_sha }}
-          token: ${{ secrets.ZAKU_GITHUB_TOKEN }}
 
       - name: "Install cargo-edit"
         uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
         with:
           tool: cargo-edit@0.13.13
 
-      - name: "Create release branch and advance main"
+      - id: create_branches
+        name: "Create branches"
         env:
-          ACTOR_ID: ${{ github.actor_id }}
-          ACTOR_LOGIN: ${{ github.actor }}
-          CHANNEL: ${{ inputs.channel }}
-          SOURCE_SHA: ${{ inputs.source_sha }}
           BUMP_YEAR: ${{ inputs.bump_year }}
+          CHANNEL: ${{ inputs.channel }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           source_version=$(cargo app-version show)
           if [[ "$BUMP_YEAR" == "true" ]]; then
@@ -70,17 +70,15 @@ jobs:
           release_branch=$(cargo app-version show "$release_version" --branch)
           main_version=$(cargo app-version bump "$source_version" minor)
           main_long_version=$(cargo app-version show "$main_version" --long)
+          main_branch="main-${main_version}"
+          source_sha=$(git rev-parse HEAD)
 
-          if git ls-remote --exit-code --branches origin "refs/heads/${release_branch}" >/dev/null 2>&1; then
-            echo "::error::Release branch already exists: $release_branch"
-            exit 1
-          fi
           if ! remote_main_sha=$(git ls-remote --exit-code origin refs/heads/main | cut -f1); then
             echo "::error::Could not resolve origin/main"
             exit 1
           fi
-          if [[ "$remote_main_sha" != "$SOURCE_SHA" ]]; then
-            echo "::error::Source no longer matches main: expected $SOURCE_SHA, found $remote_main_sha"
+          if [[ "$remote_main_sha" != "$source_sha" ]]; then
+            echo "::error::Source no longer matches main: expected $source_sha, found $remote_main_sha"
             exit 1
           fi
 
@@ -90,57 +88,75 @@ jobs:
             exit 1
           fi
 
-          git config user.name "$ACTOR_LOGIN"
-          git config user.email "${ACTOR_ID}+${ACTOR_LOGIN}@users.noreply.github.com"
-
-          git switch --create "$release_branch" "$SOURCE_SHA"
+          files=(Cargo.toml Cargo.lock)
           cargo set-version --workspace "$release_long_version"
-          expected_version_files=$(printf '%s\n' Cargo.toml Cargo.lock | sort)
-          changed_version_files=$(git diff --name-only | sort)
-          if [[ "$changed_version_files" != "$expected_version_files" ]]; then
+          expected_files=$(printf '%s\n' "${files[@]}" | sort)
+          changed_files=$(git diff --name-only | sort)
+          if [[ "$changed_files" != "$expected_files" ]]; then
             echo "::error::Unexpected file changes on $release_branch"
-            printf 'Changed files:\n%s\n' "${changed_version_files:-none}"
+            printf 'Changed files:\n%s\n' "${changed_files:-none}"
             exit 1
           fi
-          git add -- Cargo.toml Cargo.lock
-          git commit --message "Zaku $release_version"
-          release_sha=$(git rev-parse HEAD)
-          git tag --annotate --message "Zaku $release_version" "$release_version" "$release_sha"
+          ./script/gh-commit create "$release_branch" "Zaku $release_version" "${files[@]}" >/dev/null
 
-          git switch --create "main-$main_version" "$SOURCE_SHA"
+          git restore --source "$source_sha" -- "${files[@]}"
           cargo set-version --workspace "$main_long_version"
-          changed_version_files=$(git diff --name-only | sort)
-          if [[ "$changed_version_files" != "$expected_version_files" ]]; then
+          changed_files=$(git diff --name-only | sort)
+          if [[ "$changed_files" != "$expected_files" ]]; then
             echo "::error::Unexpected file changes on main"
-            printf 'Changed files:\n%s\n' "${changed_version_files:-none}"
+            printf 'Changed files:\n%s\n' "${changed_files:-none}"
             exit 1
           fi
-          git add -- Cargo.toml Cargo.lock
-          git commit --message "Update Zaku to $main_version"
-          main_sha=$(git rev-parse HEAD)
+          ./script/gh-commit create "$main_branch" "Update Zaku to $main_version" "${files[@]}" >/dev/null
 
-          git push --atomic origin "${main_sha}:refs/heads/main" "${release_sha}:refs/heads/${release_branch}" "refs/tags/${release_version}"
-          echo "Updated main to $main_version and created $release_branch with release tag $release_version"
+          echo "main_branch=$main_branch" >>"${GITHUB_OUTPUT}"
+          echo "main_version=$main_version" >>"${GITHUB_OUTPUT}"
         shell: bash
 
-  github_release:
-    name: "Check or create GitHub release"
+      - name: "Create ${{ steps.create_branches.outputs.main_version }} pull request"
+        env:
+          GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
+          MAIN_BRANCH: ${{ steps.create_branches.outputs.main_branch }}
+          MAIN_VERSION: ${{ steps.create_branches.outputs.main_version }}
+        run: |
+          pull_request_url=$(gh pr list --base main --head "$MAIN_BRANCH" --repo "$GITHUB_REPOSITORY" --state open --json url --jq '.[0].url // empty')
+          if [[ -z "$pull_request_url" ]]; then
+            pull_request_url=$(gh pr create --base main --body "" --head "$MAIN_BRANCH" --repo "$GITHUB_REPOSITORY" --title "Update Zaku to $MAIN_VERSION")
+          fi
+
+          echo "Pull request to advance main: $pull_request_url"
+        shell: bash
+
+  verify_release:
+    name: "Verify release"
     if: github.repository == 'buildzaku/zaku' && github.event_name == 'push'
     runs-on: ubuntu-24.04
     outputs:
-      channel: ${{ steps.verify_release.outputs.channel }}
-      github_release_status: ${{ steps.check_release.outputs.github_release_status }}
-      manifest_exists: ${{ steps.check_release.outputs.manifest_exists }}
-      version: ${{ steps.verify_release.outputs.version }}
+      channel: ${{ steps.verify_tag.outputs.channel }}
+      prerelease: ${{ steps.verify_tag.outputs.prerelease }}
+      version: ${{ steps.verify_tag.outputs.version }}
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - id: verify_release
-        name: "Verify release"
+      - id: verify_tag
+        name: "Verify tag"
         run: |
+          keyring=$(mktemp -d)
+          trap 'rm -rf "$keyring"' EXIT
+          export GNUPGHOME="$keyring"
+
+          shopt -s nullglob
+          release_keys=(.github/release-keys/*.asc)
+          if [[ ${#release_keys[@]} -eq 0 ]]; then
+            echo "::error::No release signing keys found"
+            exit 1
+          fi
+          gpg --batch --import "${release_keys[@]}"
+          git verify-tag "$GITHUB_REF_NAME"
+
           version=$(cargo app-version show)
           if [[ "$GITHUB_REF_NAME" != "$version" ]]; then
             echo "::error::Release tag $GITHUB_REF_NAME does not match workspace version $version"
@@ -152,6 +168,10 @@ jobs:
           case "$channel" in
             beta) prerelease=true ;;
             stable) prerelease=false ;;
+            *)
+              echo "::error::Unsupported release channel: $channel"
+              exit 1
+              ;;
           esac
 
           if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$release_branch"; then
@@ -165,16 +185,28 @@ jobs:
           echo "Verified $channel release $version on $release_branch"
         shell: bash
 
+  gh_release:
+    name: "Check or create GitHub release"
+    needs: verify_release
+    if: github.repository == 'buildzaku/zaku' && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      channel: ${{ needs.verify_release.outputs.channel }}
+      status: ${{ steps.check_release.outputs.status }}
+      manifest_exists: ${{ steps.check_release.outputs.manifest_exists }}
+      version: ${{ needs.verify_release.outputs.version }}
+    steps:
       - id: check_release
         name: "Check release state"
         env:
-          CHANNEL: ${{ steps.verify_release.outputs.channel }}
-          GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
-          PRERELEASE: ${{ steps.verify_release.outputs.prerelease }}
-          REPOSITORY: ${{ github.repository }}
-          VERSION: ${{ steps.verify_release.outputs.version }}
+          CHANNEL: ${{ needs.verify_release.outputs.channel }}
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.verify_release.outputs.prerelease }}
+          VERSION: ${{ needs.verify_release.outputs.version }}
         run: |
-          if release=$(gh release view "$VERSION" --json isDraft,isPrerelease --repo "$REPOSITORY" 2>/dev/null); then
+          if release=$(gh release view "$VERSION" --json isDraft,isPrerelease --repo "$GITHUB_REPOSITORY" 2>/dev/null); then
             if ! jq --exit-status --argjson prerelease "$PRERELEASE" '.isPrerelease == $prerelease' <<<"$release" >/dev/null; then
               echo "::error::Existing GitHub Release does not match $VERSION"
               exit 1
@@ -211,19 +243,19 @@ jobs:
             exit 1
           fi
           if [[ "$github_release_status" == "missing" ]]; then
-            gh release create "$VERSION" --draft --notes "" --prerelease="$PRERELEASE" --repo "$REPOSITORY" --title "Zaku $VERSION" --verify-tag
+            gh release create "$VERSION" --draft --notes "" --prerelease="$PRERELEASE" --repo "$GITHUB_REPOSITORY" --title "Zaku $VERSION" --verify-tag
             github_release_status=draft
             echo "Created draft GitHub Release for $VERSION"
           fi
 
-          echo "github_release_status=$github_release_status" >>"${GITHUB_OUTPUT}"
+          echo "status=$github_release_status" >>"${GITHUB_OUTPUT}"
           echo "manifest_exists=$manifest_exists" >>"${GITHUB_OUTPUT}"
         shell: bash
 
   build:
     name: "Build ${{ matrix.name }}"
-    needs: github_release
-    if: needs.github_release.outputs.manifest_exists == 'false'
+    needs: gh_release
+    if: needs.gh_release.outputs.manifest_exists == 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -437,7 +469,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Zaku-${{ matrix.platform }}-${{ matrix.arch }}
-          path: target/${{ matrix.target }}/release/Zaku-${{ needs.github_release.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.extension }}
+          path: target/${{ matrix.target }}/release/Zaku-${{ needs.gh_release.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.extension }}
           compression-level: 0
           overwrite: true
           if-no-files-found: error
@@ -445,11 +477,12 @@ jobs:
   publish_release:
     name: "Publish release"
     needs:
-      - github_release
+      - gh_release
       - build
-    if: needs.github_release.outputs.manifest_exists == 'false'
+    if: needs.gh_release.outputs.manifest_exists == 'false'
     runs-on: ubuntu-24.04
     permissions:
+      contents: write
       id-token: write
     env:
       PUBLISH_ARTIFACTS: "true"
@@ -464,25 +497,23 @@ jobs:
       - name: "Upload release artifacts"
         if: env.PUBLISH_ARTIFACTS == 'true'
         env:
-          GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          VERSION: ${{ needs.github_release.outputs.version }}
-        run: gh release upload "$VERSION" artifacts/* --clobber --repo "$REPOSITORY"
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.gh_release.outputs.version }}
+        run: gh release upload "$VERSION" artifacts/* --clobber --repo "$GITHUB_REPOSITORY"
         shell: bash
 
       - name: "Register, publish and promote release"
         env:
-          CHANNEL: ${{ needs.github_release.outputs.channel }}
-          GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
-          GH_RELEASE_STATUS: ${{ needs.github_release.outputs.github_release_status }}
-          MANIFEST_EXISTS: ${{ needs.github_release.outputs.manifest_exists }}
-          REPOSITORY: ${{ github.repository }}
-          VERSION: ${{ needs.github_release.outputs.version }}
+          CHANNEL: ${{ needs.gh_release.outputs.channel }}
+          GH_TOKEN: ${{ github.token }}
+          GH_RELEASE_STATUS: ${{ needs.gh_release.outputs.status }}
+          MANIFEST_EXISTS: ${{ needs.gh_release.outputs.manifest_exists }}
+          VERSION: ${{ needs.gh_release.outputs.version }}
         run: |
           oidc_token=$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https://api.zaku.dev" | jq --exit-status --raw-output '.value')
 
           if [[ "$MANIFEST_EXISTS" == "false" ]]; then
-            request_body=$(gh release view "$VERSION" --json assets --repo "$REPOSITORY" --jq '{
+            request_body=$(gh release view "$VERSION" --json assets --repo "$GITHUB_REPOSITORY" --jq '{
               artifacts: [.assets[] | {
                 name,
                 size,
@@ -493,13 +524,13 @@ jobs:
           fi
 
           if [[ "$GH_RELEASE_STATUS" == "draft" ]]; then
-            gh release edit "$VERSION" --draft=false --latest=false --repo "$REPOSITORY"
+            gh release edit "$VERSION" --draft=false --latest=false --repo "$GITHUB_REPOSITORY"
           fi
 
           curl -fsS -X PUT -H "Authorization: Bearer ${oidc_token}" "https://api.zaku.dev/releases/${CHANNEL}/latest"
 
           if [[ "$CHANNEL" == "stable" ]]; then
-            gh release edit "$VERSION" --latest --repo "$REPOSITORY"
+            gh release edit "$VERSION" --latest --repo "$GITHUB_REPOSITORY"
           fi
 
           echo "Released Zaku $VERSION"
@@ -507,10 +538,11 @@ jobs:
 
   resume_release:
     name: "Resume release"
-    needs: github_release
-    if: needs.github_release.outputs.manifest_exists == 'true'
+    needs: gh_release
+    if: needs.gh_release.outputs.manifest_exists == 'true'
     runs-on: ubuntu-24.04
     permissions:
+      contents: write
       id-token: write
     env:
       PUBLISH_ARTIFACTS: "false"
