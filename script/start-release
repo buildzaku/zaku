@@ -10,12 +10,12 @@ fi
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   if [[ $# -ne 1 ]]; then
     echo "Unexpected argument: $2" >&2
-    echo "Run ./script/release --help" >&2
+    echo "Run ./script/start-release --help" >&2
     exit 1
   fi
-  echo "Create a Zaku release branch and advance main."
+  echo "Create a release branch and a pull request to advance main."
   echo
-  echo "Usage: ./script/release <beta|stable> [--bump-year]"
+  echo "Usage: ./script/start-release <beta|stable> [--bump-year]"
   echo
   echo "Options:"
   echo "  --bump-year  Bump to the next year before releasing."
@@ -25,7 +25,7 @@ fi
 
 if [[ $# -eq 0 ]]; then
   echo "Missing release channel" >&2
-  echo "Run ./script/release --help" >&2
+  echo "Run ./script/start-release --help" >&2
   exit 1
 fi
 
@@ -36,7 +36,7 @@ beta | stable)
   ;;
 *)
   echo "Unsupported release channel: $channel" >&2
-  echo "Run ./script/release --help" >&2
+  echo "Run ./script/start-release --help" >&2
   exit 1
   ;;
 esac
@@ -48,7 +48,7 @@ if [[ ${1:-} == "--bump-year" ]]; then
 fi
 if [[ $# -gt 0 ]]; then
   echo "Unexpected argument: $1" >&2
-  echo "Run ./script/release --help" >&2
+  echo "Run ./script/start-release --help" >&2
   exit 1
 fi
 
@@ -58,6 +58,7 @@ for cmd in cargo gh git; do
     exit 1
   fi
 done
+
 if ! gh auth status --active --hostname github.com >/dev/null 2>&1; then
   echo "GitHub CLI authentication is required" >&2
   exit 1
@@ -76,6 +77,7 @@ if ! remote_main_sha=$(git ls-remote --exit-code origin refs/heads/main | cut -f
   echo "Could not resolve origin/main" >&2
   exit 1
 fi
+
 local_sha=$(git rev-parse HEAD)
 if [[ "$local_sha" != "$remote_main_sha" ]]; then
   echo "Local main must match origin/main before releasing Zaku" >&2
@@ -89,7 +91,7 @@ fi
 release_version=$(cargo app-version promote "$source_version" "$channel")
 main_version=$(cargo app-version bump "$source_version" minor)
 
-echo "This will release Zaku $release_version and update Zaku to $main_version on main."
+echo "This will create a release branch for Zaku $release_version and a pull request to advance main to $main_version."
 echo
 if ! read -r -p "Proceed? [y/N] " confirmation; then
   echo "Could not read confirmation" >&2
@@ -105,5 +107,5 @@ y | yes)
 esac
 
 gh workflow run release.yml --ref main --field "channel=$channel" --field "source_sha=$local_sha" --field "bump_year=$bump_year"
-echo "Started Zaku release $release_version"
+echo "Started Zaku $release_version release"
 echo "Workflow: https://github.com/buildzaku/zaku/actions/workflows/release.yml"

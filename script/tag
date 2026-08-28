@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); then
+  echo "Bash 5.2 or later is required" >&2
+  exit 1
+fi
+
+if [[ $# -gt 0 ]]; then
+  echo "Unexpected argument: $1" >&2
+  exit 1
+fi
+
+for cmd in cargo git gpg; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Missing required command: $cmd" >&2
+    exit 1
+  fi
+done
+
+branch=$(git branch --show-current)
+if [[ -z "$branch" ]]; then
+  echo "Release cannot be tagged from detached HEAD" >&2
+  exit 1
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Working tree must be clean before tagging a Zaku release" >&2
+  exit 1
+fi
+
+version=$(cargo app-version show)
+channel=$(cargo app-version show "$version" --channel)
+case "$channel" in
+beta | stable)
+  ;;
+*)
+  echo "Unsupported release channel: $channel" >&2
+  exit 1
+  ;;
+esac
+
+release_branch=$(cargo app-version show "$version" --branch)
+if [[ "$branch" != "$release_branch" ]]; then
+  echo "Checked out branch $branch does not match Zaku $version; expected $release_branch" >&2
+  exit 1
+fi
+
+if ! remote_branch_sha=$(git ls-remote --exit-code origin "refs/heads/${branch}" | cut -f1); then
+  echo "Could not resolve origin/$branch" >&2
+  exit 1
+fi
+
+local_sha=$(git rev-parse HEAD)
+if [[ "$local_sha" != "$remote_branch_sha" ]]; then
+  echo "Local $branch must match origin/$branch before tagging a Zaku release" >&2
+  exit 1
+fi
+
+if git show-ref --verify --quiet "refs/tags/${version}"; then
+  echo "Local release tag already exists: $version" >&2
+  exit 1
+fi
+if ! remote_tag=$(git ls-remote --tags origin "refs/tags/${version}"); then
+  echo "Could not inspect origin release tag: $version" >&2
+  exit 1
+fi
+if [[ -n "$remote_tag" ]]; then
+  echo "Remote release tag already exists: $version" >&2
+  exit 1
+fi
+
+echo "This will create and push tag $version for $branch at $local_sha."
+echo
+if ! read -r -p "Proceed? [y/N] " confirmation; then
+  echo "Could not read confirmation" >&2
+  exit 1
+fi
+case "${confirmation,,}" in
+y | yes)
+  ;;
+*)
+  echo "Aborted"
+  exit 0
+  ;;
+esac
+
+git -c gpg.format=openpgp tag --sign --message "Zaku $version" "$version" "$local_sha"
+git push origin "refs/tags/${version}"
+
+echo "Pushed Zaku $version release tag"
+echo "Workflow: https://github.com/buildzaku/zaku/actions/workflows/release.yml"
