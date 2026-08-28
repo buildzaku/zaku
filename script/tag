@@ -85,7 +85,7 @@ y | yes)
   ;;
 esac
 
-git tag --sign --message "Zaku $version" "$version" "$local_sha"
+git -c gpg.format=openpgp tag --sign --message "Zaku $version" "$version" "$local_sha"
 git push origin "refs/tags/${version}"
 
 echo "Started Zaku $version release"
