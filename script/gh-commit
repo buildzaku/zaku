@@ -101,13 +101,13 @@ for file_path in "${file_paths[@]}"; do
     exit 1
   fi
 
-  blob_request=$(base64 <"$file_path" | tr -d '\n' | jq --raw-input --slurp '{content: ., encoding: "base64"}')
-  blob_sha=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/blobs" --input - --jq .sha <<<"$blob_request")
+  blob_payload=$(base64 <"$file_path" | tr -d '\n' | jq --raw-input --slurp '{content: ., encoding: "base64"}')
+  blob_sha=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/blobs" --input - --jq .sha <<<"$blob_payload")
   tree_entries=$(jq --arg mode "$file_mode" --arg path "$file_path" --arg sha "$blob_sha" '. + [{mode: $mode, path: $path, sha: $sha, type: "blob"}]' <<<"$tree_entries")
 done
 
-tree_request=$(jq --arg base_tree "$parent_tree_sha" '{base_tree: $base_tree, tree: .}' <<<"$tree_entries")
-tree_sha=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/trees" --input - --jq .sha <<<"$tree_request")
+tree_payload=$(jq --arg base_tree "$parent_tree_sha" '{base_tree: $base_tree, tree: .}' <<<"$tree_entries")
+tree_sha=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/trees" --input - --jq .sha <<<"$tree_payload")
 if [[ "$tree_sha" == "$parent_tree_sha" ]]; then
   echo "No changes to commit" >&2
   exit 1
@@ -140,8 +140,8 @@ elif [[ "$branch_operation" == "update" ]]; then
   exit 1
 fi
 
-commit_request=$(jq --null-input --arg message "$commit_message" --arg parent "$parent_sha" --arg tree "$tree_sha" '{message: $message, parents: [$parent], tree: $tree}')
-commit=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/commits" --input - <<<"$commit_request")
+commit_payload=$(jq --null-input --arg message "$commit_message" --arg parent "$parent_sha" --arg tree "$tree_sha" '{message: $message, parents: [$parent], tree: $tree}')
+commit=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/commits" --input - <<<"$commit_payload")
 commit_sha=$(jq --exit-status --raw-output '.sha' <<<"$commit")
 if ! jq --exit-status '.verification.verified == true' <<<"$commit" >/dev/null; then
   verification_reason=$(jq --raw-output '.verification.reason // "unknown"' <<<"$commit")
@@ -159,11 +159,11 @@ if [[ "$branch_operation" == "create" ]]; then
     exit 1
   fi
 
-  ref_request=$(jq --null-input --arg ref "refs/heads/${branch}" --arg sha "$commit_sha" '{ref: $ref, sha: $sha}')
-  gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/refs" --input - <<<"$ref_request" >/dev/null
+  ref_payload=$(jq --null-input --arg ref "refs/heads/${branch}" --arg sha "$commit_sha" '{ref: $ref, sha: $sha}')
+  gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/refs" --input - <<<"$ref_payload" >/dev/null
 else
-  ref_request=$(jq --null-input --arg sha "$commit_sha" '{force: false, sha: $sha}')
-  gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method PATCH "repos/${repository}/git/refs/heads/${branch}" --input - <<<"$ref_request" >/dev/null
+  ref_payload=$(jq --null-input --arg sha "$commit_sha" '{force: false, sha: $sha}')
+  gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method PATCH "repos/${repository}/git/refs/heads/${branch}" --input - <<<"$ref_payload" >/dev/null
 fi
 
 echo "$commit_sha"

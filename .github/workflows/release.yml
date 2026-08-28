@@ -513,14 +513,14 @@ jobs:
           oidc_token=$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https://api.zaku.dev" | jq --exit-status --raw-output '.value')
 
           if [[ "$MANIFEST_EXISTS" == "false" ]]; then
-            request_body=$(gh release view "$VERSION" --json assets --repo "$GITHUB_REPOSITORY" --jq '{
+            manifest_payload=$(gh release view "$VERSION" --json assets --repo "$GITHUB_REPOSITORY" --jq '{
               artifacts: [.assets[] | {
                 name,
                 size,
                 sha256: (.digest | ltrimstr("sha256:"))
               }]
             }')
-            curl -fsS -X PUT -H "Authorization: Bearer ${oidc_token}" --json "$request_body" "https://api.zaku.dev/releases/${CHANNEL}/${VERSION}"
+            curl -fsS -X PUT -H "Authorization: Bearer ${oidc_token}" --json "$manifest_payload" "https://api.zaku.dev/releases/${CHANNEL}/${VERSION}"
           fi
 
           if [[ "$GH_RELEASE_STATUS" == "draft" ]]; then
