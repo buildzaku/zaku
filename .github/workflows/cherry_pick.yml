@@ -24,27 +24,26 @@ jobs:
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENTER_LOGIN: ${{ github.event.comment.user.login }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           SOURCE_PULL_REQUEST_NUMBER: ${{ github.event.issue.number }}
         run: |
           echo "should_cherry_pick=false" >>"${GITHUB_OUTPUT}"
 
-          if ! commenter_permission=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" "repos/${REPOSITORY}/collaborators/${COMMENTER_LOGIN}/permission" --jq .permission 2>/dev/null); then
-            exit 0
-          fi
+          commenter_permission=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" "repos/${REPOSITORY}/collaborators/${COMMENTER_LOGIN}/permission" --jq .permission)
           case "$commenter_permission" in
-            admin | maintain | write) ;;
+            admin | write) ;;
             *) exit 0 ;;
           esac
 
           source_pull_request=$(gh pr view "$SOURCE_PULL_REQUEST_NUMBER" --repo "$REPOSITORY" --json baseRefName,mergeCommit,mergedAt)
-          if ! jq -e '.mergedAt != null and .baseRefName == "main"' <<<"$source_pull_request" >/dev/null; then
+          if ! jq --exit-status '.mergedAt != null and .baseRefName == "main"' <<<"$source_pull_request" >/dev/null; then
             exit 0
           fi
 
+          commit_sha=$(jq --exit-status --raw-output '.mergeCommit.oid' <<<"$source_pull_request")
           echo "channel=${COMMENT_BODY#/cherry-pick }" >>"${GITHUB_OUTPUT}"
-          echo "commit_sha=$(jq -r .mergeCommit.oid <<<"$source_pull_request")" >>"${GITHUB_OUTPUT}"
+          echo "commit_sha=$commit_sha" >>"${GITHUB_OUTPUT}"
           echo "should_cherry_pick=true" >>"${GITHUB_OUTPUT}"
         shell: bash
 
@@ -89,18 +88,18 @@ jobs:
         env:
           CHANNEL: ${{ steps.verify_request.outputs.channel }}
           CHERRY_PICK_PULL_REQUEST_URL: ${{ steps.cherry_pick.outputs.cherry_pick_pull_request_url }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           SOURCE_PULL_REQUEST_NUMBER: ${{ github.event.issue.number }}
         run: |
           cherry_pick_pull_request_number="${CHERRY_PICK_PULL_REQUEST_URL##*/}"
-          gh pr comment "$SOURCE_PULL_REQUEST_NUMBER" --body "Cherry-pick to ${CHANNEL} opened in #${cherry_pick_pull_request_number}."
+          gh pr comment "$SOURCE_PULL_REQUEST_NUMBER" --body "Cherry-pick to ${CHANNEL} created in #${cherry_pick_pull_request_number}."
         shell: bash
 
       - name: "Reply with failure"
         if: failure() && steps.verify_request.outputs.should_cherry_pick == 'true' && steps.cherry_pick.outcome != 'success'
         env:
           CHANNEL: ${{ steps.verify_request.outputs.channel }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           SOURCE_PULL_REQUEST_NUMBER: ${{ github.event.issue.number }}
           WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |

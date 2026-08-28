@@ -188,7 +188,6 @@ jobs:
   gh_release:
     name: "Check or create GitHub release"
     needs: verify_release
-    if: github.repository == 'buildzaku/zaku' && github.event_name == 'push'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -234,6 +233,7 @@ jobs:
               exit 1
               ;;
           esac
+
           if [[ "$github_release_status" == "published" && "$manifest_exists" == "false" ]]; then
             echo "::error::Published GitHub Release has no server manifest: $VERSION"
             exit 1
