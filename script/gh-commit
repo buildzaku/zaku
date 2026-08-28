@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); then
+  echo "Bash 5.2 or later is required" >&2
+  exit 1
+fi
+
+GH_API_VERSION="2026-03-10"
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  if [[ $# -ne 1 ]]; then
+    echo "Unexpected argument: $2" >&2
+    echo "Run ./script/gh-commit --help" >&2
+    exit 1
+  fi
+  echo "Create a verified GitHub commit."
+  echo
+  echo "Usage: ./script/gh-commit <create|update> <branch> <message> <file>..."
+  echo
+  echo "Options:"
+  echo "  -h, --help  Show help."
+  exit 0
+fi
+
+if [[ $# -eq 0 ]]; then
+  echo "Missing operation" >&2
+  echo "Run ./script/gh-commit --help" >&2
+  exit 1
+fi
+
+branch_operation="$1"
+shift
+
+case "$branch_operation" in
+create)
+  source_branch="$GITHUB_REF_NAME"
+  ;;
+update)
+  ;;
+*)
+  echo "Unsupported branch operation: $branch_operation" >&2
+  echo "Run ./script/gh-commit --help" >&2
+  exit 1
+  ;;
+esac
+
+if [[ $# -lt 3 ]]; then
+  argument_names=("destination branch" "commit message" "file path")
+  echo "Missing ${argument_names[$#]}" >&2
+  echo "Run ./script/gh-commit --help" >&2
+  exit 1
+fi
+
+branch="$1"
+commit_message="$2"
+shift 2
+file_paths=("$@")
+
+if [[ -z "$commit_message" ]]; then
+  echo "Commit message cannot be empty" >&2
+  exit 1
+fi
+
+for command in base64 gh git jq tr; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    echo "Missing required command: $command" >&2
+    exit 1
+  fi
+done
+
+if ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
+  echo "Invalid Git branch: $branch" >&2
+  exit 1
+fi
+if [[ -z ${GH_TOKEN:-} ]]; then
+  echo "GH_TOKEN is required" >&2
+  exit 1
+fi
+
+repository="$GITHUB_REPOSITORY"
+parent_sha=$(git rev-parse HEAD)
+parent_tree_sha=$(git rev-parse "${parent_sha}^{tree}")
+
+tree_entries='[]'
+for file_path in "${file_paths[@]}"; do
+  if [[ ! -f "$file_path" || -L "$file_path" ]]; then
+    echo "Expected a regular file: $file_path" >&2
+    exit 1
+  fi
+
+  tree_entry=$(git ls-tree "$parent_sha" -- ":(literal)$file_path")
+  if [[ -z "$tree_entry" ]]; then
+    echo "File is not tracked by the parent commit: $file_path" >&2
+    exit 1
+  fi
+  file_mode=${tree_entry%% *}
+  if [[ "$file_mode" != "100644" && "$file_mode" != "100755" ]]; then
+    echo "Expected a tracked regular file: $file_path" >&2
+    exit 1
+  fi
+
+  file_content=$(base64 <"$file_path" | tr -d '\n')
+  blob_request=$(jq --null-input --arg content "$file_content" '{content: $content, encoding: "base64"}')
+  blob_sha=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/blobs" --input - --jq .sha <<<"$blob_request")
+  tree_entries=$(jq --arg mode "$file_mode" --arg path "$file_path" --arg sha "$blob_sha" '. + [{mode: $mode, path: $path, sha: $sha, type: "blob"}]' <<<"$tree_entries")
+done
+
+tree_request=$(jq --null-input --arg base_tree "$parent_tree_sha" --argjson tree "$tree_entries" '{base_tree: $base_tree, tree: $tree}')
+tree_sha=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/trees" --input - --jq .sha <<<"$tree_request")
+if [[ "$tree_sha" == "$parent_tree_sha" ]]; then
+  echo "No changes to commit" >&2
+  exit 1
+fi
+
+branch_refs=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" "repos/${repository}/git/matching-refs/heads/${branch}")
+current_sha=$(jq --raw-output --arg ref "refs/heads/${branch}" '.[] | select(.ref == $ref) | .object.sha' <<<"$branch_refs")
+if [[ -n "$current_sha" ]]; then
+  if [[ "$current_sha" != "$parent_sha" ]]; then
+    current_commit=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" "repos/${repository}/git/commits/${current_sha}")
+    if jq --exit-status --arg message "$commit_message" --arg parent "$parent_sha" --arg tree "$tree_sha" '
+      .message == $message and
+      .tree.sha == $tree and
+      [.parents[].sha] == [$parent] and
+      .verification.verified == true
+    ' <<<"$current_commit" >/dev/null; then
+      echo "$current_sha"
+      exit 0
+    fi
+
+    echo "Branch $branch changed: expected $parent_sha, found $current_sha" >&2
+    exit 1
+  fi
+  if [[ "$branch_operation" == "create" ]]; then
+    echo "Branch already exists at the parent commit: $branch" >&2
+    exit 1
+  fi
+elif [[ "$branch_operation" == "update" ]]; then
+  echo "Could not resolve branch: $branch" >&2
+  exit 1
+fi
+
+commit_request=$(jq --null-input --arg message "$commit_message" --arg parent "$parent_sha" --arg tree "$tree_sha" '{message: $message, parents: [$parent], tree: $tree}')
+commit=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/commits" --input - <<<"$commit_request")
+commit_sha=$(jq --exit-status --raw-output '.sha' <<<"$commit")
+if ! jq --exit-status '.verification.verified == true' <<<"$commit" >/dev/null; then
+  verification_reason=$(jq --raw-output '.verification.reason // "unknown"' <<<"$commit")
+  echo "Commit verification failed for $commit_sha: $verification_reason" >&2
+  exit 1
+fi
+
+if [[ "$branch_operation" == "create" ]]; then
+  if ! source_branch_sha=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" "repos/${repository}/git/ref/heads/${source_branch}" --jq .object.sha); then
+    echo "Could not resolve source branch: $source_branch" >&2
+    exit 1
+  fi
+  if [[ "$source_branch_sha" != "$parent_sha" ]]; then
+    echo "Source branch $source_branch changed: expected $parent_sha, found $source_branch_sha" >&2
+    exit 1
+  fi
+
+  ref_request=$(jq --null-input --arg ref "refs/heads/${branch}" --arg sha "$commit_sha" '{ref: $ref, sha: $sha}')
+  gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/refs" --input - <<<"$ref_request" >/dev/null
+else
+  ref_request=$(jq --null-input --arg sha "$commit_sha" '{force: false, sha: $sha}')
+  gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method PATCH "repos/${repository}/git/refs/heads/${branch}" --input - <<<"$ref_request" >/dev/null
+fi
+
+echo "$commit_sha"
