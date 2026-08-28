@@ -30,27 +30,26 @@ concurrency:
 
 jobs:
   update:
-    name: "Update version"
+    name: "Update branch"
     if: github.repository == 'buildzaku/zaku'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_sha }}
-          token: ${{ secrets.ZAKU_GITHUB_TOKEN }}
 
       - name: "Install cargo-edit"
         uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
         with:
           tool: cargo-edit@0.13.13
 
-      - name: "Update version and create tag"
+      - name: "Update version"
         env:
-          ACTOR_ID: ${{ github.actor_id }}
-          ACTOR_LOGIN: ${{ github.actor }}
           COMMAND: ${{ inputs.command }}
-          SOURCE_SHA: ${{ inputs.source_sha }}
+          GH_TOKEN: ${{ github.token }}
           TARGET_BRANCH: ${{ inputs.branch }}
         run: |
           case "$COMMAND" in
@@ -95,29 +94,16 @@ jobs:
             exit 1
           fi
 
-          if ! remote_branch_sha=$(git ls-remote --exit-code origin "refs/heads/${TARGET_BRANCH}" | cut -f1); then
-            echo "::error::Could not resolve origin/$TARGET_BRANCH"
-            exit 1
-          fi
-          if [[ "$remote_branch_sha" != "$SOURCE_SHA" ]]; then
-            echo "::error::$TARGET_BRANCH changed: expected $SOURCE_SHA, found $remote_branch_sha"
-            exit 1
-          fi
-
-          git config user.name "$ACTOR_LOGIN"
-          git config user.email "${ACTOR_ID}+${ACTOR_LOGIN}@users.noreply.github.com"
-
+          files=(Cargo.toml Cargo.lock)
           cargo set-version --workspace "$long_version"
-          expected_version_files=$(printf '%s\n' Cargo.toml Cargo.lock | sort)
-          changed_version_files=$(git diff --name-only | sort)
-          if [[ "$changed_version_files" != "$expected_version_files" ]]; then
+          expected_files=$(printf '%s\n' "${files[@]}" | sort)
+          changed_files=$(git diff --name-only | sort)
+          if [[ "$changed_files" != "$expected_files" ]]; then
             echo "::error::Unexpected file changes on $TARGET_BRANCH"
-            printf 'Changed files:\n%s\n' "${changed_version_files:-none}"
+            printf 'Changed files:\n%s\n' "${changed_files:-none}"
             exit 1
           fi
-          git add -- Cargo.toml Cargo.lock
-          git commit --message "Zaku $version"
-          git tag --annotate --message "Zaku $version" "$version"
-          git push --atomic origin "HEAD:refs/heads/${TARGET_BRANCH}" "refs/tags/${version}"
-          echo "Updated $TARGET_BRANCH and created release tag $version"
+          commit_sha=$(./script/gh-commit update "$TARGET_BRANCH" "Zaku $version" "${files[@]}")
+
+          echo "Updated $TARGET_BRANCH to Zaku $version at $commit_sha"
         shell: bash
