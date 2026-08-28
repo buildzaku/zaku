@@ -10,12 +10,12 @@ fi
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   if [[ $# -ne 1 ]]; then
     echo "Unexpected argument: $2" >&2
-    echo "Run ./script/release --help" >&2
+    echo "Run ./script/start-release --help" >&2
     exit 1
   fi
   echo "Create a release branch and a pull request to advance main."
   echo
-  echo "Usage: ./script/release <beta|stable> [--bump-year]"
+  echo "Usage: ./script/start-release <beta|stable> [--bump-year]"
   echo
   echo "Options:"
   echo "  --bump-year  Bump to the next year before releasing."
@@ -25,7 +25,7 @@ fi
 
 if [[ $# -eq 0 ]]; then
   echo "Missing release channel" >&2
-  echo "Run ./script/release --help" >&2
+  echo "Run ./script/start-release --help" >&2
   exit 1
 fi
 
@@ -36,7 +36,7 @@ beta | stable)
   ;;
 *)
   echo "Unsupported release channel: $channel" >&2
-  echo "Run ./script/release --help" >&2
+  echo "Run ./script/start-release --help" >&2
   exit 1
   ;;
 esac
@@ -48,7 +48,7 @@ if [[ ${1:-} == "--bump-year" ]]; then
 fi
 if [[ $# -gt 0 ]]; then
   echo "Unexpected argument: $1" >&2
-  echo "Run ./script/release --help" >&2
+  echo "Run ./script/start-release --help" >&2
   exit 1
 fi
 
@@ -107,5 +107,5 @@ y | yes)
 esac
 
 gh workflow run release.yml --ref main --field "channel=$channel" --field "source_sha=$local_sha" --field "bump_year=$bump_year"
-echo "Started release preparation for Zaku $release_version"
+echo "Started Zaku $release_version release"
 echo "Workflow: https://github.com/buildzaku/zaku/actions/workflows/release.yml"

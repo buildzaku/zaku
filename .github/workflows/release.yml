@@ -37,8 +37,8 @@ env:
   RUST_BACKTRACE: "1"
 
 jobs:
-  prepare_release:
-    name: "Prepare release"
+  start_release:
+    name: "Start release"
     if: github.repository == 'buildzaku/zaku' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
@@ -474,8 +474,8 @@ jobs:
           overwrite: true
           if-no-files-found: error
 
-  publish_release:
-    name: "Publish release"
+  release:
+    name: "Release"
     needs:
       - gh_release
       - build
@@ -485,17 +485,17 @@ jobs:
       contents: write
       id-token: write
     env:
-      PUBLISH_ARTIFACTS: "true"
-    steps: &publish_steps
+      UPLOAD_ARTIFACTS: "true"
+    steps: &release_steps
       - name: "Download bundles"
-        if: env.PUBLISH_ARTIFACTS == 'true'
+        if: env.UPLOAD_ARTIFACTS == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
           merge-multiple: true
 
       - name: "Upload release artifacts"
-        if: env.PUBLISH_ARTIFACTS == 'true'
+        if: env.UPLOAD_ARTIFACTS == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.gh_release.outputs.version }}
@@ -545,5 +545,5 @@ jobs:
       contents: write
       id-token: write
     env:
-      PUBLISH_ARTIFACTS: "false"
-    steps: *publish_steps
+      UPLOAD_ARTIFACTS: "false"
+    steps: *release_steps

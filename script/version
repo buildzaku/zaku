@@ -100,12 +100,12 @@ if [[ "$branch" != "$release_branch" ]]; then
 fi
 target_version=$(cargo app-version "$version_operation" "$current_version" "$version_argument")
 
-published_version=$(cargo app-version latest "$source_channel" --active)
-if [[ -z "$published_version" ]]; then
+active_version=$(cargo app-version latest "$source_channel" --active)
+if [[ -z "$active_version" ]]; then
   echo "There is no active release for the $source_channel channel" >&2
   exit 1
 fi
-if [[ "$published_version" != "$current_version" ]]; then
+if [[ "$active_version" != "$current_version" ]]; then
   echo "$branch is not the latest $source_channel release branch" >&2
   exit 1
 fi
