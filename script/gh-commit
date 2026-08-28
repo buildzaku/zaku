@@ -101,13 +101,12 @@ for file_path in "${file_paths[@]}"; do
     exit 1
   fi
 
-  file_content=$(base64 <"$file_path" | tr -d '\n')
-  blob_request=$(jq --null-input --arg content "$file_content" '{content: $content, encoding: "base64"}')
+  blob_request=$(base64 <"$file_path" | tr -d '\n' | jq --raw-input --slurp '{content: ., encoding: "base64"}')
   blob_sha=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/blobs" --input - --jq .sha <<<"$blob_request")
   tree_entries=$(jq --arg mode "$file_mode" --arg path "$file_path" --arg sha "$blob_sha" '. + [{mode: $mode, path: $path, sha: $sha, type: "blob"}]' <<<"$tree_entries")
 done
 
-tree_request=$(jq --null-input --arg base_tree "$parent_tree_sha" --argjson tree "$tree_entries" '{base_tree: $base_tree, tree: $tree}')
+tree_request=$(jq --arg base_tree "$parent_tree_sha" '{base_tree: $base_tree, tree: .}' <<<"$tree_entries")
 tree_sha=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${repository}/git/trees" --input - --jq .sha <<<"$tree_request")
 if [[ "$tree_sha" == "$parent_tree_sha" ]]; then
   echo "No changes to commit" >&2
