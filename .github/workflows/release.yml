@@ -119,7 +119,7 @@ jobs:
           MAIN_BRANCH: ${{ steps.create_branches.outputs.main_branch }}
           MAIN_VERSION: ${{ steps.create_branches.outputs.main_version }}
         run: |
-          pull_request_url=$(gh pr list --base main --head "$MAIN_BRANCH" --repo "$GITHUB_REPOSITORY" --state open --json url --jq '.[0].url // empty')
+          pull_request_url=$(gh pr list --base main --head "$MAIN_BRANCH" --repo "$GITHUB_REPOSITORY" --state open --json isCrossRepository,url --jq '[.[] | select(.isCrossRepository == false)][0].url // empty')
           if [[ -z "$pull_request_url" ]]; then
             pull_request_url=$(gh pr create --base main --body "" --head "$MAIN_BRANCH" --repo "$GITHUB_REPOSITORY" --title "Update Zaku to $MAIN_VERSION")
           fi
