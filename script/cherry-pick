@@ -63,13 +63,20 @@ git fetch --depth 2 origin "+${commit_sha}" "$target_branch" >&2
 short_sha=$(git rev-parse --short "$commit_sha")
 cherry_pick_branch="cherry-pick-${target_branch}-${short_sha}"
 
-pull_request_url=$(gh pr list --base "$target_branch" --head "$cherry_pick_branch" --state open --json url --jq '.[0].url')
+pull_request_url=$(gh pr list --base "$target_branch" --head "$cherry_pick_branch" --state open --json isCrossRepository,url --jq '[.[] | select(.isCrossRepository == false)][0].url // empty')
 if [[ -z "$pull_request_url" ]]; then
-  if ! git ls-remote --exit-code --branches origin "refs/heads/${cherry_pick_branch}" >/dev/null 2>&1; then
-    git switch --create "$cherry_pick_branch" "origin/$target_branch" >&2
-    git cherry-pick "$commit_sha" >&2
-    git push origin "$cherry_pick_branch" >&2
+  if ! remote_branch=$(git ls-remote --branches origin "refs/heads/${cherry_pick_branch}"); then
+    echo "Could not inspect origin branch: $cherry_pick_branch" >&2
+    exit 1
   fi
+  if [[ -n "$remote_branch" ]]; then
+    echo "Cherry-pick branch already exists on origin: $cherry_pick_branch" >&2
+    exit 1
+  fi
+
+  git switch --create "$cherry_pick_branch" "origin/$target_branch" >&2
+  git cherry-pick "$commit_sha" >&2
+  git push origin "$cherry_pick_branch" >&2
 
   pull_request_title=$(git log -1 --format=%s "$commit_sha")
   pull_request_body=$(git log -1 --format=%b "$commit_sha")
