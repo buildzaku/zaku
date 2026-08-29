@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feature Request
+    url: https://github.com/buildzaku/zaku/discussions/new?category=feature-request
+    about: Share ideas for new features.
+  - name: Question
+    url: https://github.com/buildzaku/zaku/discussions/new?category=question
+    about: Ask the community for help.

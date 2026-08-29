@@ -1,0 +1,75 @@
+name: Bug Report
+description: Existing features that aren't working as expected.
+type: Bug
+labels: "S-needs-triage"
+body:
+  - type: textarea
+    attributes:
+      label: Reproduction steps
+      description: A step-by-step description of how to reproduce the bug from a **clean Zaku install**. The more context you provide, the easier it is to find and fix the problem fast.
+      placeholder: |
+        1. Start Zaku
+        2. Click X
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Current vs. expected behavior
+      description: |
+        Current behavior (screenshots, videos, etc.) vs. what you expected the behavior to be.
+      placeholder: |
+        Current behavior:
+        Releasing the mouse outside the window during a text selection leaves the response headers stuck selecting.
+        <!-- Screenshot or Screen Recording -->
+
+        Expected behavior:
+        Selection should end when the mouse is released.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Zaku version and system specs
+      description: |
+        Open the command palette in Zaku, then type `zaku: copy system specs into clipboard`.
+      placeholder: |
+        Zaku: 26.0 (0123456789abcdef0123456789abcdef01234567)
+        OS: macOS 26.6
+        Memory: 16 GiB
+        Architecture: aarch64
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Zaku logs
+      description: |
+        Open the command palette in Zaku, then type `zaku: open logs` to see up to the last 1000 lines.
+
+        ⚠️ **Please review your log output for secrets (API keys, tokens, etc.) and partially or fully redact them before posting.**
+      value: |
+        <details><summary>Zaku.log</summary>
+
+        <!-- Paste your log inside the code block. -->
+        ```log
+
+        ```
+
+        </details>
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Relevant Zaku settings
+      description: |
+        Open the command palette in Zaku, then type `zaku: open settings file` and copy/paste any relevant settings.
+      value: |
+        <details><summary>settings.jsonc</summary>
+
+        <!-- Paste your settings inside the code block. -->
+        ```jsonc
+
+        ```
+
+        </details>
+    validations:
+      required: false
