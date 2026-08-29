@@ -112,14 +112,6 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
-pub fn os_name() -> String {
-    System::name().unwrap_or_else(|| env::consts::OS.to_string())
-}
-
-pub fn os_version() -> String {
-    System::long_os_version().unwrap_or_else(|| "unknown".to_string())
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GpuInfo {
     pub device_name: Option<String>,

@@ -134,8 +134,8 @@ pub fn init(cx: &mut App) {
                 let specs = SystemSpecs::new(
                     window,
                     cx,
-                    system_specs::os_name(),
-                    system_specs::os_version(),
+                    client::telemetry::os_name(),
+                    client::telemetry::os_version(),
                 );
 
                 cx.spawn_in(window, async move |_, cx| {
