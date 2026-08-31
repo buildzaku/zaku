@@ -1,9 +1,8 @@
 use anyhow::Context as _;
-use gpui::{
-    App, Context, Entity, EventEmitter, Global, SharedString, Task, WeakEntity, Window, prelude::*,
-};
+use gpui::{App, Context, Entity, EventEmitter, Global, SharedString, Task, Window, prelude::*};
 use std::sync::Arc;
 
+use editor::Editor;
 use fs::Fs;
 use migrator::{migrate_keymap, migrate_settings};
 use settings::{KeymapFile, SettingsStore};
@@ -13,7 +12,7 @@ use ui::{
     IconSize, Text, TextCommon,
 };
 use workspace::{
-    AppState, ItemHandle, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView, Workspace,
+    AppState, ItemHandle, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView,
     notifications::DetachAndPromptErr,
 };
 
@@ -50,14 +49,13 @@ pub(crate) enum MigrationType {
 }
 
 pub(crate) struct MigrationBanner {
-    workspace: WeakEntity<Workspace>,
     migration_type: Option<MigrationType>,
     should_migrate_task: Option<Task<()>>,
     message: Option<SharedString>,
 }
 
 impl MigrationBanner {
-    pub(crate) fn new(workspace: WeakEntity<Workspace>, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         if let Some(notifier) = MigrationNotification::try_global(cx) {
             cx.subscribe(
                 &notifier,
@@ -68,7 +66,6 @@ impl MigrationBanner {
             .detach();
         }
         Self {
-            workspace,
             migration_type: None,
             should_migrate_task: None,
             message: None,
@@ -148,14 +145,10 @@ impl ToolbarItemView for MigrationBanner {
     ) -> ToolbarItemLocation {
         self.reset(cx);
 
-        let Some(project_path) = active_pane_item.and_then(|item| item.project_path(cx)) else {
-            return ToolbarItemLocation::Hidden;
-        };
-        let Some(workspace) = self.workspace.upgrade() else {
-            return ToolbarItemLocation::Hidden;
-        };
-        let project = workspace.read(cx).project().clone();
-        let Some(target) = project.read(cx).absolute_path(&project_path, cx) else {
+        let Some(target) = active_pane_item
+            .and_then(|item| item.downcast::<Editor>())
+            .and_then(|editor| editor.update(cx, |editor, cx| editor.target_file_abs_path(cx)))
+        else {
             return ToolbarItemLocation::Hidden;
         };
 

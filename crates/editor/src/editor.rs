@@ -569,6 +569,12 @@ impl Editor {
         self.buffer.read(cx).snapshot(cx)
     }
 
+    pub fn target_file_abs_path(&self, cx: &mut Context<Self>) -> Option<PathBuf> {
+        let buffer = self.buffer.read(cx).as_singleton()?;
+        let buffer = buffer.read(cx);
+        Some(buffer.file()?.abs_path(cx))
+    }
+
     pub fn snapshot(&self, _window: &Window, cx: &mut App) -> EditorSnapshot {
         let display_snapshot = self
             .display_map

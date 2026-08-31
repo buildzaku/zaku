@@ -7,7 +7,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use db::{AppDatabase, kv::KeyValueStore};
-use fs::TempFs;
+use fs::{Fs, TempFs};
 use http_client::{AsyncBody, FakeHttpClient, Response, StatusCode};
 use path::rel_path;
 use project::ProjectPath;
@@ -325,7 +325,7 @@ async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
     let response_panel = open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
-        .expect("response panel should be registered");
+        .unwrap();
     open_result.workspace.read_with(cx, |workspace, cx| {
         let response_panel_id = Entity::entity_id(&response_panel);
         let active_panel_id = workspace
@@ -410,7 +410,7 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
     let response_panel = open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
-        .expect("response panel should be registered");
+        .unwrap();
 
     open_path(
         &open_result,
@@ -525,7 +525,7 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
     let response_panel = open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
-        .expect("response panel should be registered");
+        .unwrap();
     let pane = open_result
         .workspace
         .read_with(cx, |workspace, _| workspace.pane().clone());
@@ -668,7 +668,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     let response_panel = open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
-        .expect("response panel should be registered");
+        .unwrap();
 
     open_path(
         &open_result,
@@ -965,7 +965,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
     let response_panel = open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
-        .expect("response panel should be registered");
+        .unwrap();
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1003,7 +1003,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
     let response_panel = open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
-        .expect("response panel should be registered");
+        .unwrap();
     let pane = open_result
         .workspace
         .read_with(cx, |workspace, _| workspace.pane().clone());
@@ -1147,7 +1147,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
     let response_panel = open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
-        .expect("response panel should be registered");
+        .unwrap();
     let pane = open_result
         .workspace
         .read_with(cx, |workspace, _| workspace.pane().clone());
@@ -1224,4 +1224,116 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
     }));
+}
+
+#[gpui::test]
+async fn test_trash_delete_with_active_pane_item(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            "collection": {
+                "first.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/first"
+                "#},
+                "second.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/second"
+                "#},
+            },
+            "settings.jsonc": "{}",
+        }),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let (open_result, worktree) = open_workspace(project_path, app_state, cx).await;
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let first_request_path = ProjectPath::from((worktree_id, rel_path("collection/first.toml")));
+    let second_request_path = ProjectPath::from((worktree_id, rel_path("collection/second.toml")));
+    let settings_path = ProjectPath::from((worktree_id, rel_path("settings.jsonc")));
+
+    open_path(&open_result, first_request_path.clone(), cx).await;
+    open_path(&open_result, second_request_path.clone(), cx).await;
+    open_path(&open_result, settings_path.clone(), cx).await;
+    activate_item_for_path(&open_result, "collection/first.toml", cx);
+
+    let pane = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.pane().clone());
+    assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 3);
+    assert_eq!(
+        pane.read_with(cx, |pane, cx| {
+            pane.active_item().and_then(|item| item.project_path(cx))
+        }),
+        Some(first_request_path.clone())
+    );
+
+    let project = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.project().clone());
+    let entry_id = project.read_with(cx, |project, cx| {
+        project.entry_for_path(&first_request_path, cx).unwrap().id
+    });
+    project
+        .update(cx, |project, cx| {
+            project.delete_entry(entry_id, false, cx).unwrap()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 2);
+    assert_eq!(
+        pane.read_with(cx, |pane, cx| {
+            pane.active_item().and_then(|item| item.project_path(cx))
+        }),
+        Some(second_request_path.clone())
+    );
+    assert!(
+        temp_fs
+            .metadata("project/collection/first.toml".as_ref())
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let entry_id = project.read_with(cx, |project, cx| {
+        project.entry_for_path(&second_request_path, cx).unwrap().id
+    });
+    project
+        .update(cx, |project, cx| {
+            project.delete_entry(entry_id, true, cx).unwrap()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 1);
+    assert_eq!(
+        pane.read_with(cx, |pane, cx| {
+            pane.active_item().and_then(|item| item.project_path(cx))
+        }),
+        Some(settings_path)
+    );
+    assert!(
+        temp_fs
+            .metadata("project/collection/second.toml".as_ref())
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
