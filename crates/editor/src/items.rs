@@ -560,6 +560,7 @@ mod tests {
         });
 
         editor.update(cx, |editor, cx| {
+            assert_eq!(editor.target_file_abs_path(cx), Some(settings_path.clone()));
             assert_eq!(
                 editor.breadcrumb_location(cx),
                 ToolbarItemLocation::PrimaryLeft

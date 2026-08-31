@@ -215,14 +215,12 @@ fn init_window_appearance(cx: &mut App) {
 }
 
 fn initialize_pane_toolbar(pane: &Entity<Pane>, window: &mut Window, cx: &mut Context<Workspace>) {
-    let workspace_handle = cx.weak_entity();
     pane.update(cx, |pane, cx| {
         pane.toolbar().update(cx, |toolbar, cx| {
             let breadcrumbs = cx.new(|_| Breadcrumbs::new());
             toolbar.add_item(breadcrumbs, window, cx);
 
-            let migration_banner =
-                cx.new(move |inner_cx| MigrationBanner::new(workspace_handle, inner_cx));
+            let migration_banner = cx.new(MigrationBanner::new);
             toolbar.add_item(migration_banner, window, cx);
         });
     });

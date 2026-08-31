@@ -457,7 +457,7 @@ impl BufferStore {
 
 impl EventEmitter<BufferStoreEvent> for BufferStore {}
 
-fn is_not_found_error(error: &anyhow::Error) -> bool {
+pub(super) fn is_not_found_error(error: &anyhow::Error) -> bool {
     error
         .root_cause()
         .downcast_ref::<io::Error>()

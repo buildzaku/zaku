@@ -34,7 +34,7 @@ use path::{PathStyle, RelPath};
 use util::ResultExt;
 
 use crate::{
-    buffer_store::{BufferStore, BufferStoreEvent},
+    buffer_store::{BufferStore, BufferStoreEvent, is_not_found_error},
     git_store::GitStore,
     request_buffer_store::{RequestBufferStore, RequestBufferStoreEvent},
     worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent},
@@ -638,15 +638,16 @@ impl Project {
         let entry_id = entry.id;
         let version_for_task = version.clone();
         let metadata_task = cx.spawn(async move |this, cx| {
-            let request_file = match load_file_task.await.log_err() {
-                Some(loaded) => {
+            let request_file = match load_file_task.await {
+                Ok(loaded) => {
                     let parse_task =
                         cx.background_spawn(
                             async move { worktree::parse_request_file(&loaded.text) },
                         );
                     Some(parse_task.await)
                 }
-                None => None,
+                Err(error) if is_not_found_error(&error) => None,
+                Err(error) => Err(error).log_err(),
             };
 
             this.update(cx, |this, cx| {
