@@ -113,6 +113,7 @@ jsonc-parser = { version = "0.32", features = [
   "serde",
   "serde_json",
 ] }
+junkyard = { version = "0.1" }
 libc = { version = "0.2" }
 libsqlite3-sys = { version = "0.38", features = ["bundled"] }
 log = { version = "0.4" }
@@ -166,7 +167,6 @@ thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
 toml = { version = "1.1" }
 toml_edit = { version = "0.25", features = ["serde"] }
-trash = { version = "5.2" }
 tree-sitter = { version = "0.26" }
 tree-sitter-html = { version = "0.23" }
 tree-sitter-json = { version = "0.24" }

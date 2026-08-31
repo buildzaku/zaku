@@ -1,13 +1,13 @@
 use futures::{FutureExt, StreamExt};
 use gpui::{BackgroundExecutor, TestAppContext};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::path::PathBuf;
 use std::{collections::BTreeSet, time::Duration};
 use tempfile::TempDir;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::path::PathBuf;
-
+use fs::RemoveOptions;
 use fs::{Fs, NativeFs, PathEventKind, RenameOptions};
-
 #[cfg(target_os = "windows")]
 use path::SanitizedPath;
 
@@ -164,6 +164,31 @@ async fn test_native_fs_self_referential_symlink_metadata(executor: BackgroundEx
     assert!(!metadata.is_dir);
     assert!(!metadata.is_fifo);
     assert!(!metadata.is_executable);
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[gpui::test]
+async fn test_native_fs_trash_preserves_symlink_target(
+    executor: BackgroundExecutor,
+    cx: &mut TestAppContext,
+) {
+    cx.executor().allow_parking();
+
+    let temp_dir = TempDir::new().unwrap();
+    let fs = NativeFs::new(executor);
+    let target_path = temp_dir.path().join("target.txt");
+    let symlink_path = temp_dir.path().join("symlink.txt");
+
+    std::fs::write(&target_path, "content").unwrap();
+    smol::block_on(fs.create_symlink(&symlink_path, target_path.clone())).unwrap();
+
+    fs.trash(&symlink_path, RemoveOptions::default())
+        .await
+        .unwrap();
+
+    let error = std::fs::symlink_metadata(&symlink_path).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    assert_eq!(std::fs::read_to_string(&target_path).unwrap(), "content");
 }
 
 #[gpui::test]

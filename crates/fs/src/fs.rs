@@ -2,7 +2,7 @@ pub mod fs_watcher;
 
 use anyhow::{Context, anyhow};
 use async_trait::async_trait;
-use futures::{FutureExt, Stream, StreamExt, channel::oneshot, future::BoxFuture};
+use futures::{FutureExt, Stream, StreamExt, future::BoxFuture};
 use gpui::BackgroundExecutor;
 use is_executable::IsExecutable;
 use parking_lot::Mutex;
@@ -673,25 +673,13 @@ impl Fs for NativeFs {
         Ok(())
     }
 
-    async fn trash(&self, path: &Path, _options: RemoveOptions) -> anyhow::Result<()> {
-        let path = self
-            .canonicalize(path)
+    async fn trash(&self, path: &Path, _: RemoveOptions) -> anyhow::Result<()> {
+        let path = path.to_path_buf();
+
+        smol::unblock(move || junkyard::discard(path))
             .await
-            .context("Could not canonicalize the path of the file")?;
-
-        let (tx, rx) = oneshot::channel();
-        std::thread::Builder::new()
-            .name("trash file or dir".to_string())
-            .spawn(move || {
-                if tx.send(trash::delete(path)).is_err() {
-                    log::trace!("Trash receiver dropped");
-                }
-            })
-            .context("Failed to spawn trash thread")?;
-
-        rx.await
-            .context("Trash sender dropped")?
-            .context("Could not trash file or dir")
+            .context("failed to trash file or directory")
+            .map(|_| ())
     }
 
     async fn remove_dir(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {
