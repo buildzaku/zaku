@@ -9,7 +9,6 @@ use strum::{EnumIter, EnumString, IntoStaticStr};
 #[serde(rename_all = "snake_case")]
 pub enum SvgAsset {
     Zaku,
-    ZakuLogo,
 }
 
 impl SvgAsset {
@@ -21,7 +20,6 @@ impl SvgAsset {
     pub fn aspect_ratio(self) -> f32 {
         match self {
             SvgAsset::Zaku => 70.0 / 32.0,
-            SvgAsset::ZakuLogo => 1.0,
         }
     }
 }
