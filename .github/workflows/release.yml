@@ -89,7 +89,18 @@ jobs:
           fi
 
           files=(Cargo.toml Cargo.lock)
-          cargo set-version --workspace "$release_long_version"
+          if [[ "$BUMP_YEAR" == "true" ]]; then
+            cargo set-version --workspace "$release_long_version"
+          elif [[ "$CHANNEL" == "beta" ]]; then
+            cargo set-version --workspace --bump beta
+          else
+            cargo set-version --workspace --bump release
+          fi
+          actual_version=$(cargo app-version show)
+          if [[ "$actual_version" != "$release_version" ]]; then
+            echo "::error::Expected Zaku $release_version, found $actual_version"
+            exit 1
+          fi
           expected_files=$(printf '%s\n' "${files[@]}" | sort)
           changed_files=$(git diff --name-only | sort)
           if [[ "$changed_files" != "$expected_files" ]]; then
@@ -101,6 +112,11 @@ jobs:
 
           git restore --source "$source_sha" -- "${files[@]}"
           cargo set-version --workspace "$main_long_version"
+          actual_version=$(cargo app-version show)
+          if [[ "$actual_version" != "$main_version" ]]; then
+            echo "::error::Expected Zaku $main_version, found $actual_version"
+            exit 1
+          fi
           changed_files=$(git diff --name-only | sort)
           if [[ "$changed_files" != "$expected_files" ]]; then
             echo "::error::Unexpected file changes on main"

@@ -57,16 +57,19 @@ jobs:
               source_channel=stable
               version_operation=bump
               version_argument=patch
+              cargo_bump=patch
               ;;
             "bump beta")
               source_channel=beta
               version_operation=bump
               version_argument=beta
+              cargo_bump=beta
               ;;
             "promote stable")
               source_channel=beta
               version_operation=promote
               version_argument=stable
+              cargo_bump=release
               ;;
             *)
               echo "::error::Unsupported version command: $COMMAND"
@@ -82,7 +85,6 @@ jobs:
           fi
 
           version=$(cargo app-version "$version_operation" "$current_version" "$version_argument")
-          long_version=$(cargo app-version show "$version" --long)
 
           active_version=$(cargo app-version latest "$source_channel" --active)
           if [[ -z "$active_version" ]]; then
@@ -95,7 +97,12 @@ jobs:
           fi
 
           files=(Cargo.toml Cargo.lock)
-          cargo set-version --workspace "$long_version"
+          cargo set-version --workspace --bump "$cargo_bump"
+          actual_version=$(cargo app-version show)
+          if [[ "$actual_version" != "$version" ]]; then
+            echo "::error::Expected Zaku $version, found $actual_version"
+            exit 1
+          fi
           expected_files=$(printf '%s\n' "${files[@]}" | sort)
           changed_files=$(git diff --name-only | sort)
           if [[ "$changed_files" != "$expected_files" ]]; then
