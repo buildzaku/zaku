@@ -63,7 +63,7 @@ members = [
 default-members = ["crates/zaku"]
 
 [workspace.package]
-version = "26.0.0-dev"
+version = "26.1.0-dev"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/buildzaku/zaku"
 edition = "2024"
