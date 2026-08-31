@@ -60,6 +60,8 @@
   {
     "context": "Pane",
     "bindings": {
+      "ctrl-pageup": "pane::ActivatePreviousItem",
+      "ctrl-pagedown": "pane::ActivateNextItem",
       "ctrl-f4": "pane::CloseActiveItem",
       "ctrl-w": "pane::CloseActiveItem",
       "ctrl-k w": "pane::CloseAllItems"

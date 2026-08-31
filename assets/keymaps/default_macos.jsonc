@@ -59,6 +59,10 @@
     "context": "Pane",
     "use_key_equivalents": true,
     "bindings": {
+      "alt-cmd-left": "pane::ActivatePreviousItem",
+      "cmd-{": "pane::ActivatePreviousItem",
+      "alt-cmd-right": "pane::ActivateNextItem",
+      "cmd-}": "pane::ActivateNextItem",
       "cmd-w": "pane::CloseActiveItem",
       "cmd-k w": "pane::CloseAllItems"
     }

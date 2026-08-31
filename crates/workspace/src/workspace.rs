@@ -3433,6 +3433,72 @@ mod tests {
     }
 
     #[gpui::test]
+    fn test_activate_item_with_wrap_around(cx: &mut TestAppContext) {
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
+
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
+        let (workspace, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        add_labeled_item(&pane, "First", false, cx);
+        add_labeled_item(&pane, "Second", false, cx);
+        add_labeled_item(&pane, "Third", false, cx);
+        assert_item_labels(&pane, ["First", "Second", "Third*"], cx);
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.activate_next_item(
+                &actions::pane::ActivateNextItem { wrap_around: false },
+                window,
+                cx,
+            );
+        });
+        assert_item_labels(&pane, ["First", "Second", "Third*"], cx);
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.activate_next_item(&actions::pane::ActivateNextItem::default(), window, cx);
+        });
+        assert_item_labels(&pane, ["First*", "Second", "Third"], cx);
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.activate_previous_item(
+                &actions::pane::ActivatePreviousItem { wrap_around: false },
+                window,
+                cx,
+            );
+        });
+        assert_item_labels(&pane, ["First*", "Second", "Third"], cx);
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.activate_previous_item(
+                &actions::pane::ActivatePreviousItem::default(),
+                window,
+                cx,
+            );
+        });
+        assert_item_labels(&pane, ["First", "Second", "Third*"], cx);
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.activate_previous_item(
+                &actions::pane::ActivatePreviousItem { wrap_around: false },
+                window,
+                cx,
+            );
+        });
+        assert_item_labels(&pane, ["First", "Second*", "Third"], cx);
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.activate_next_item(
+                &actions::pane::ActivateNextItem { wrap_around: false },
+                window,
+                cx,
+            );
+        });
+        assert_item_labels(&pane, ["First", "Second", "Third*"], cx);
+    }
+
+    #[gpui::test]
     async fn test_close_all_items(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 

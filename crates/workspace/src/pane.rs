@@ -481,6 +481,36 @@ impl Pane {
         cx.notify();
     }
 
+    pub fn activate_previous_item(
+        &mut self,
+        action: &actions::pane::ActivatePreviousItem,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut index = self.active_item_index;
+        if index > 0 {
+            index -= 1;
+        } else if action.wrap_around && !self.items.is_empty() {
+            index = self.items.len() - 1;
+        }
+        self.activate_item(index, true, true, window, cx);
+    }
+
+    pub fn activate_next_item(
+        &mut self,
+        action: &actions::pane::ActivateNextItem,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut index = self.active_item_index;
+        if index + 1 < self.items.len() {
+            index += 1;
+        } else if action.wrap_around {
+            index = 0;
+        }
+        self.activate_item(index, true, true, window, cx);
+    }
+
     fn update_toolbar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let active_item = self
             .items
@@ -1185,6 +1215,8 @@ impl Render for Pane {
         gpui::div()
             .track_focus(&self.focus_handle)
             .key_context("Pane")
+            .on_action(cx.listener(Self::activate_previous_item))
+            .on_action(cx.listener(Self::activate_next_item))
             .on_action(cx.listener(
                 |pane: &mut Self, action: &actions::pane::CloseActiveItem, window, cx| {
                     pane.close_active_item(action, window, cx)
