@@ -97,7 +97,7 @@ gpui = { git = "https://github.com/zed-industries/zed", rev = "f66ed399cd", pack
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "f66ed399cd", package = "gpui_platform" }
 gpui_util = { git = "https://github.com/zed-industries/zed", rev = "f66ed399cd", package = "gpui_util" }
 hex = { version = "0.4" }
-http = { version = "1.4" }
+http = { version = "1.5" }
 http-body = { version = "1.0" }
 ignore = { version = "0.4" }
 imara-diff = { version = "0.2" }
