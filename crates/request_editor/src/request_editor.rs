@@ -1779,6 +1779,7 @@ impl RequestEditor {
                 Method::DELETE,
                 Method::HEAD,
                 Method::OPTIONS,
+                Method::QUERY,
             ];
             let selected_request_method = request.http.method.clone();
             let request_editor = cx.weak_entity();

@@ -144,6 +144,7 @@ pub fn request_method_short_name(method: &str) -> String {
         "DELETE" => "DEL".to_string(),
         "HEAD" => "HEAD".to_string(),
         "OPTIONS" => "OPT".to_string(),
+        "QUERY" => "QURY".to_string(),
         _ => method.chars().take(4).collect(),
     }
 }
