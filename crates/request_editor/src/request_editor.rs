@@ -27,6 +27,7 @@ use project::{
 };
 use response_panel::{
     Response, ResponseCookie, ResponseHeader, ResponsePanel, ResponsePanelTab, ResponseState,
+    format_json,
 };
 use theme::ActiveTheme;
 use ui::{
@@ -1069,7 +1070,13 @@ impl RequestEditor {
                                 },
                                 cx,
                             );
-                            response.set_payload(request_id, "Error: invalid URL", None, cx);
+                            response.set_payload(
+                                request_id,
+                                "Error: invalid URL".to_owned(),
+                                None,
+                                None,
+                                cx,
+                            );
                         });
                         return;
                     };
@@ -1108,6 +1115,7 @@ impl RequestEditor {
                                 response.set_payload(
                                     request_id,
                                     format!("Error: {error}"),
+                                    None,
                                     None,
                                     cx,
                                 );
@@ -1156,6 +1164,7 @@ impl RequestEditor {
                                             response.set_payload(
                                                 request_id,
                                                 payload,
+                                                None,
                                                 None,
                                                 cx,
                                             );
@@ -1313,6 +1322,12 @@ impl RequestEditor {
                             },
                         ),
                     };
+                    let pretty_payload =
+                        (read_succeeded && language_name == Some("JSON")).then(|| {
+                            let payload = payload.clone();
+                            cx.background_executor()
+                                .spawn(async move { format_json(&payload).unwrap_or(payload) })
+                        });
                     let language = if read_succeeded {
                         match language {
                             Some(language) => language.await,
@@ -1321,10 +1336,20 @@ impl RequestEditor {
                     } else {
                         None
                     };
+                    let pretty_payload = match pretty_payload {
+                        Some(pretty_payload) => Some(pretty_payload.await),
+                        None => None,
+                    };
 
                     response.update(cx, |response, cx| {
-                        response.set_state(request_id, response_state, cx);
-                        response.set_payload(request_id, payload, language, cx);
+                        response.set_state(request_id, response_state, cx)
+                            && response.set_payload(
+                                request_id,
+                                payload,
+                                pretty_payload,
+                                language,
+                                cx,
+                            )
                     });
                 }
             })

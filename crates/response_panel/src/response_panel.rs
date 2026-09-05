@@ -1,9 +1,12 @@
 use gpui::{
-    Action, AnyElement, App, Context, DefiniteLength, ElementId, Entity, FocusHandle, Focusable,
-    FontWeight, ListAlignment, ListState, Pixels, Render, SharedString, Subscription, Window,
-    prelude::*,
+    Action, Anchor, AnyElement, App, Context, DefiniteLength, ElementId, Entity, FocusHandle,
+    Focusable, FontWeight, ListAlignment, ListState, Pixels, Render, SharedString, Subscription,
+    Window, prelude::*,
 };
 use num_traits::ToPrimitive;
+use oxc_allocator::Allocator;
+use oxc_formatter_json::{JsonFormatOptions, JsonVariant};
+use serde::de::IgnoredAny;
 use std::{rc::Rc, sync::Arc, time::Duration};
 
 use editor::Editor;
@@ -12,7 +15,8 @@ use language::{Buffer, Language, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{
-    Color, ColumnWidthConfig, DynamicSpacing, IconAsset, Indicator, KeyBinding, LineHeightStyle,
+    Button, ButtonCommon, ButtonVariant, Color, ColumnWidthConfig, ContextMenu, DynamicSpacing,
+    IconAsset, IconPosition, IconSize, Indicator, KeyBinding, LineHeightStyle, PopoverMenu,
     ScrollAxes, Scrollbars, SelectableText, SelectableTextGroup, Table, TableCell,
     TableInteractionState, Text, TextCommon, TextInteractionState, TextSize,
 };
@@ -37,6 +41,34 @@ pub fn init(cx: &mut App) {
         },
     )
     .detach();
+}
+
+pub fn format_json(content: &str) -> Option<String> {
+    if serde_json::from_str::<IgnoredAny>(content).is_err() {
+        return None;
+    }
+
+    let allocator = Allocator::new();
+    let options = JsonFormatOptions {
+        variant: JsonVariant::JsonStringify,
+        ..JsonFormatOptions::default()
+    };
+    let formatted = match oxc_formatter_json::format(&allocator, content, options) {
+        Ok(formatted) => formatted,
+        Err(error) => {
+            log::debug!("Failed to format JSON response: {error:?}");
+            return None;
+        }
+    };
+    let printed = match formatted.print() {
+        Ok(printed) => printed,
+        Err(error) => {
+            log::debug!("Failed to print formatted JSON response: {error:?}");
+            return None;
+        }
+    };
+
+    Some(printed.into_code())
 }
 
 fn format_bytes_received(bytes_received: u64) -> SharedString {
@@ -86,6 +118,12 @@ pub enum ResponsePanelTab {
     Body,
     Headers,
     Cookies,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ResponseDisplayMode {
+    Pretty,
+    Raw,
 }
 
 #[derive(Clone)]
@@ -279,8 +317,11 @@ impl ResponseState {
 pub struct Response {
     request_id: usize,
     state: ResponseState,
-    editor: Entity<Editor>,
-    payload: Entity<MultiBuffer>,
+    display_mode: ResponseDisplayMode,
+    pretty_editor: Entity<Editor>,
+    pretty_payload: Entity<MultiBuffer>,
+    raw_editor: Entity<Editor>,
+    raw_payload: Entity<MultiBuffer>,
     summary_text: Entity<TextInteractionState<ResponseSummaryTextId>>,
     headers: Vec<ResponseHeader>,
     headers_table: Entity<TableInteractionState>,
@@ -292,7 +333,8 @@ pub struct Response {
 
 impl Response {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let (editor, payload) = Self::new_editor(window, cx);
+        let (pretty_editor, pretty_payload) = Self::new_editor(PLAIN_TEXT.clone(), window, cx);
+        let (raw_editor, raw_payload) = Self::new_editor(PLAIN_TEXT.clone(), window, cx);
         let response_id = cx.entity_id();
         let summary_text: Entity<TextInteractionState<ResponseSummaryTextId>> =
             cx.new(|cx| TextInteractionState::new(cx));
@@ -314,8 +356,11 @@ impl Response {
         Self {
             request_id: 0,
             state: ResponseState::default(),
-            editor,
-            payload,
+            display_mode: ResponseDisplayMode::Pretty,
+            pretty_editor,
+            pretty_payload,
+            raw_editor,
+            raw_payload,
             summary_text,
             headers: Vec::new(),
             headers_table,
@@ -326,9 +371,13 @@ impl Response {
         }
     }
 
-    fn new_editor(window: &mut Window, cx: &mut App) -> (Entity<Editor>, Entity<MultiBuffer>) {
+    fn new_editor(
+        language: Arc<Language>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (Entity<Editor>, Entity<MultiBuffer>) {
         let payload = cx.new(move |cx| {
-            let buffer = cx.new(|cx| Buffer::local("", cx).with_language(PLAIN_TEXT.clone(), cx));
+            let buffer = cx.new(|cx| Buffer::local("", cx).with_language(language, cx));
             MultiBuffer::singleton(buffer, cx)
         });
         let editor = cx.new(|cx| {
@@ -352,7 +401,10 @@ impl Response {
     }
 
     fn editor(&self) -> Entity<Editor> {
-        self.editor.clone()
+        match self.display_mode {
+            ResponseDisplayMode::Pretty => self.pretty_editor.clone(),
+            ResponseDisplayMode::Raw => self.raw_editor.clone(),
+        }
     }
 
     fn headers(&self) -> &[ResponseHeader] {
@@ -448,12 +500,26 @@ impl Response {
     }
 
     pub fn text(&self, cx: &App) -> String {
-        self.payload.read(cx).snapshot(cx).text()
+        self.raw_payload.read(cx).snapshot(cx).text()
     }
 
     pub fn begin_response(&mut self, window: &mut Window, cx: &mut Context<Self>) -> usize {
-        let was_focused = self.editor.focus_handle(cx).contains_focused(window, cx);
-        let (editor, payload) = Self::new_editor(window, cx);
+        let was_pretty_focused = self
+            .pretty_editor
+            .focus_handle(cx)
+            .contains_focused(window, cx);
+        let was_raw_focused = self
+            .raw_editor
+            .focus_handle(cx)
+            .contains_focused(window, cx);
+        let language = self
+            .raw_payload
+            .read(cx)
+            .as_singleton()
+            .and_then(|buffer| buffer.read(cx).language().cloned())
+            .unwrap_or_else(|| PLAIN_TEXT.clone());
+        let (pretty_editor, pretty_payload) = Self::new_editor(language.clone(), window, cx);
+        let (raw_editor, raw_payload) = Self::new_editor(language, window, cx);
         let request_id = self.request_id.wrapping_add(1);
 
         self.request_id = request_id;
@@ -465,10 +531,15 @@ impl Response {
         self.clear_summary_text_selection(cx);
         self.clear_headers_text_selection(cx);
         self.clear_cookies_text_selection(cx);
-        self.editor = editor;
-        self.payload = payload;
-        if was_focused {
-            let focus_handle = self.editor.focus_handle(cx);
+        self.pretty_editor = pretty_editor;
+        self.pretty_payload = pretty_payload;
+        self.raw_editor = raw_editor;
+        self.raw_payload = raw_payload;
+        if was_pretty_focused {
+            let focus_handle = self.pretty_editor.focus_handle(cx);
+            window.focus(&focus_handle, cx);
+        } else if was_raw_focused {
+            let focus_handle = self.raw_editor.focus_handle(cx);
             window.focus(&focus_handle, cx);
         }
         cx.notify();
@@ -495,10 +566,11 @@ impl Response {
         true
     }
 
-    pub fn set_payload<T: Into<String>>(
+    pub fn set_payload(
         &mut self,
         request_id: usize,
-        payload: T,
+        raw_payload: String,
+        pretty_payload: Option<String>,
         language: Option<Arc<Language>>,
         cx: &mut Context<Self>,
     ) -> bool {
@@ -506,17 +578,21 @@ impl Response {
             return false;
         }
 
+        let pretty_payload = pretty_payload.unwrap_or_else(|| raw_payload.clone());
         let language = language.unwrap_or_else(|| PLAIN_TEXT.clone());
-        self.payload.update(cx, |payload_buffer, cx| {
-            let payload = payload.into();
-            if let Some(buffer) = payload_buffer.as_singleton() {
-                let language = language.clone();
-                buffer.update(cx, |buffer, cx| {
-                    buffer.set_language(Some(language), cx);
-                });
-            }
-            payload_buffer.set_text(payload, cx);
-        });
+        for (payload_buffer, payload) in [
+            (&self.pretty_payload, pretty_payload),
+            (&self.raw_payload, raw_payload),
+        ] {
+            payload_buffer.update(cx, |payload_buffer, cx| {
+                if let Some(buffer) = payload_buffer.as_singleton() {
+                    buffer.update(cx, |buffer, cx| {
+                        buffer.set_language(Some(language.clone()), cx);
+                    });
+                }
+                payload_buffer.set_text(payload, cx);
+            });
+        }
         cx.notify();
         true
     }
@@ -622,6 +698,32 @@ impl ResponsePanel {
             });
         }
         cx.notify();
+    }
+
+    fn set_display_mode(
+        &mut self,
+        display_mode: ResponseDisplayMode,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(response) = self.response.as_ref() else {
+            return;
+        };
+
+        response.update(cx, |response, cx| {
+            if response.display_mode == display_mode {
+                return;
+            }
+
+            response.display_mode = display_mode;
+            cx.notify();
+
+            if self.active_tab() == ResponsePanelTab::Body
+                && !matches!(response.state(), ResponseState::Idle)
+            {
+                response.editor().focus_handle(cx).focus(window, cx);
+            }
+        });
     }
 
     fn cookie_table_rows(cookies: &[ResponseCookie]) -> Vec<CookieTableRow> {
@@ -966,11 +1068,10 @@ impl ResponsePanel {
         SelectableTextGroup::new(summary_text)
             .selectable(selectable)
             .flex()
-            .flex_1()
+            .min_w_0()
             .items_center()
-            .justify_end()
             .h_full()
-            .pr_3()
+            .px_3()
             .selection_order([
                 ResponseSummaryTextId::Status,
                 ResponseSummaryTextId::ElapsedDuration,
@@ -991,6 +1092,8 @@ impl ResponsePanel {
             .child(
                 gpui::div()
                     .flex()
+                    .min_w_0()
+                    .overflow_hidden()
                     .items_center()
                     .gap_2()
                     .child(
@@ -1053,6 +1156,71 @@ impl ResponsePanel {
                 .summary()
                 .map(|summary| (summary, response.summary_text.clone()))
         });
+        let response = self
+            .response
+            .as_ref()
+            .filter(|_| response_summary.is_some() && active_tab == ResponsePanelTab::Body);
+        let display_mode_popover = response.map(|response| {
+            let response = response.read(cx);
+            let language_name = response
+                .raw_payload
+                .read(cx)
+                .as_singleton()
+                .and_then(|buffer| buffer.read(cx).language().map(|language| language.name()));
+            let format_label = match language_name.as_ref().map(AsRef::as_ref) {
+                Some("JSON") => "JSON",
+                Some("HTML") => "HTML",
+                Some("XML") => "XML",
+                _ => "Text",
+            };
+            let display_mode = response.display_mode;
+            let label = match display_mode {
+                ResponseDisplayMode::Pretty => format_label,
+                ResponseDisplayMode::Raw => "Raw",
+            };
+            let response_panel = cx.weak_entity();
+
+            PopoverMenu::new("response-display-mode-popover")
+                .trigger(
+                    Button::new("response-display-mode", label)
+                        .variant(ButtonVariant::OutlinedGhost)
+                        .text_size(TextSize::Small)
+                        .icon(IconAsset::CaretDown)
+                        .icon_position(IconPosition::End)
+                        .icon_size(IconSize::XSmall)
+                        .icon_color(Color::Muted),
+                )
+                .menu(move |window, cx| {
+                    Some(ContextMenu::build(window, cx, |mut menu, _, _| {
+                        for (mode, label) in [
+                            (ResponseDisplayMode::Pretty, format_label),
+                            (ResponseDisplayMode::Raw, "Raw"),
+                        ] {
+                            let response_panel = response_panel.clone();
+                            menu = menu.toggleable_entry(
+                                label,
+                                mode == display_mode,
+                                IconPosition::End,
+                                None,
+                                move |window, cx| {
+                                    if let Err(error) =
+                                        response_panel.update(cx, |response_panel, cx| {
+                                            response_panel.set_display_mode(mode, window, cx);
+                                        })
+                                    {
+                                        log::debug!(
+                                            "Failed to update response display mode: {error:?}"
+                                        );
+                                    }
+                                },
+                            );
+                        }
+                        menu
+                    }))
+                })
+                .anchor(Anchor::TopRight)
+                .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
+        });
         let colors = cx.theme().colors();
 
         let render_tab =
@@ -1114,6 +1282,7 @@ impl ResponsePanel {
         gpui::div()
             .id("response-panel-tabs")
             .flex()
+            .flex_none()
             .items_center()
             .w_full()
             .h(DynamicSpacing::Base36.px(cx))
@@ -1126,6 +1295,7 @@ impl ResponsePanel {
             .child(
                 gpui::div()
                     .flex()
+                    .flex_none()
                     .items_center()
                     .h_full()
                     .px_1()
@@ -1151,10 +1321,22 @@ impl ResponsePanel {
             .when_some(
                 response_summary,
                 |this, (response_summary, summary_text)| {
-                    this.child(Self::render_response_summary(
-                        response_summary,
-                        &summary_text,
-                    ))
+                    this.child(
+                        gpui::div()
+                            .flex()
+                            .flex_1()
+                            .min_w_0()
+                            .items_center()
+                            .justify_end()
+                            .h_full()
+                            .when_some(display_mode_popover, |this, display_mode_popover| {
+                                this.child(gpui::div().flex_none().child(display_mode_popover))
+                            })
+                            .child(Self::render_response_summary(
+                                response_summary,
+                                &summary_text,
+                            )),
+                    )
                 },
             )
             .into_any_element()
