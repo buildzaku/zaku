@@ -127,6 +127,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "NSString",
   "std",
 ] }
+oxc_allocator = { git = "https://github.com/oxc-project/oxc", rev = "ca7104f775", package = "oxc_allocator" }
+oxc_formatter_json = { git = "https://github.com/oxc-project/oxc", rev = "ca7104f775", package = "oxc_formatter_json" }
 palette = { version = "0.7", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12" }
 pciid-parser = { version = "0.8" }
