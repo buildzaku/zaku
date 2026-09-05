@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  pull-requests: write
 
 env:
   GH_API_VERSION: "2026-03-10"
@@ -78,21 +78,17 @@ jobs:
           GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
           GIT_COMMITTER_EMAIL: ${{ github.event.comment.user.id }}+${{ github.event.comment.user.login }}@users.noreply.github.com
           GIT_COMMITTER_NAME: ${{ github.event.comment.user.login }}
-        run: |
-          cherry_pick_pull_request_url=$(./script/cherry-pick "$BRANCH" "$COMMIT_SHA")
-          echo "cherry_pick_pull_request_url=${cherry_pick_pull_request_url}" >>"${GITHUB_OUTPUT}"
+        run: ./script/cherry-pick "$BRANCH" "$COMMIT_SHA"
         shell: bash
 
-      - name: "Reply with pull request"
+      - name: "React to comment"
         if: steps.cherry_pick.outcome == 'success'
         env:
-          CHANNEL: ${{ steps.verify_request.outputs.channel }}
-          CHERRY_PICK_PULL_REQUEST_URL: ${{ steps.cherry_pick.outputs.cherry_pick_pull_request_url }}
+          COMMENT_ID: ${{ github.event.comment.id }}
           GH_TOKEN: ${{ github.token }}
-          SOURCE_PULL_REQUEST_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          cherry_pick_pull_request_number="${CHERRY_PICK_PULL_REQUEST_URL##*/}"
-          gh pr comment "$SOURCE_PULL_REQUEST_NUMBER" --body "Cherry-pick to ${CHANNEL} created in #${cherry_pick_pull_request_number}."
+          gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" --method POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" --raw-field content=rocket >/dev/null
         shell: bash
 
       - name: "Reply with failure"
