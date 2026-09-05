@@ -1068,12 +1068,10 @@ impl ResponsePanel {
         SelectableTextGroup::new(summary_text)
             .selectable(selectable)
             .flex()
-            .flex_1()
             .min_w_0()
             .items_center()
-            .justify_end()
             .h_full()
-            .pr_3()
+            .px_3()
             .selection_order([
                 ResponseSummaryTextId::Status,
                 ResponseSummaryTextId::ElapsedDuration,
@@ -1323,15 +1321,24 @@ impl ResponsePanel {
             .when_some(
                 response_summary,
                 |this, (response_summary, summary_text)| {
-                    this.child(Self::render_response_summary(
-                        response_summary,
-                        &summary_text,
-                    ))
+                    this.child(
+                        gpui::div()
+                            .flex()
+                            .flex_1()
+                            .min_w_0()
+                            .items_center()
+                            .justify_end()
+                            .h_full()
+                            .when_some(display_mode_popover, |this, display_mode_popover| {
+                                this.child(gpui::div().flex_none().child(display_mode_popover))
+                            })
+                            .child(Self::render_response_summary(
+                                response_summary,
+                                &summary_text,
+                            )),
+                    )
                 },
             )
-            .when_some(display_mode_popover, |this, display_mode_popover| {
-                this.child(gpui::div().flex_none().pr_3().child(display_mode_popover))
-            })
             .into_any_element()
     }
 }
