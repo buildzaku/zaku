@@ -4,7 +4,8 @@ mod persistence;
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
     Anchor, AnyElement, App, Context, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
-    FontWeight, ScrollHandle, SharedString, Subscription, WeakEntity, Window, prelude::*,
+    FontWeight, ScrollHandle, SharedString, Subscription, TextStyleRefinement, WeakEntity, Window,
+    prelude::*,
 };
 use std::{
     rc::Rc,
@@ -22,8 +23,8 @@ use multi_buffer::MultiBuffer;
 use path::PathStyle;
 use project::{
     Project, ProjectPath, RequestBuffer, RequestBufferEvent, RequestFile, RequestFileBody,
-    RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
-    RequestFileState,
+    RequestFileBodyType, RequestFileFormField, RequestFileHeader, RequestFileHttp, RequestFileMeta,
+    RequestFileParam, RequestFileState,
 };
 use response_panel::{
     Response, ResponseCookie, ResponseHeader, ResponsePanel, ResponsePanelTab, ResponseState,
@@ -282,6 +283,7 @@ struct RequestHttp {
     headers: Vec<RequestHeader>,
     body_type: Option<RequestBodyType>,
     body: Option<RequestBody>,
+    form_url_encoded: Vec<KeyValueRow>,
 }
 
 struct Request {
@@ -333,12 +335,30 @@ impl Request {
             }
             headers.push(request_header);
         }
-        let body_type = request_file.http.body.as_ref().map(|body| body.r#type);
-        let body = request_file
+        let body_type = request_file
             .http
             .body
             .as_ref()
-            .map(|body| RequestBody::from_request_file_body(body, window, cx));
+            .map(RequestFileBody::body_type);
+        let mut body = None;
+        let mut form_url_encoded = Vec::new();
+        match &request_file.http.body {
+            Some(
+                RequestFileBody::Text { data }
+                | RequestFileBody::Json { data }
+                | RequestFileBody::Html { data }
+                | RequestFileBody::Xml { data },
+            ) => body = Some(RequestBody::new(data.clone(), window, cx)),
+            Some(RequestFileBody::FormUrlEncoded { data }) => {
+                for field in data {
+                    let mut row =
+                        self::new_kv_row(Some(&field.name), Some(&field.value), window, cx);
+                    row.set_disabled(field.disabled, cx);
+                    form_url_encoded.push(row);
+                }
+            }
+            None => {}
+        }
 
         Ok(Self {
             meta: request_file.meta.clone(),
@@ -349,6 +369,7 @@ impl Request {
                 headers,
                 body_type,
                 body,
+                form_url_encoded,
             },
         })
     }
@@ -402,10 +423,33 @@ impl RequestSnapshot {
                         disabled: header.disabled,
                     })
                     .collect(),
-                body: request.http.body_type.and_then(|r#type| {
-                    request.http.body.as_ref().map(|body| RequestFileBody {
-                        r#type,
-                        data: body.data(cx),
+                body: request.http.body_type.and_then(|body_type| {
+                    let body = request.http.body.as_ref();
+                    Some(match body_type {
+                        RequestBodyType::Text => RequestFileBody::Text {
+                            data: body?.data(cx),
+                        },
+                        RequestBodyType::Json => RequestFileBody::Json {
+                            data: body?.data(cx),
+                        },
+                        RequestBodyType::Html => RequestFileBody::Html {
+                            data: body?.data(cx),
+                        },
+                        RequestBodyType::Xml => RequestFileBody::Xml {
+                            data: body?.data(cx),
+                        },
+                        RequestBodyType::FormUrlEncoded => RequestFileBody::FormUrlEncoded {
+                            data: request
+                                .http
+                                .form_url_encoded
+                                .iter()
+                                .map(|row| RequestFileFormField {
+                                    name: row.key.read(cx).text(cx),
+                                    value: row.value.read(cx).text(cx),
+                                    disabled: row.disabled,
+                                })
+                                .collect(),
+                        },
                     })
                 }),
             },
@@ -483,14 +527,6 @@ impl RequestBody {
         Self { editor, payload }
     }
 
-    fn from_request_file_body(
-        request_file_body: &RequestFileBody,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Self {
-        Self::new(request_file_body.data.clone(), window, cx)
-    }
-
     fn data(&self, cx: &App) -> String {
         self.payload.read(cx).snapshot(cx).text()
     }
@@ -498,6 +534,91 @@ impl RequestBody {
     fn editor(&self) -> Entity<Editor> {
         self.editor.clone()
     }
+}
+
+struct KeyValueRow {
+    key: Entity<Editor>,
+    value: Entity<Editor>,
+    disabled: bool,
+}
+
+impl KeyValueRow {
+    fn set_disabled(&mut self, disabled: bool, cx: &mut App) {
+        self.disabled = disabled;
+        for editor in [&self.key, &self.value] {
+            editor.update(cx, |editor, cx| {
+                editor.set_muted(disabled);
+                cx.notify();
+            });
+        }
+    }
+}
+
+fn new_kv_row(
+    key: Option<&str>,
+    value: Option<&str>,
+    window: &mut Window,
+    cx: &mut App,
+) -> KeyValueRow {
+    let key = cx.new(|cx| {
+        let mut editor = Editor::single_line(window, cx);
+        editor.set_placeholder_text("Key", cx);
+        if let Some(key) = key {
+            editor.set_text(key, cx);
+        }
+        editor
+    });
+    let value = cx.new(|cx| {
+        let mut editor = Editor::auto_height(1, Some(3), window, cx);
+        editor.set_placeholder_text("Value", cx);
+        if let Some(value) = value {
+            editor.set_text(value, cx);
+        }
+        editor
+    });
+    KeyValueRow {
+        key,
+        value,
+        disabled: false,
+    }
+}
+
+fn input_box(editor: &Entity<Editor>, disabled: bool, cx: &mut App) -> impl IntoElement {
+    let text_style = TextStyleRefinement {
+        color: Some(cx.theme().colors().text),
+        line_height: Some(gpui::relative(1.2)),
+        ..Default::default()
+    };
+    editor.update(cx, |editor, _| {
+        editor.set_text_style_refinement(text_style);
+    });
+
+    let colors = cx.theme().colors();
+    let focus_handle = editor.focus_handle(cx).tab_index(0).tab_stop(true);
+    gpui::div()
+        .flex()
+        .flex_1()
+        .min_w_0()
+        .min_h_8()
+        .px_2()
+        .py_1p5()
+        .rounded_md()
+        .border_1()
+        .border_color(if disabled {
+            colors.border_disabled
+        } else {
+            colors.border_variant
+        })
+        .bg(colors.editor_background)
+        .track_focus(&focus_handle)
+        .focus(|this| {
+            this.border_color(if disabled {
+                colors.border_disabled
+            } else {
+                colors.border_focused
+            })
+        })
+        .child(editor.clone())
 }
 
 pub struct RequestEditor {
@@ -513,6 +634,7 @@ pub struct RequestEditor {
     http_client: Arc<dyn HttpClient>,
     params_scroll_handle: ScrollHandle,
     headers_scroll_handle: ScrollHandle,
+    form_url_encoded_scroll_handle: ScrollHandle,
     input_subscriptions: Vec<Subscription>,
     body_subscription: Option<Subscription>,
     _buffer_subscription: Subscription,
@@ -593,6 +715,7 @@ impl RequestEditor {
             http_client: AppState::global(cx).client.http_client(),
             params_scroll_handle: ScrollHandle::new(),
             headers_scroll_handle: ScrollHandle::new(),
+            form_url_encoded_scroll_handle: ScrollHandle::new(),
             input_subscriptions,
             body_subscription,
             _buffer_subscription: buffer_subscription,
@@ -705,6 +828,10 @@ impl RequestEditor {
             subscriptions.push(Self::subscribe_to_input(&header.name, window, cx));
             subscriptions.push(Self::subscribe_to_input(&header.value, window, cx));
         }
+        for row in &request.http.form_url_encoded {
+            subscriptions.push(Self::subscribe_to_editor(&row.key, window, cx));
+            subscriptions.push(Self::subscribe_to_editor(&row.value, window, cx));
+        }
         subscriptions
     }
 
@@ -730,7 +857,7 @@ impl RequestEditor {
         )
     }
 
-    fn subscribe_to_body(
+    fn subscribe_to_editor(
         editor: &Entity<Editor>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -760,9 +887,6 @@ impl RequestEditor {
         };
 
         let language_name = match body_type {
-            Some(RequestBodyType::Json) => "JSON",
-            Some(RequestBodyType::Html) => "HTML",
-            Some(RequestBodyType::Xml) => "XML",
             Some(RequestBodyType::Text) | None => {
                 payload.update(cx, |payload, cx| {
                     if let Some(buffer) = payload.as_singleton() {
@@ -773,6 +897,10 @@ impl RequestEditor {
                 });
                 return;
             }
+            Some(RequestBodyType::Json) => "JSON",
+            Some(RequestBodyType::Html) => "HTML",
+            Some(RequestBodyType::Xml) => "XML",
+            Some(RequestBodyType::FormUrlEncoded) => return,
         };
 
         let payload_id = payload.entity_id();
@@ -853,7 +981,7 @@ impl RequestEditor {
                 .http
                 .body
                 .as_ref()
-                .map(|body| Self::subscribe_to_body(&body.editor, window, cx)),
+                .map(|body| Self::subscribe_to_editor(&body.editor, window, cx)),
             RequestEditorState::Invalid { .. } => None,
         };
 
@@ -895,40 +1023,62 @@ impl RequestEditor {
     }
 
     fn add_param(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !matches!(&self.request, RequestEditorState::Ready(_)) {
+        let RequestEditorState::Ready(request) = &mut self.request else {
             return;
-        }
+        };
 
         let param = RequestParam::new(window, cx);
         let name_subscription = Self::subscribe_to_input(&param.name, window, cx);
         let value_subscription = Self::subscribe_to_input(&param.value, window, cx);
-        if let RequestEditorState::Ready(request) = &mut self.request {
-            request.http.params.push(param);
-        }
+        request.http.params.push(param);
         self.input_subscriptions.push(name_subscription);
         self.input_subscriptions.push(value_subscription);
         self.mark_edited(cx);
     }
 
     fn add_header(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !matches!(&self.request, RequestEditorState::Ready(_)) {
+        let RequestEditorState::Ready(request) = &mut self.request else {
             return;
-        }
+        };
 
         let header = RequestHeader::new(window, cx);
         let name_subscription = Self::subscribe_to_input(&header.name, window, cx);
         let value_subscription = Self::subscribe_to_input(&header.value, window, cx);
-        if let RequestEditorState::Ready(request) = &mut self.request {
-            request.http.headers.push(header);
-        }
+        request.http.headers.push(header);
         self.input_subscriptions.push(name_subscription);
         self.input_subscriptions.push(value_subscription);
         self.mark_edited(cx);
     }
 
+    fn add_form_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let RequestEditorState::Ready(request) = &mut self.request else {
+            return;
+        };
+
+        let row = self::new_kv_row(None, None, window, cx);
+        self.input_subscriptions
+            .push(Self::subscribe_to_editor(&row.key, window, cx));
+        self.input_subscriptions
+            .push(Self::subscribe_to_editor(&row.value, window, cx));
+        request.http.form_url_encoded.push(row);
+        self.mark_edited(cx);
+    }
+
+    fn delete_form_field(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let RequestEditorState::Ready(request) = &mut self.request else {
+            return;
+        };
+        if index >= request.http.form_url_encoded.len() {
+            return;
+        }
+        request.http.form_url_encoded.remove(index);
+        self.input_subscriptions = Self::subscribe_to_request(request, window, cx);
+        self.mark_edited(cx);
+    }
+
     fn set_body_type(
         &mut self,
-        r#type: Option<RequestBodyType>,
+        body_type: Option<RequestBodyType>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -936,19 +1086,30 @@ impl RequestEditor {
         let mut should_set_language_for_body = false;
 
         if let RequestEditorState::Ready(request) = &mut self.request {
-            match r#type {
-                Some(r#type) => {
+            match body_type {
+                Some(
+                    RequestBodyType::Text
+                    | RequestBodyType::Json
+                    | RequestBodyType::Html
+                    | RequestBodyType::Xml,
+                ) => {
                     if request.http.body.is_none() {
                         let body = RequestBody::new("", window, cx);
                         self.body_subscription =
-                            Some(Self::subscribe_to_body(&body.editor, window, cx));
+                            Some(Self::subscribe_to_editor(&body.editor, window, cx));
                         request.http.body = Some(body);
                         should_set_language_for_body = true;
                     }
 
-                    if request.http.body_type != Some(r#type) {
-                        request.http.body_type = Some(r#type);
+                    if request.http.body_type != body_type {
+                        request.http.body_type = body_type;
                         should_set_language_for_body = true;
+                        edited = true;
+                    }
+                }
+                Some(RequestBodyType::FormUrlEncoded) => {
+                    if request.http.body_type != Some(RequestBodyType::FormUrlEncoded) {
+                        request.http.body_type = Some(RequestBodyType::FormUrlEncoded);
                         edited = true;
                     }
                 }
@@ -995,7 +1156,7 @@ impl RequestEditor {
                 Some((name, value))
             })
             .collect::<Vec<_>>();
-        let request_headers = request
+        let mut request_headers = request
             .http
             .headers
             .iter()
@@ -1013,11 +1174,43 @@ impl RequestEditor {
                 Some((name, value))
             })
             .collect::<Vec<_>>();
-        let request_body = request
-            .http
-            .body_type
-            .and_then(|_| request.http.body.as_ref().map(|body| body.data(cx)))
-            .filter(|body| !body.is_empty());
+        let request_body = match request.http.body_type {
+            Some(
+                RequestBodyType::Text
+                | RequestBodyType::Json
+                | RequestBodyType::Html
+                | RequestBodyType::Xml,
+            ) => request
+                .http
+                .body
+                .as_ref()
+                .map(|body| body.data(cx))
+                .filter(|body| !body.is_empty()),
+            Some(RequestBodyType::FormUrlEncoded) => {
+                if !request_headers
+                    .iter()
+                    .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+                {
+                    request_headers.push((
+                        "Content-Type".to_string(),
+                        "application/x-www-form-urlencoded".to_string(),
+                    ));
+                }
+                let fields = request
+                    .http
+                    .form_url_encoded
+                    .iter()
+                    .filter(|row| !row.disabled)
+                    .map(|row| (row.key.read(cx).text(cx), row.value.read(cx).text(cx)));
+
+                Some(
+                    url::form_urlencoded::Serializer::new(String::new())
+                        .extend_pairs(fields)
+                        .finish(),
+                )
+            }
+            None => None,
+        };
 
         let Ok(Some(response_panel)) = self.workspace.update(cx, |workspace, cx| {
             workspace.open_panel::<ResponsePanel>(window, cx);
@@ -1473,7 +1666,7 @@ impl RequestEditor {
         match self.active_tab {
             RequestEditorTab::Parameters => self.render_parameters(request, window, cx),
             RequestEditorTab::Headers => self.render_headers(request, window, cx),
-            RequestEditorTab::Body => Self::render_body(request, window, cx),
+            RequestEditorTab::Body => self.render_body(request, window, cx),
         }
     }
 
@@ -1705,11 +1898,143 @@ impl RequestEditor {
             .into_any_element()
     }
 
-    fn render_body(request: &Request, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_form_url_encoded(
+        &self,
+        rows: &[KeyValueRow],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let rows = rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| {
+                let checkbox = ui::checkbox(
+                    ("form-urlencoded-disabled", index),
+                    ToggleState::from(!row.disabled),
+                )
+                .on_click(cx.listener(
+                    move |request_editor, new_state: &ToggleState, _, cx| {
+                        let disabled = !new_state.selected();
+                        if let RequestEditorState::Ready(request) = &mut request_editor.request
+                            && let Some(row) = request.http.form_url_encoded.get_mut(index)
+                            && row.disabled != disabled
+                        {
+                            row.set_disabled(disabled, cx);
+                            request_editor.mark_edited(cx);
+                        }
+                    },
+                ));
+                let delete_button =
+                    IconButton::new(("form-urlencoded-delete", index), IconAsset::Trash)
+                        .shape(IconButtonShape::Square)
+                        .variant(ButtonVariant::Outline)
+                        .icon_color(Color::Muted)
+                        .tooltip(Tooltip::text("Delete"))
+                        .on_click(cx.listener(move |request_editor, _, window, cx| {
+                            request_editor.delete_form_field(index, window, cx);
+                        }));
+
+                gpui::div()
+                    .id(("form-urlencoded-row", index))
+                    .flex()
+                    .items_start()
+                    .w_full()
+                    .child(
+                        gpui::div()
+                            .h_8()
+                            .flex()
+                            .items_center()
+                            .pr_1p5()
+                            .child(checkbox),
+                    )
+                    .child(
+                        gpui::div()
+                            .flex()
+                            .items_start()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_2p5()
+                            .child(self::input_box(&row.key, row.disabled, cx))
+                            .child(self::input_box(&row.value, row.disabled, cx))
+                            .child(gpui::div().h_8().flex().items_center().child(delete_button)),
+                    )
+            })
+            .collect::<Vec<_>>();
+        let add_button = Button::new("form-urlencoded-add", "Add Field")
+            .icon(IconAsset::Plus)
+            .icon_size(IconSize::Small)
+            .icon_color(Color::Muted)
+            .variant(ButtonVariant::OutlinedGhost)
+            .size(ButtonSize::Medium)
+            .on_click(cx.listener(|request_editor, _, window, cx| {
+                request_editor.add_form_field(window, cx);
+            }));
+        let colors = cx.theme().colors();
+
+        gpui::div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(
+                gpui::div()
+                    .id("form-urlencoded")
+                    .key_context("RequestForm")
+                    .flex()
+                    .flex_col()
+                    .track_scroll(&self.form_url_encoded_scroll_handle)
+                    .size_full()
+                    .min_w_0()
+                    .overflow_y_scroll()
+                    .pl_2()
+                    .pr_6()
+                    .gap_2()
+                    .py_3()
+                    .children(rows)
+                    .child(gpui::div().flex().items_center().pl_1().child(add_button)),
+            )
+            .custom_scrollbars(
+                Scrollbars::new(ScrollAxes::Vertical)
+                    .id("form-urlencoded-scrollbar")
+                    .tracked_scroll_handle(&self.form_url_encoded_scroll_handle)
+                    .with_track_along(
+                        ScrollAxes::Vertical,
+                        colors.scrollbar_track_background,
+                        TrackLayout::Overlay,
+                    ),
+                window,
+                cx,
+            )
+            .into_any_element()
+    }
+
+    fn render_body(
+        &self,
+        request: &Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let body_type = request.http.body_type;
         let body_type_display_name = body_type.map_or("None", |body_type| body_type.display_name());
         let body = match body_type {
-            Some(_) => request.http.body.as_ref(),
+            Some(
+                RequestBodyType::Text
+                | RequestBodyType::Json
+                | RequestBodyType::Html
+                | RequestBodyType::Xml,
+            ) => request.http.body.as_ref().map(|body| {
+                gpui::div()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .min_w_0()
+                    .child(body.editor())
+                    .into_any_element()
+            }),
+            Some(RequestBodyType::FormUrlEncoded) => {
+                Some(self.render_form_url_encoded(&request.http.form_url_encoded, window, cx))
+            }
             None => None,
         };
         let request_editor = cx.weak_entity();
@@ -1721,6 +2046,7 @@ impl RequestEditor {
                 Some(RequestBodyType::Json),
                 Some(RequestBodyType::Html),
                 Some(RequestBodyType::Xml),
+                Some(RequestBodyType::FormUrlEncoded),
             ] {
                 let request_editor = request_editor.clone();
                 let display_name = type_option.map_or("None", |body_type| body_type.display_name());
@@ -1775,16 +2101,7 @@ impl RequestEditor {
                             .trigger_size(ButtonSize::Default),
                     ),
             )
-            .when_some(body, |this, body| {
-                this.child(
-                    gpui::div()
-                        .flex_1()
-                        .min_h_0()
-                        .w_full()
-                        .min_w_0()
-                        .child(body.editor()),
-                )
-            })
+            .children(body)
             .into_any_element()
     }
 

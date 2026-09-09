@@ -71,10 +71,49 @@ pub struct RequestFileHeader {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RequestFileBody {
-    pub r#type: RequestFileBodyType,
-    #[serde(default)]
-    pub data: String,
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum RequestFileBody {
+    Text {
+        #[serde(default)]
+        data: String,
+    },
+    Json {
+        #[serde(default)]
+        data: String,
+    },
+    Html {
+        #[serde(default)]
+        data: String,
+    },
+    Xml {
+        #[serde(default)]
+        data: String,
+    },
+    #[serde(rename = "form-urlencoded")]
+    FormUrlEncoded {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        data: Vec<RequestFileFormField>,
+    },
+}
+
+impl RequestFileBody {
+    pub fn body_type(&self) -> RequestFileBodyType {
+        match self {
+            Self::Text { .. } => RequestFileBodyType::Text,
+            Self::Json { .. } => RequestFileBodyType::Json,
+            Self::Html { .. } => RequestFileBodyType::Html,
+            Self::Xml { .. } => RequestFileBodyType::Xml,
+            Self::FormUrlEncoded { .. } => RequestFileBodyType::FormUrlEncoded,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RequestFileFormField {
+    pub name: String,
+    pub value: String,
+    #[serde(default, skip_serializing_if = "util::serde::is_false")]
+    pub disabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,6 +123,8 @@ pub enum RequestFileBodyType {
     Json,
     Html,
     Xml,
+    #[serde(rename = "form-urlencoded")]
+    FormUrlEncoded,
 }
 
 impl RequestFileBodyType {
@@ -93,6 +134,7 @@ impl RequestFileBodyType {
             Self::Json => "JSON",
             Self::Html => "HTML",
             Self::Xml => "XML",
+            Self::FormUrlEncoded => "URL Encoded",
         }
     }
 }
@@ -218,8 +260,7 @@ mod tests {
                             disabled: true,
                         },
                     ],
-                    body: Some(RequestFileBody {
-                        r#type: RequestFileBodyType::Json,
+                    body: Some(RequestFileBody::Json {
                         data: indoc! {r#"
                             {
                               "hello": "world"
@@ -269,8 +310,7 @@ mod tests {
                         disabled: true,
                     },
                 ],
-                body: Some(RequestFileBody {
-                    r#type: RequestFileBodyType::Json,
+                body: Some(RequestFileBody::Json {
                     data: indoc! {r#"
                         {
                           "hello": "world"

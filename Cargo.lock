@@ -6407,6 +6407,7 @@ dependencies = [
  "theme",
  "toml 1.1.2+spec-1.1.0",
  "ui",
+ "url",
  "util 26.1.0-dev",
  "util_macros 26.1.0-dev",
  "workspace",
