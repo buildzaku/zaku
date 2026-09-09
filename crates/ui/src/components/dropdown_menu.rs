@@ -10,7 +10,7 @@ use super::{
 
 use crate::{
     Button, ButtonCommon, Color, ContextMenu, Disableable, FixedWidth, Icon, IconAsset,
-    IconPosition, IconSize, PopoverMenu,
+    IconPosition, IconSize, PopoverMenu, TextSize,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
@@ -33,6 +33,7 @@ pub struct DropdownMenu {
     id: ElementId,
     title: DropdownTitle,
     trigger_size: ButtonSize,
+    trigger_text_size: Option<TextSize>,
     trigger_tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
     trigger_icon: Option<IconAsset>,
     variant: DropdownVariant,
@@ -40,6 +41,7 @@ pub struct DropdownMenu {
     full_width: bool,
     disabled: bool,
     handle: Option<PopoverMenuHandle<ContextMenu>>,
+    anchor: Option<Anchor>,
     attach: Option<Anchor>,
     offset: Option<Point<Pixels>>,
     tab_index: Option<isize>,
@@ -56,6 +58,7 @@ impl DropdownMenu {
             id: id.into(),
             title: DropdownTitle::Text(title.into()),
             trigger_size: ButtonSize::Default,
+            trigger_text_size: None,
             trigger_tooltip: None,
             trigger_icon: Some(IconAsset::CaretUpDown),
             variant: DropdownVariant::default(),
@@ -63,6 +66,7 @@ impl DropdownMenu {
             full_width: false,
             disabled: false,
             handle: None,
+            anchor: None,
             attach: None,
             offset: None,
             tab_index: None,
@@ -79,6 +83,7 @@ impl DropdownMenu {
             id: id.into(),
             title: DropdownTitle::Element(title),
             trigger_size: ButtonSize::Default,
+            trigger_text_size: None,
             trigger_tooltip: None,
             trigger_icon: Some(IconAsset::CaretUpDown),
             variant: DropdownVariant::default(),
@@ -86,6 +91,7 @@ impl DropdownMenu {
             full_width: false,
             disabled: false,
             handle: None,
+            anchor: None,
             attach: None,
             offset: None,
             tab_index: None,
@@ -100,6 +106,11 @@ impl DropdownMenu {
 
     pub fn trigger_size(mut self, size: ButtonSize) -> Self {
         self.trigger_size = size;
+        self
+    }
+
+    pub fn trigger_text_size(mut self, size: TextSize) -> Self {
+        self.trigger_text_size = Some(size);
         self
     }
 
@@ -123,6 +134,11 @@ impl DropdownMenu {
 
     pub fn handle(mut self, handle: PopoverMenuHandle<ContextMenu>) -> Self {
         self.handle = Some(handle);
+        self
+    }
+
+    pub fn anchor(mut self, anchor: Anchor) -> Self {
+        self.anchor = Some(anchor);
         self
     }
 
@@ -172,6 +188,7 @@ impl RenderOnce for DropdownMenu {
                 Some(
                     Button::new(self.id.clone(), title)
                         .variant(button_variant)
+                        .text_size(self.trigger_text_size)
                         .when(self.caret, |this| {
                             this.icon(self.trigger_icon)
                                 .icon_position(IconPosition::End)
@@ -223,6 +240,7 @@ impl RenderOnce for DropdownMenu {
         };
 
         popover
+            .when_some(self.anchor, |this, anchor| this.anchor(anchor))
             .attach(match self.attach {
                 Some(attach) => attach,
                 None => Anchor::BottomRight,

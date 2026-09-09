@@ -1568,8 +1568,54 @@ impl RequestEditor {
             .child(Text::new(error.to_string()).color(Color::Muted))
     }
 
-    fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_tab_bar(
+        &self,
+        request: &Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let active_tab = self.active_tab;
+        let body_type_dropdown = (active_tab == RequestEditorTab::Body).then(|| {
+            let body_type = request.http.body_type;
+            let label = body_type.map_or("None", |body_type| body_type.display_name());
+            let request_editor = cx.weak_entity();
+
+            let context_menu = ContextMenu::build(window, cx, |mut menu, _, _| {
+                for type_option in [
+                    None,
+                    Some(RequestBodyType::Text),
+                    Some(RequestBodyType::Json),
+                    Some(RequestBodyType::Html),
+                    Some(RequestBodyType::Xml),
+                    Some(RequestBodyType::FormUrlEncoded),
+                ] {
+                    let request_editor = request_editor.clone();
+                    let display_name =
+                        type_option.map_or("None", |body_type| body_type.display_name());
+                    menu = menu.toggleable_entry(
+                        display_name,
+                        type_option == body_type,
+                        IconPosition::End,
+                        None,
+                        move |window, cx| {
+                            if let Err(error) = request_editor.update(cx, |request_editor, cx| {
+                                request_editor.set_body_type(type_option, window, cx);
+                            }) {
+                                log::debug!("Failed to update request body type: {error:?}");
+                            }
+                        },
+                    );
+                }
+                menu
+            });
+
+            DropdownMenu::new("body-type", label, context_menu)
+                .variant(DropdownVariant::OutlinedGhost)
+                .trigger_text_size(TextSize::Small)
+                .trigger_icon(IconAsset::CaretDown)
+                .anchor(Anchor::TopRight)
+                .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
+        });
         let colors = cx.theme().colors();
 
         let render_tab =
@@ -1629,10 +1675,12 @@ impl RequestEditor {
         gpui::div()
             .id("request-editor-tabs")
             .flex()
+            .flex_none()
             .items_center()
             .w_full()
             .h(DynamicSpacing::Base36.px(cx))
-            .px_1()
+            .pl_1()
+            .pr_2()
             .border_y_1()
             .border_color(colors.border)
             .bg(colors.panel_tab_bar_background)
@@ -1654,6 +1702,10 @@ impl RequestEditor {
                 "Body".into(),
                 RequestEditorTab::Body,
             ))
+            .when_some(body_type_dropdown, |this, body_type_dropdown| {
+                this.child(gpui::div().flex_1().min_w_0())
+                    .child(gpui::div().flex_none().child(body_type_dropdown))
+            })
             .into_any_element()
     }
 
@@ -2009,7 +2061,6 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let body_type = request.http.body_type;
-        let body_type_display_name = body_type.map_or("None", |body_type| body_type.display_name());
         let body = match body_type {
             Some(
                 RequestBodyType::Text
@@ -2028,37 +2079,21 @@ impl RequestEditor {
             Some(RequestBodyType::FormUrlEncoded) => {
                 Some(self.render_form_url_encoded(&request.http.form_url_encoded, window, cx))
             }
-            None => None,
+            None => Some(
+                gpui::div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        Text::new("No request body")
+                            .size(TextSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .into_any_element(),
+            ),
         };
-        let request_editor = cx.weak_entity();
-        let context_menu = ContextMenu::build(window, cx, move |menu, _, _| {
-            let mut menu = menu;
-            for type_option in [
-                None,
-                Some(RequestBodyType::Text),
-                Some(RequestBodyType::Json),
-                Some(RequestBodyType::Html),
-                Some(RequestBodyType::Xml),
-                Some(RequestBodyType::FormUrlEncoded),
-            ] {
-                let request_editor = request_editor.clone();
-                let display_name = type_option.map_or("None", |body_type| body_type.display_name());
-                menu = menu.toggleable_entry(
-                    display_name,
-                    type_option == body_type,
-                    IconPosition::End,
-                    None,
-                    move |window, cx| {
-                        if let Err(error) = request_editor.update(cx, |request_editor, cx| {
-                            request_editor.set_body_type(type_option, window, cx);
-                        }) {
-                            log::debug!("Failed to update request body type: {error:?}");
-                        }
-                    },
-                );
-            }
-            menu
-        });
         let colors = cx.theme().colors();
 
         gpui::div()
@@ -2069,31 +2104,6 @@ impl RequestEditor {
             .flex_1()
             .min_h_0()
             .bg(colors.panel_background)
-            .child(
-                gpui::div()
-                    .flex()
-                    .items_center()
-                    .w_full()
-                    .h(DynamicSpacing::Base36.px(cx))
-                    .px_3()
-                    .gap_2()
-                    .border_b_1()
-                    .border_color(colors.border)
-                    .bg(colors.panel_tab_bar_background.opacity(0.5))
-                    .child(
-                        Text::new("Content Type")
-                            .size(TextSize::Small)
-                            .color(Color::Muted)
-                            .single_line(),
-                    )
-                    .child(
-                        DropdownMenu::new("body-type", body_type_display_name, context_menu)
-                            .variant(DropdownVariant::OutlinedGhost)
-                            .attach(Anchor::BottomLeft)
-                            .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
-                            .trigger_size(ButtonSize::Default),
-                    ),
-            )
             .children(body)
             .into_any_element()
     }
@@ -2207,7 +2217,7 @@ impl RequestEditor {
                             })),
                     ),
             )
-            .child(self.render_tab_bar(cx))
+            .child(self.render_tab_bar(request, window, cx))
             .child(self.render_tab_content(request, window, cx))
     }
 }

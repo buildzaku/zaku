@@ -15,10 +15,10 @@ use language::{Buffer, Language, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{
-    Button, ButtonCommon, ButtonVariant, Color, ColumnWidthConfig, ContextMenu, DynamicSpacing,
-    IconAsset, IconPosition, IconSize, Indicator, KeyBinding, LineHeightStyle, PopoverMenu,
-    ScrollAxes, Scrollbars, SelectableText, SelectableTextGroup, Table, TableCell,
-    TableInteractionState, Text, TextCommon, TextInteractionState, TextSize,
+    Color, ColumnWidthConfig, ContextMenu, DropdownMenu, DropdownVariant, DynamicSpacing,
+    IconAsset, IconPosition, Indicator, KeyBinding, LineHeightStyle, ScrollAxes, Scrollbars,
+    SelectableText, SelectableTextGroup, Table, TableCell, TableInteractionState, Text, TextCommon,
+    TextInteractionState, TextSize,
 };
 use workspace::{Panel, Workspace};
 
@@ -1148,7 +1148,7 @@ impl ResponsePanel {
             )
     }
 
-    fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_tab_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let active_tab = self.active_tab();
         let response_summary = self.response.as_ref().and_then(|entity| {
             let response = entity.read(cx);
@@ -1160,7 +1160,7 @@ impl ResponsePanel {
             .response
             .as_ref()
             .filter(|_| response_summary.is_some() && active_tab == ResponsePanelTab::Body);
-        let display_mode_popover = response.map(|response| {
+        let display_mode_dropdown = response.map(|response| {
             let response = response.read(cx);
             let language_name = response
                 .raw_payload
@@ -1180,44 +1180,33 @@ impl ResponsePanel {
             };
             let response_panel = cx.weak_entity();
 
-            PopoverMenu::new("response-display-mode-popover")
-                .trigger(
-                    Button::new("response-display-mode", label)
-                        .variant(ButtonVariant::OutlinedGhost)
-                        .text_size(TextSize::Small)
-                        .icon(IconAsset::CaretDown)
-                        .icon_position(IconPosition::End)
-                        .icon_size(IconSize::XSmall)
-                        .icon_color(Color::Muted),
-                )
-                .menu(move |window, cx| {
-                    Some(ContextMenu::build(window, cx, |mut menu, _, _| {
-                        for (mode, label) in [
-                            (ResponseDisplayMode::Pretty, format_label),
-                            (ResponseDisplayMode::Raw, "Raw"),
-                        ] {
-                            let response_panel = response_panel.clone();
-                            menu = menu.toggleable_entry(
-                                label,
-                                mode == display_mode,
-                                IconPosition::End,
-                                None,
-                                move |window, cx| {
-                                    if let Err(error) =
-                                        response_panel.update(cx, |response_panel, cx| {
-                                            response_panel.set_display_mode(mode, window, cx);
-                                        })
-                                    {
-                                        log::debug!(
-                                            "Failed to update response display mode: {error:?}"
-                                        );
-                                    }
-                                },
-                            );
-                        }
-                        menu
-                    }))
-                })
+            let context_menu = ContextMenu::build(window, cx, |mut menu, _, _| {
+                for (mode, label) in [
+                    (ResponseDisplayMode::Pretty, format_label),
+                    (ResponseDisplayMode::Raw, "Raw"),
+                ] {
+                    let response_panel = response_panel.clone();
+                    menu = menu.toggleable_entry(
+                        label,
+                        mode == display_mode,
+                        IconPosition::End,
+                        None,
+                        move |window, cx| {
+                            if let Err(error) = response_panel.update(cx, |response_panel, cx| {
+                                response_panel.set_display_mode(mode, window, cx);
+                            }) {
+                                log::debug!("Failed to update response display mode: {error:?}");
+                            }
+                        },
+                    );
+                }
+                menu
+            });
+
+            DropdownMenu::new("response-display-mode", label, context_menu)
+                .variant(DropdownVariant::OutlinedGhost)
+                .trigger_text_size(TextSize::Small)
+                .trigger_icon(IconAsset::CaretDown)
                 .anchor(Anchor::TopRight)
                 .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
         });
@@ -1329,8 +1318,8 @@ impl ResponsePanel {
                             .items_center()
                             .justify_end()
                             .h_full()
-                            .when_some(display_mode_popover, |this, display_mode_popover| {
-                                this.child(gpui::div().flex_none().child(display_mode_popover))
+                            .when_some(display_mode_dropdown, |this, display_mode_dropdown| {
+                                this.child(gpui::div().flex_none().child(display_mode_dropdown))
                             })
                             .child(Self::render_response_summary(
                                 response_summary,
@@ -1391,9 +1380,11 @@ impl Panel for ResponsePanel {
 }
 
 impl Render for ResponsePanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus_handle = self.focus_handle(cx);
-        let tab_bar = self.has_response_context.then(|| self.render_tab_bar(cx));
+        let tab_bar = self
+            .has_response_context
+            .then(|| self.render_tab_bar(window, cx));
         let tab_content = if self.has_response_context {
             match self.active_tab() {
                 ResponsePanelTab::Body => self.render_body(cx),
@@ -1408,7 +1399,7 @@ impl Render for ResponsePanel {
                 .items_center()
                 .justify_center()
                 .child(
-                    Text::new("No response available.")
+                    Text::new("No response available")
                         .size(TextSize::Small)
                         .color(Color::Muted),
                 )
