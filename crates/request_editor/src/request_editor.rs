@@ -569,7 +569,7 @@ fn new_kv_row(
         editor
     });
     let value = cx.new(|cx| {
-        let mut editor = Editor::auto_height(1, Some(3), window, cx);
+        let mut editor = Editor::auto_height(1, Some(4), window, cx);
         editor.set_placeholder_text("Value", cx);
         if let Some(value) = value {
             editor.set_text(value, cx);
@@ -583,7 +583,7 @@ fn new_kv_row(
     }
 }
 
-fn input_box(editor: &Entity<Editor>, disabled: bool, cx: &mut App) -> impl IntoElement {
+fn input_box(editor: &Entity<Editor>, disabled: bool, cx: &mut App) -> Div {
     let text_style = TextStyleRefinement {
         color: Some(cx.theme().colors().text),
         line_height: Some(gpui::relative(1.2)),
@@ -1937,26 +1937,19 @@ impl RequestEditor {
                 gpui::div()
                     .id(("form-urlencoded-row", index))
                     .flex()
-                    .items_start()
+                    .items_center()
                     .w_full()
-                    .child(
-                        gpui::div()
-                            .h_8()
-                            .flex()
-                            .items_center()
-                            .pr_1p5()
-                            .child(checkbox),
-                    )
+                    .child(gpui::div().pr_1p5().child(checkbox))
                     .child(
                         gpui::div()
                             .flex()
-                            .items_start()
+                            .items_stretch()
                             .flex_1()
                             .min_w_0()
                             .gap_2p5()
-                            .child(self::input_box(&row.key, row.disabled, cx))
+                            .child(self::input_box(&row.key, row.disabled, cx).items_center())
                             .child(self::input_box(&row.value, row.disabled, cx))
-                            .child(gpui::div().h_8().flex().items_center().child(delete_button)),
+                            .child(gpui::div().flex().items_center().child(delete_button)),
                     )
             })
             .collect::<Vec<_>>();
