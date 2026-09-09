@@ -279,8 +279,8 @@ type RequestBodyType = RequestFileBodyType;
 struct RequestHttp {
     method: Method,
     url: Entity<InputField>,
-    params: Vec<RequestParam>,
-    headers: Vec<RequestHeader>,
+    params: Vec<KeyValueRow>,
+    headers: Vec<KeyValueRow>,
     body_type: Option<RequestBodyType>,
     body: Option<RequestBody>,
     form_url_encoded: Vec<KeyValueRow>,
@@ -309,31 +309,27 @@ impl Request {
         });
         let mut params = Vec::new();
         for param in &request_file.http.params {
-            let mut request_param = RequestParam::new(window, cx);
-            request_param.name.update(cx, |field, cx| {
-                field.set_value(&param.name, window, cx);
-            });
-            request_param.value.update(cx, |field, cx| {
-                field.set_value(&param.value, window, cx);
-            });
-            if param.disabled {
-                request_param.set_disabled(true, window, cx);
-            }
-            params.push(request_param);
+            let mut row = self::new_kv_row(
+                Some(&param.name),
+                Some(&param.value),
+                RequestKvKind::Param,
+                window,
+                cx,
+            );
+            row.set_disabled(param.disabled, cx);
+            params.push(row);
         }
         let mut headers = Vec::new();
         for header in &request_file.http.headers {
-            let mut request_header = RequestHeader::new(window, cx);
-            request_header.name.update(cx, |field, cx| {
-                field.set_value(&header.name, window, cx);
-            });
-            request_header.value.update(cx, |field, cx| {
-                field.set_value(&header.value, window, cx);
-            });
-            if header.disabled {
-                request_header.set_disabled(true, window, cx);
-            }
-            headers.push(request_header);
+            let mut row = self::new_kv_row(
+                Some(&header.name),
+                Some(&header.value),
+                RequestKvKind::Header,
+                window,
+                cx,
+            );
+            row.set_disabled(header.disabled, cx);
+            headers.push(row);
         }
         let body_type = request_file
             .http
@@ -351,8 +347,13 @@ impl Request {
             ) => body = Some(RequestBody::new(data.clone(), window, cx)),
             Some(RequestFileBody::FormUrlEncoded { data }) => {
                 for field in data {
-                    let mut row =
-                        self::new_kv_row(Some(&field.name), Some(&field.value), window, cx);
+                    let mut row = self::new_kv_row(
+                        Some(&field.name),
+                        Some(&field.value),
+                        RequestKvKind::FormUrlEncoded,
+                        window,
+                        cx,
+                    );
                     row.set_disabled(field.disabled, cx);
                     form_url_encoded.push(row);
                 }
@@ -373,24 +374,6 @@ impl Request {
             },
         })
     }
-
-    fn delete_param(&mut self, index: usize) -> bool {
-        if index < self.http.params.len() {
-            self.http.params.remove(index);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn delete_header(&mut self, index: usize) -> bool {
-        if index < self.http.headers.len() {
-            self.http.headers.remove(index);
-            true
-        } else {
-            false
-        }
-    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -408,8 +391,8 @@ impl RequestSnapshot {
                     .params
                     .iter()
                     .map(|param| RequestFileParam {
-                        name: param.name.read(cx).value(cx),
-                        value: param.value.read(cx).value(cx),
+                        name: param.key.read(cx).text(cx),
+                        value: param.value.read(cx).text(cx),
                         disabled: param.disabled,
                     })
                     .collect(),
@@ -418,8 +401,8 @@ impl RequestSnapshot {
                     .headers
                     .iter()
                     .map(|header| RequestFileHeader {
-                        name: header.name.read(cx).value(cx),
-                        value: header.value.read(cx).value(cx),
+                        name: header.key.read(cx).text(cx),
+                        value: header.value.read(cx).text(cx),
                         disabled: header.disabled,
                     })
                     .collect(),
@@ -461,54 +444,6 @@ impl RequestSnapshot {
     }
 }
 
-struct RequestParam {
-    name: Entity<InputField>,
-    value: Entity<InputField>,
-    disabled: bool,
-}
-
-impl RequestParam {
-    fn new(window: &mut Window, cx: &mut App) -> Self {
-        Self {
-            name: cx.new(|cx| InputField::new(window, cx, "Key")),
-            value: cx.new(|cx| InputField::new(window, cx, "Value")),
-            disabled: false,
-        }
-    }
-
-    fn set_disabled(&mut self, disabled: bool, window: &mut Window, cx: &mut App) {
-        self.disabled = disabled;
-        self.name
-            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
-        self.value
-            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
-    }
-}
-
-struct RequestHeader {
-    name: Entity<InputField>,
-    value: Entity<InputField>,
-    disabled: bool,
-}
-
-impl RequestHeader {
-    fn new(window: &mut Window, cx: &mut App) -> Self {
-        Self {
-            name: cx.new(|cx| InputField::new(window, cx, "Key")),
-            value: cx.new(|cx| InputField::new(window, cx, "Value")),
-            disabled: false,
-        }
-    }
-
-    fn set_disabled(&mut self, disabled: bool, window: &mut Window, cx: &mut App) {
-        self.disabled = disabled;
-        self.name
-            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
-        self.value
-            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
-    }
-}
-
 struct RequestBody {
     editor: Entity<Editor>,
     payload: Entity<MultiBuffer>,
@@ -536,6 +471,79 @@ impl RequestBody {
     }
 }
 
+#[derive(Clone, Copy)]
+enum RequestKvKind {
+    Param,
+    Header,
+    FormUrlEncoded,
+}
+
+impl RequestKvKind {
+    fn rows_mut(self, http: &mut RequestHttp) -> &mut Vec<KeyValueRow> {
+        match self {
+            RequestKvKind::Param => &mut http.params,
+            RequestKvKind::Header => &mut http.headers,
+            RequestKvKind::FormUrlEncoded => &mut http.form_url_encoded,
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "parameters",
+            RequestKvKind::Header => "headers",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded",
+        }
+    }
+
+    fn row_id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "param-row",
+            RequestKvKind::Header => "header-row",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-row",
+        }
+    }
+
+    fn checkbox_id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "param-checkbox",
+            RequestKvKind::Header => "header-checkbox",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-checkbox",
+        }
+    }
+
+    fn remove_id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "param-delete",
+            RequestKvKind::Header => "header-delete",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-delete",
+        }
+    }
+
+    fn add_id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "param-add",
+            RequestKvKind::Header => "header-add",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-add",
+        }
+    }
+
+    fn add_label(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "Add Parameter",
+            RequestKvKind::Header => "Add Header",
+            RequestKvKind::FormUrlEncoded => "Add Field",
+        }
+    }
+
+    fn scrollbar_id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "parameters-scrollbar",
+            RequestKvKind::Header => "headers-scrollbar",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-scrollbar",
+        }
+    }
+}
+
 struct KeyValueRow {
     key: Entity<Editor>,
     value: Entity<Editor>,
@@ -557,6 +565,7 @@ impl KeyValueRow {
 fn new_kv_row(
     key: Option<&str>,
     value: Option<&str>,
+    kind: RequestKvKind,
     window: &mut Window,
     cx: &mut App,
 ) -> KeyValueRow {
@@ -569,7 +578,12 @@ fn new_kv_row(
         editor
     });
     let value = cx.new(|cx| {
-        let mut editor = Editor::auto_height(1, Some(4), window, cx);
+        let mut editor = match kind {
+            RequestKvKind::Param | RequestKvKind::FormUrlEncoded => {
+                Editor::auto_height(1, Some(4), window, cx)
+            }
+            RequestKvKind::Header => Editor::single_line(window, cx),
+        };
         editor.set_placeholder_text("Value", cx);
         if let Some(value) = value {
             editor.set_text(value, cx);
@@ -820,15 +834,13 @@ impl RequestEditor {
     ) -> Vec<Subscription> {
         let mut subscriptions = Vec::new();
         subscriptions.push(Self::subscribe_to_input(&request.http.url, window, cx));
-        for param in &request.http.params {
-            subscriptions.push(Self::subscribe_to_input(&param.name, window, cx));
-            subscriptions.push(Self::subscribe_to_input(&param.value, window, cx));
-        }
-        for header in &request.http.headers {
-            subscriptions.push(Self::subscribe_to_input(&header.name, window, cx));
-            subscriptions.push(Self::subscribe_to_input(&header.value, window, cx));
-        }
-        for row in &request.http.form_url_encoded {
+        for row in request
+            .http
+            .params
+            .iter()
+            .chain(&request.http.headers)
+            .chain(&request.http.form_url_encoded)
+        {
             subscriptions.push(Self::subscribe_to_editor(&row.key, window, cx));
             subscriptions.push(Self::subscribe_to_editor(&row.value, window, cx));
         }
@@ -1022,60 +1034,6 @@ impl RequestEditor {
         cx.notify();
     }
 
-    fn add_param(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let RequestEditorState::Ready(request) = &mut self.request else {
-            return;
-        };
-
-        let param = RequestParam::new(window, cx);
-        let name_subscription = Self::subscribe_to_input(&param.name, window, cx);
-        let value_subscription = Self::subscribe_to_input(&param.value, window, cx);
-        request.http.params.push(param);
-        self.input_subscriptions.push(name_subscription);
-        self.input_subscriptions.push(value_subscription);
-        self.mark_edited(cx);
-    }
-
-    fn add_header(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let RequestEditorState::Ready(request) = &mut self.request else {
-            return;
-        };
-
-        let header = RequestHeader::new(window, cx);
-        let name_subscription = Self::subscribe_to_input(&header.name, window, cx);
-        let value_subscription = Self::subscribe_to_input(&header.value, window, cx);
-        request.http.headers.push(header);
-        self.input_subscriptions.push(name_subscription);
-        self.input_subscriptions.push(value_subscription);
-        self.mark_edited(cx);
-    }
-
-    fn add_form_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let RequestEditorState::Ready(request) = &mut self.request else {
-            return;
-        };
-
-        let row = self::new_kv_row(None, None, window, cx);
-        self.input_subscriptions
-            .push(Self::subscribe_to_editor(&row.key, window, cx));
-        self.input_subscriptions
-            .push(Self::subscribe_to_editor(&row.value, window, cx));
-        request.http.form_url_encoded.push(row);
-        self.mark_edited(cx);
-    }
-
-    fn delete_form_field(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        let RequestEditorState::Ready(request) = &mut self.request else {
-            return;
-        };
-        if index >= request.http.form_url_encoded.len() {
-            return;
-        }
-        request.http.form_url_encoded.remove(index);
-        self.input_subscriptions = Self::subscribe_to_request(request, window, cx);
-        self.mark_edited(cx);
-    }
-
     fn set_body_type(
         &mut self,
         body_type: Option<RequestBodyType>,
@@ -1147,12 +1105,12 @@ impl RequestEditor {
                     return None;
                 }
 
-                let name = param.name.read(cx).value(cx).trim().to_string();
+                let name = param.key.read(cx).text(cx).trim().to_string();
                 if name.is_empty() {
                     return None;
                 }
 
-                let value = param.value.read(cx).value(cx);
+                let value = param.value.read(cx).text(cx);
                 Some((name, value))
             })
             .collect::<Vec<_>>();
@@ -1165,12 +1123,12 @@ impl RequestEditor {
                     return None;
                 }
 
-                let name = header.name.read(cx).value(cx).trim().to_string();
+                let name = header.key.read(cx).text(cx).trim().to_string();
                 if name.is_empty() {
                     return None;
                 }
 
-                let value = header.value.read(cx).value(cx);
+                let value = header.value.read(cx).text(cx);
                 Some((name, value))
             })
             .collect::<Vec<_>>();
@@ -1716,243 +1674,20 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         match self.active_tab {
-            RequestEditorTab::Parameters => self.render_parameters(request, window, cx),
-            RequestEditorTab::Headers => self.render_headers(request, window, cx),
+            RequestEditorTab::Parameters => {
+                self.render_kv_section(&request.http.params, RequestKvKind::Param, window, cx)
+            }
+            RequestEditorTab::Headers => {
+                self.render_kv_section(&request.http.headers, RequestKvKind::Header, window, cx)
+            }
             RequestEditorTab::Body => self.render_body(request, window, cx),
         }
     }
 
-    fn render_parameters(
-        &self,
-        request: &Request,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let mut rows = Vec::new();
-        for (index, param) in request.http.params.iter().enumerate() {
-            let checkbox = ui::checkbox(
-                ("param-disabled", index),
-                ToggleState::from(!param.disabled),
-            )
-            .on_click(cx.listener(
-                move |request_editor, new_state: &ToggleState, window, cx| {
-                    let disabled = !new_state.selected();
-                    let mut edited = false;
-                    if let RequestEditorState::Ready(request) = &mut request_editor.request
-                        && let Some(param) = request.http.params.get_mut(index)
-                        && param.disabled != disabled
-                    {
-                        param.set_disabled(disabled, window, cx);
-                        edited = true;
-                    }
-
-                    if edited {
-                        request_editor.mark_edited(cx);
-                    }
-                },
-            ));
-            let delete_button = IconButton::new(("param-delete", index), IconAsset::Trash)
-                .shape(IconButtonShape::Square)
-                .variant(ButtonVariant::Outline)
-                .icon_color(Color::Muted)
-                .tooltip(Tooltip::text("Delete"))
-                .on_click(cx.listener(move |request_editor, _, _, cx| {
-                    let mut edited = false;
-                    if let RequestEditorState::Ready(request) = &mut request_editor.request {
-                        edited = request.delete_param(index);
-                    }
-
-                    if edited {
-                        request_editor.mark_edited(cx);
-                    }
-                }));
-
-            rows.push(
-                gpui::div()
-                    .id(("param-row", index))
-                    .flex()
-                    .items_center()
-                    .w_full()
-                    .child(gpui::div().pr_1p5().child(checkbox))
-                    .child(
-                        gpui::div()
-                            .flex()
-                            .items_center()
-                            .flex_1()
-                            .gap_2p5()
-                            .child(gpui::div().flex_1().child(param.name.clone()))
-                            .child(gpui::div().flex_1().child(param.value.clone()))
-                            .child(delete_button),
-                    )
-                    .into_any_element(),
-            );
-        }
-
-        let add_button = Button::new("param-add", "Add Parameter")
-            .icon(IconAsset::Plus)
-            .icon_size(IconSize::Small)
-            .icon_color(Color::Muted)
-            .variant(ButtonVariant::OutlinedGhost)
-            .size(ButtonSize::Medium)
-            .on_click(cx.listener(|request_editor, _, window, cx| {
-                request_editor.add_param(window, cx);
-            }));
-        let colors = cx.theme().colors();
-
-        gpui::div()
-            .flex()
-            .flex_col()
-            .w_full()
-            .flex_1()
-            .min_h_0()
-            .child(
-                gpui::div()
-                    .id("parameters")
-                    .flex()
-                    .flex_col()
-                    .track_scroll(&self.params_scroll_handle)
-                    .size_full()
-                    .min_w_0()
-                    .overflow_y_scroll()
-                    .pl_2()
-                    .pr_6()
-                    .gap_2()
-                    .py_3()
-                    .children(rows)
-                    .child(gpui::div().flex().items_center().pl_1().child(add_button)),
-            )
-            .custom_scrollbars(
-                Scrollbars::new(ScrollAxes::Vertical)
-                    .id("parameters-scrollbar")
-                    .tracked_scroll_handle(&self.params_scroll_handle)
-                    .with_track_along(
-                        ScrollAxes::Vertical,
-                        colors.scrollbar_track_background,
-                        TrackLayout::Overlay,
-                    ),
-                window,
-                cx,
-            )
-            .into_any_element()
-    }
-
-    fn render_headers(
-        &self,
-        request: &Request,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let mut rows = Vec::new();
-        for (index, header) in request.http.headers.iter().enumerate() {
-            let checkbox = ui::checkbox(
-                ("header-disabled", index),
-                ToggleState::from(!header.disabled),
-            )
-            .on_click(cx.listener(
-                move |request_editor, new_state: &ToggleState, window, cx| {
-                    let disabled = !new_state.selected();
-                    let mut edited = false;
-                    if let RequestEditorState::Ready(request) = &mut request_editor.request
-                        && let Some(header) = request.http.headers.get_mut(index)
-                        && header.disabled != disabled
-                    {
-                        header.set_disabled(disabled, window, cx);
-                        edited = true;
-                    }
-
-                    if edited {
-                        request_editor.mark_edited(cx);
-                    }
-                },
-            ));
-            let delete_button = IconButton::new(("header-delete", index), IconAsset::Trash)
-                .shape(IconButtonShape::Square)
-                .variant(ButtonVariant::Outline)
-                .icon_color(Color::Muted)
-                .tooltip(Tooltip::text("Delete"))
-                .on_click(cx.listener(move |request_editor, _, _, cx| {
-                    let mut edited = false;
-                    if let RequestEditorState::Ready(request) = &mut request_editor.request {
-                        edited = request.delete_header(index);
-                    }
-
-                    if edited {
-                        request_editor.mark_edited(cx);
-                    }
-                }));
-
-            rows.push(
-                gpui::div()
-                    .id(("header-row", index))
-                    .flex()
-                    .items_center()
-                    .w_full()
-                    .child(gpui::div().pr_1p5().child(checkbox))
-                    .child(
-                        gpui::div()
-                            .flex()
-                            .items_center()
-                            .flex_1()
-                            .gap_2p5()
-                            .child(gpui::div().flex_1().child(header.name.clone()))
-                            .child(gpui::div().flex_1().child(header.value.clone()))
-                            .child(delete_button),
-                    )
-                    .into_any_element(),
-            );
-        }
-
-        let add_button = Button::new("header-add", "Add Header")
-            .icon(IconAsset::Plus)
-            .icon_size(IconSize::Small)
-            .icon_color(Color::Muted)
-            .variant(ButtonVariant::OutlinedGhost)
-            .size(ButtonSize::Medium)
-            .on_click(cx.listener(|request_editor, _, window, cx| {
-                request_editor.add_header(window, cx);
-            }));
-        let colors = cx.theme().colors();
-
-        gpui::div()
-            .flex()
-            .flex_col()
-            .w_full()
-            .flex_1()
-            .min_h_0()
-            .child(
-                gpui::div()
-                    .id("headers")
-                    .flex()
-                    .flex_col()
-                    .track_scroll(&self.headers_scroll_handle)
-                    .size_full()
-                    .min_w_0()
-                    .overflow_y_scroll()
-                    .pl_2()
-                    .pr_6()
-                    .gap_2()
-                    .py_3()
-                    .children(rows)
-                    .child(gpui::div().flex().items_center().pl_1().child(add_button)),
-            )
-            .custom_scrollbars(
-                Scrollbars::new(ScrollAxes::Vertical)
-                    .id("headers-scrollbar")
-                    .tracked_scroll_handle(&self.headers_scroll_handle)
-                    .with_track_along(
-                        ScrollAxes::Vertical,
-                        colors.scrollbar_track_background,
-                        TrackLayout::Overlay,
-                    ),
-                window,
-                cx,
-            )
-            .into_any_element()
-    }
-
-    fn render_form_url_encoded(
+    fn render_kv_section(
         &self,
         rows: &[KeyValueRow],
+        kind: RequestKvKind,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -1961,14 +1696,14 @@ impl RequestEditor {
             .enumerate()
             .map(|(index, row)| {
                 let checkbox = ui::checkbox(
-                    ("form-urlencoded-disabled", index),
+                    (kind.checkbox_id(), index),
                     ToggleState::from(!row.disabled),
                 )
                 .on_click(cx.listener(
                     move |request_editor, new_state: &ToggleState, _, cx| {
                         let disabled = !new_state.selected();
                         if let RequestEditorState::Ready(request) = &mut request_editor.request
-                            && let Some(row) = request.http.form_url_encoded.get_mut(index)
+                            && let Some(row) = kind.rows_mut(&mut request.http).get_mut(index)
                             && row.disabled != disabled
                         {
                             row.set_disabled(disabled, cx);
@@ -1976,18 +1711,27 @@ impl RequestEditor {
                         }
                     },
                 ));
-                let delete_button =
-                    IconButton::new(("form-urlencoded-delete", index), IconAsset::Trash)
-                        .shape(IconButtonShape::Square)
-                        .variant(ButtonVariant::Outline)
-                        .icon_color(Color::Muted)
-                        .tooltip(Tooltip::text("Delete"))
-                        .on_click(cx.listener(move |request_editor, _, window, cx| {
-                            request_editor.delete_form_field(index, window, cx);
-                        }));
+                let delete_button = IconButton::new((kind.remove_id(), index), IconAsset::Trash)
+                    .shape(IconButtonShape::Square)
+                    .variant(ButtonVariant::Outline)
+                    .icon_color(Color::Muted)
+                    .tooltip(Tooltip::text("Delete"))
+                    .on_click(cx.listener(move |request_editor, _, window, cx| {
+                        let RequestEditorState::Ready(request) = &mut request_editor.request else {
+                            return;
+                        };
+                        let rows = kind.rows_mut(&mut request.http);
+                        if index >= rows.len() {
+                            return;
+                        }
+                        rows.remove(index);
+                        request_editor.input_subscriptions =
+                            Self::subscribe_to_request(request, window, cx);
+                        request_editor.mark_edited(cx);
+                    }));
 
                 gpui::div()
-                    .id(("form-urlencoded-row", index))
+                    .id((kind.row_id(), index))
                     .flex()
                     .items_center()
                     .w_full()
@@ -2005,15 +1749,32 @@ impl RequestEditor {
                     )
             })
             .collect::<Vec<_>>();
-        let add_button = Button::new("form-urlencoded-add", "Add Field")
+        let add_button = Button::new(kind.add_id(), kind.add_label())
             .icon(IconAsset::Plus)
             .icon_size(IconSize::Small)
             .icon_color(Color::Muted)
             .variant(ButtonVariant::OutlinedGhost)
             .size(ButtonSize::Medium)
-            .on_click(cx.listener(|request_editor, _, window, cx| {
-                request_editor.add_form_field(window, cx);
+            .on_click(cx.listener(move |request_editor, _, window, cx| {
+                let RequestEditorState::Ready(request) = &mut request_editor.request else {
+                    return;
+                };
+
+                let row = self::new_kv_row(None, None, kind, window, cx);
+                request_editor
+                    .input_subscriptions
+                    .push(Self::subscribe_to_editor(&row.key, window, cx));
+                request_editor
+                    .input_subscriptions
+                    .push(Self::subscribe_to_editor(&row.value, window, cx));
+                kind.rows_mut(&mut request.http).push(row);
+                request_editor.mark_edited(cx);
             }));
+        let scroll_handle = match kind {
+            RequestKvKind::Param => &self.params_scroll_handle,
+            RequestKvKind::Header => &self.headers_scroll_handle,
+            RequestKvKind::FormUrlEncoded => &self.form_url_encoded_scroll_handle,
+        };
         let colors = cx.theme().colors();
 
         gpui::div()
@@ -2024,11 +1785,11 @@ impl RequestEditor {
             .min_h_0()
             .child(
                 gpui::div()
-                    .id("form-urlencoded")
+                    .id(kind.id())
                     .key_context("RequestForm")
                     .flex()
                     .flex_col()
-                    .track_scroll(&self.form_url_encoded_scroll_handle)
+                    .track_scroll(scroll_handle)
                     .size_full()
                     .min_w_0()
                     .overflow_y_scroll()
@@ -2041,8 +1802,8 @@ impl RequestEditor {
             )
             .custom_scrollbars(
                 Scrollbars::new(ScrollAxes::Vertical)
-                    .id("form-urlencoded-scrollbar")
-                    .tracked_scroll_handle(&self.form_url_encoded_scroll_handle)
+                    .id(kind.scrollbar_id())
+                    .tracked_scroll_handle(scroll_handle)
                     .with_track_along(
                         ScrollAxes::Vertical,
                         colors.scrollbar_track_background,
@@ -2076,9 +1837,12 @@ impl RequestEditor {
                     .child(body.editor())
                     .into_any_element()
             }),
-            Some(RequestBodyType::FormUrlEncoded) => {
-                Some(self.render_form_url_encoded(&request.http.form_url_encoded, window, cx))
-            }
+            Some(RequestBodyType::FormUrlEncoded) => Some(self.render_kv_section(
+                &request.http.form_url_encoded,
+                RequestKvKind::FormUrlEncoded,
+                window,
+                cx,
+            )),
             None => Some(
                 gpui::div()
                     .flex_1()
