@@ -2253,6 +2253,102 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_send_request_empty_form_url_encoded(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, mut rx) = mpsc::unbounded();
+
+        let http_client = FakeHttpClient::create(move |request| {
+            assert_eq!(request.headers().get_all("Content-Type").iter().count(), 1);
+            assert_eq!(
+                request
+                    .headers()
+                    .get("Content-Type")
+                    .and_then(|value| value.to_str().ok()),
+                Some("application/x-www-form-urlencoded")
+            );
+            let tx = tx.clone();
+
+            async move {
+                let mut body = request.into_body();
+                let mut data = String::new();
+                body.read_to_string(&mut data).await.unwrap();
+                tx.unbounded_send(data).unwrap();
+
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(AsyncBody::empty())
+                    .unwrap())
+            }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "POST"
+                        url = "https://api.zaku.dev/form-urlencoded"
+                        body = {
+                          type = "form-urlencoded",
+                          data = [
+                            { name = "", value = "" },
+                          ]
+                        }
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        let data = rx.try_recv().unwrap();
+        assert_eq!(data, "=");
+
+        request_editor.update_in(cx, |editor, _, _| {
+            let RequestEditorState::Ready(request) = &mut editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            request.http.form_url_encoded.clear();
+        });
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        let data = rx.try_recv().unwrap();
+        assert_eq!(data, "");
+    }
+
+    #[gpui::test]
     async fn test_send_request_form_url_encoded_content_type(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
