@@ -154,7 +154,7 @@ pub fn serialize_request_file(request_file: &RequestFile) -> anyhow::Result<Stri
 pub async fn format_request_file(contents: &str) -> anyhow::Result<String> {
     let options = FormatOptions {
         rules: Some(FormatRules {
-            line_width: Some(LineWidth::try_from(100).unwrap()),
+            line_width: Some(LineWidth::try_from(100).expect("line width should be non-zero")),
             ..Default::default()
         }),
     };
