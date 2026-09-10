@@ -1114,24 +1114,25 @@ impl RequestEditor {
                 Some((name, value))
             })
             .collect::<Vec<_>>();
-        let mut request_headers = request
-            .http
-            .headers
-            .iter()
-            .filter_map(|header| {
-                if header.disabled {
-                    return None;
-                }
+        let mut request_headers = Vec::new();
+        let mut content_type = None;
+        for header in &request.http.headers {
+            if header.disabled {
+                continue;
+            }
 
-                let name = header.key.read(cx).text(cx).trim().to_string();
-                if name.is_empty() {
-                    return None;
-                }
+            let name = header.key.read(cx).text(cx).trim().to_string();
+            if name.is_empty() {
+                continue;
+            }
 
-                let value = header.value.read(cx).text(cx);
-                Some((name, value))
-            })
-            .collect::<Vec<_>>();
+            let value = header.value.read(cx).text(cx);
+            if name.eq_ignore_ascii_case("content-type") {
+                content_type = Some((name, value));
+            } else {
+                request_headers.push((name, value));
+            }
+        }
         let request_body = match request.http.body_type {
             Some(
                 RequestBodyType::Text
@@ -1145,15 +1146,12 @@ impl RequestEditor {
                 .map(|body| body.data(cx))
                 .filter(|body| !body.is_empty()),
             Some(RequestBodyType::FormUrlEncoded) => {
-                if !request_headers
-                    .iter()
-                    .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
-                {
-                    request_headers.push((
+                content_type.get_or_insert_with(|| {
+                    (
                         "Content-Type".to_string(),
                         "application/x-www-form-urlencoded".to_string(),
-                    ));
-                }
+                    )
+                });
                 let fields = request
                     .http
                     .form_url_encoded
@@ -1169,6 +1167,9 @@ impl RequestEditor {
             }
             None => None,
         };
+        if let Some(content_type) = content_type {
+            request_headers.push(content_type);
+        }
 
         let Ok(Some(response_panel)) = self.workspace.update(cx, |workspace, cx| {
             workspace.open_panel::<ResponsePanel>(window, cx);
@@ -2220,6 +2221,95 @@ mod tests {
                             { name = "qux", value = "+&=%20" },
                             { name = "qux", value = "" },
                         ] }
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(rx.try_recv().unwrap(), Some(()));
+    }
+
+    #[gpui::test]
+    async fn test_send_request_uses_last_enabled_content_type(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, mut rx) = oneshot::channel();
+        let tx = Mutex::new(Some(tx));
+
+        let http_client = FakeHttpClient::create(move |request| {
+            assert_eq!(request.headers().get_all("Content-Type").iter().count(), 1);
+            assert_eq!(
+                request
+                    .headers()
+                    .get("Content-Type")
+                    .and_then(|value| value.to_str().ok()),
+                Some("application/x-www-form-urlencoded; charset=UTF-8")
+            );
+            let tx = tx.lock().take().unwrap();
+
+            async move {
+                let mut body = request.into_body();
+                let mut data = String::new();
+                body.read_to_string(&mut data).await.unwrap();
+                assert_eq!(data, "foo=bar");
+                tx.send(()).unwrap();
+
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(AsyncBody::empty())
+                    .unwrap())
+            }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "POST"
+                        url = "https://api.zaku.dev/form-urlencoded"
+                        headers = [
+                          { name = "Content-Type", value = "application/json" },
+                          { name = "content-type", value = "application/x-www-form-urlencoded; charset=UTF-8" },
+                          { name = "CONTENT-TYPE", value = "text/plain", disabled = true },
+                        ]
+                        body = {
+                          type = "form-urlencoded",
+                          data = [
+                            { name = "foo", value = "bar" },
+                          ]
+                        }
                     "#}
                 }
             }),
