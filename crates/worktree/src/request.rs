@@ -1,6 +1,9 @@
 use anyhow::{Context, anyhow};
 use serde::{Deserialize, Serialize};
 use std::mem;
+use tombi_config::TomlVersion;
+use tombi_formatter::{FormatOptions, Formatter};
+use tombi_schema_store::SchemaStore;
 use toml_edit::{Item, Table};
 
 pub const REQUEST_FILE_VERSION: u32 = 1;
@@ -146,6 +149,23 @@ pub fn serialize_request_file(request_file: &RequestFile) -> anyhow::Result<Stri
     promote_to_table(document.as_table_mut(), "http")
         .context("Failed to serialize request http")?;
     Ok(document.to_string())
+}
+
+pub async fn format_request_file(contents: &str) -> anyhow::Result<String> {
+    let options = FormatOptions::default();
+    let schema_store = SchemaStore::new_with_options(tombi_schema_store::Options {
+        strict: None,
+        offline: Some(true),
+        cache: Some(tombi_cache::Options {
+            no_cache: Some(true),
+            cache_ttl: None,
+        }),
+    });
+
+    Formatter::new(TomlVersion::V1_1_0, &options, None, &schema_store)
+        .format(contents)
+        .await
+        .map_err(|diagnostics| anyhow!("failed to format request file: {diagnostics:?}"))
 }
 
 fn promote_to_table(parent: &mut Table, key: &str) -> anyhow::Result<()> {
