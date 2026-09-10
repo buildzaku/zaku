@@ -2492,17 +2492,24 @@ mod tests {
                         version = 1
 
                         [http]
-                        method = "GET"
-                        url = "https://api.zaku.dev/me"
+                        method = "POST"
+                        url = "https://api.zaku.dev/form-urlencoded"
                         params = [
-                            { name = "query", value = "zaku" },
-                            { name = "debug", value = "1", disabled = true },
-                            { name = "test", value = "1", disabled = false },
+                          { name = "query", value = "zaku" },
+                          { name = "debug", value = "1", disabled = true },
+                          { name = "test", value = "1", disabled = false },
                         ]
                         headers = [
-                            { name = "Content-Type", value = "application/json" },
-                            { name = "X-Debug", value = "1", disabled = true },
+                          { name = "Content-Type", value = "application/x-www-form-urlencoded" },
+                          { name = "X-Debug", value = "1", disabled = true },
                         ]
+                        body = {
+                          type = "form-urlencoded",
+                          data = [
+                            { name = "foo", value = "bar" },
+                            { name = "baz", value = "qux", disabled = true },
+                          ]
+                        }
                     "#}
                 }
             }),
@@ -2528,17 +2535,35 @@ mod tests {
             .downcast::<RequestEditor>()
             .unwrap();
 
-        request_editor.update_in(cx, |editor, window, cx| {
+        assert!(!request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
+
+        request_editor.update_in(cx, |editor, _, cx| {
             let RequestEditorState::Ready(request) = &mut editor.request else {
-                panic!("Expected request editor to be ready");
+                panic!("expected request editor to be ready");
             };
-            request.http.url.update(cx, |field, cx| {
-                field.set_value("https://api.zaku.dev/me/edit", window, cx);
+            let row = request.http.form_url_encoded.first().unwrap();
+            row.key.update(cx, |editor, cx| {
+                editor.set_text("bar", cx);
             });
-            editor.mark_edited(cx);
+            row.value.update(cx, |editor, cx| {
+                editor.set_text("baz", cx);
+            });
+            let row = request.http.form_url_encoded.last().unwrap();
+            row.value.update(cx, |editor, cx| {
+                editor.set_text("the quick brown fox\njumps over the lazy dog", cx);
+            });
         });
 
         assert!(request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
+
+        request_editor.update_in(cx, |editor, window, cx| {
+            let RequestEditorState::Ready(request) = &mut editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            request.http.url.update(cx, |field, cx| {
+                field.set_value("https://api.zaku.dev/form-urlencoded/edit", window, cx);
+            });
+        });
 
         workspace
             .update_in(cx, |workspace, window, cx| {
@@ -2558,8 +2583,8 @@ mod tests {
         let expected_request = RequestFile {
             meta: RequestFileMeta { version: 1 },
             http: RequestFileHttp {
-                method: "GET".to_string(),
-                url: "https://api.zaku.dev/me/edit".to_string(),
+                method: "POST".to_string(),
+                url: "https://api.zaku.dev/form-urlencoded/edit".to_string(),
                 params: vec![
                     RequestFileParam {
                         name: "query".to_string(),
@@ -2580,7 +2605,7 @@ mod tests {
                 headers: vec![
                     RequestFileHeader {
                         name: "Content-Type".to_string(),
-                        value: "application/json".to_string(),
+                        value: "application/x-www-form-urlencoded".to_string(),
                         disabled: false,
                     },
                     RequestFileHeader {
@@ -2589,7 +2614,20 @@ mod tests {
                         disabled: true,
                     },
                 ],
-                body: None,
+                body: Some(RequestFileBody::FormUrlEncoded {
+                    data: vec![
+                        RequestFileFormField {
+                            name: "bar".to_string(),
+                            value: "baz".to_string(),
+                            disabled: false,
+                        },
+                        RequestFileFormField {
+                            name: "baz".to_string(),
+                            value: "the quick brown fox\njumps over the lazy dog".to_string(),
+                            disabled: true,
+                        },
+                    ],
+                }),
             },
         };
 
