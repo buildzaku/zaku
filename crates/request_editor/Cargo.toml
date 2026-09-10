@@ -36,6 +36,7 @@ response_panel = { workspace = true }
 settings = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
+url = { workspace = true }
 util = { workspace = true }
 workspace = { workspace = true }
 
