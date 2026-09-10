@@ -4,7 +4,8 @@ mod persistence;
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
     Anchor, AnyElement, App, Context, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
-    FontWeight, ScrollHandle, SharedString, Subscription, WeakEntity, Window, prelude::*,
+    FontWeight, ScrollHandle, SharedString, Subscription, TextStyleRefinement, WeakEntity, Window,
+    prelude::*,
 };
 use std::{
     rc::Rc,
@@ -22,8 +23,8 @@ use multi_buffer::MultiBuffer;
 use path::PathStyle;
 use project::{
     Project, ProjectPath, RequestBuffer, RequestBufferEvent, RequestFile, RequestFileBody,
-    RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
-    RequestFileState,
+    RequestFileBodyType, RequestFileFormField, RequestFileHeader, RequestFileHttp, RequestFileMeta,
+    RequestFileParam, RequestFileState,
 };
 use response_panel::{
     Response, ResponseCookie, ResponseHeader, ResponsePanel, ResponsePanelTab, ResponseState,
@@ -278,10 +279,11 @@ type RequestBodyType = RequestFileBodyType;
 struct RequestHttp {
     method: Method,
     url: Entity<InputField>,
-    params: Vec<RequestParam>,
-    headers: Vec<RequestHeader>,
+    params: Vec<KeyValueRow>,
+    headers: Vec<KeyValueRow>,
     body_type: Option<RequestBodyType>,
     body: Option<RequestBody>,
+    form_url_encoded: Vec<KeyValueRow>,
 }
 
 struct Request {
@@ -307,38 +309,57 @@ impl Request {
         });
         let mut params = Vec::new();
         for param in &request_file.http.params {
-            let mut request_param = RequestParam::new(window, cx);
-            request_param.name.update(cx, |field, cx| {
-                field.set_value(&param.name, window, cx);
-            });
-            request_param.value.update(cx, |field, cx| {
-                field.set_value(&param.value, window, cx);
-            });
-            if param.disabled {
-                request_param.set_disabled(true, window, cx);
-            }
-            params.push(request_param);
+            let mut row = self::new_kv_row(
+                Some(&param.name),
+                Some(&param.value),
+                RequestKvKind::Param,
+                window,
+                cx,
+            );
+            row.set_disabled(param.disabled, cx);
+            params.push(row);
         }
         let mut headers = Vec::new();
         for header in &request_file.http.headers {
-            let mut request_header = RequestHeader::new(window, cx);
-            request_header.name.update(cx, |field, cx| {
-                field.set_value(&header.name, window, cx);
-            });
-            request_header.value.update(cx, |field, cx| {
-                field.set_value(&header.value, window, cx);
-            });
-            if header.disabled {
-                request_header.set_disabled(true, window, cx);
-            }
-            headers.push(request_header);
+            let mut row = self::new_kv_row(
+                Some(&header.name),
+                Some(&header.value),
+                RequestKvKind::Header,
+                window,
+                cx,
+            );
+            row.set_disabled(header.disabled, cx);
+            headers.push(row);
         }
-        let body_type = request_file.http.body.as_ref().map(|body| body.r#type);
-        let body = request_file
+        let body_type = request_file
             .http
             .body
             .as_ref()
-            .map(|body| RequestBody::from_request_file_body(body, window, cx));
+            .map(RequestFileBody::body_type);
+        let mut body = None;
+        let mut form_url_encoded = Vec::new();
+        match &request_file.http.body {
+            Some(
+                RequestFileBody::Text { data }
+                | RequestFileBody::Json { data }
+                | RequestFileBody::Html { data }
+                | RequestFileBody::Xml { data },
+            ) => body = Some(RequestBody::new(data.clone(), window, cx)),
+            Some(RequestFileBody::FormUrlEncoded { data }) => {
+                for field in data {
+                    let mut row = self::new_kv_row(
+                        Some(&field.name),
+                        Some(&field.value),
+                        RequestKvKind::FormUrlEncoded,
+                        window,
+                        cx,
+                    );
+                    row.set_disabled(field.disabled, cx);
+                    form_url_encoded.push(row);
+                }
+            }
+            None => {}
+        }
 
         Ok(Self {
             meta: request_file.meta.clone(),
@@ -349,26 +370,9 @@ impl Request {
                 headers,
                 body_type,
                 body,
+                form_url_encoded,
             },
         })
-    }
-
-    fn delete_param(&mut self, index: usize) -> bool {
-        if index < self.http.params.len() {
-            self.http.params.remove(index);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn delete_header(&mut self, index: usize) -> bool {
-        if index < self.http.headers.len() {
-            self.http.headers.remove(index);
-            true
-        } else {
-            false
-        }
     }
 }
 
@@ -387,8 +391,8 @@ impl RequestSnapshot {
                     .params
                     .iter()
                     .map(|param| RequestFileParam {
-                        name: param.name.read(cx).value(cx),
-                        value: param.value.read(cx).value(cx),
+                        name: param.key.read(cx).text(cx),
+                        value: param.value.read(cx).text(cx),
                         disabled: param.disabled,
                     })
                     .collect(),
@@ -397,15 +401,38 @@ impl RequestSnapshot {
                     .headers
                     .iter()
                     .map(|header| RequestFileHeader {
-                        name: header.name.read(cx).value(cx),
-                        value: header.value.read(cx).value(cx),
+                        name: header.key.read(cx).text(cx),
+                        value: header.value.read(cx).text(cx),
                         disabled: header.disabled,
                     })
                     .collect(),
-                body: request.http.body_type.and_then(|r#type| {
-                    request.http.body.as_ref().map(|body| RequestFileBody {
-                        r#type,
-                        data: body.data(cx),
+                body: request.http.body_type.and_then(|body_type| {
+                    let body = request.http.body.as_ref();
+                    Some(match body_type {
+                        RequestBodyType::Text => RequestFileBody::Text {
+                            data: body?.data(cx),
+                        },
+                        RequestBodyType::Json => RequestFileBody::Json {
+                            data: body?.data(cx),
+                        },
+                        RequestBodyType::Html => RequestFileBody::Html {
+                            data: body?.data(cx),
+                        },
+                        RequestBodyType::Xml => RequestFileBody::Xml {
+                            data: body?.data(cx),
+                        },
+                        RequestBodyType::FormUrlEncoded => RequestFileBody::FormUrlEncoded {
+                            data: request
+                                .http
+                                .form_url_encoded
+                                .iter()
+                                .map(|row| RequestFileFormField {
+                                    name: row.key.read(cx).text(cx),
+                                    value: row.value.read(cx).text(cx),
+                                    disabled: row.disabled,
+                                })
+                                .collect(),
+                        },
                     })
                 }),
             },
@@ -414,54 +441,6 @@ impl RequestSnapshot {
 
     fn from_request_file(request_file: &RequestFile) -> Self {
         Self(request_file.clone())
-    }
-}
-
-struct RequestParam {
-    name: Entity<InputField>,
-    value: Entity<InputField>,
-    disabled: bool,
-}
-
-impl RequestParam {
-    fn new(window: &mut Window, cx: &mut App) -> Self {
-        Self {
-            name: cx.new(|cx| InputField::new(window, cx, "Key")),
-            value: cx.new(|cx| InputField::new(window, cx, "Value")),
-            disabled: false,
-        }
-    }
-
-    fn set_disabled(&mut self, disabled: bool, window: &mut Window, cx: &mut App) {
-        self.disabled = disabled;
-        self.name
-            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
-        self.value
-            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
-    }
-}
-
-struct RequestHeader {
-    name: Entity<InputField>,
-    value: Entity<InputField>,
-    disabled: bool,
-}
-
-impl RequestHeader {
-    fn new(window: &mut Window, cx: &mut App) -> Self {
-        Self {
-            name: cx.new(|cx| InputField::new(window, cx, "Key")),
-            value: cx.new(|cx| InputField::new(window, cx, "Value")),
-            disabled: false,
-        }
-    }
-
-    fn set_disabled(&mut self, disabled: bool, window: &mut Window, cx: &mut App) {
-        self.disabled = disabled;
-        self.name
-            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
-        self.value
-            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
     }
 }
 
@@ -483,14 +462,6 @@ impl RequestBody {
         Self { editor, payload }
     }
 
-    fn from_request_file_body(
-        request_file_body: &RequestFileBody,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Self {
-        Self::new(request_file_body.data.clone(), window, cx)
-    }
-
     fn data(&self, cx: &App) -> String {
         self.payload.read(cx).snapshot(cx).text()
     }
@@ -498,6 +469,170 @@ impl RequestBody {
     fn editor(&self) -> Entity<Editor> {
         self.editor.clone()
     }
+}
+
+#[derive(Clone, Copy)]
+enum RequestKvKind {
+    Param,
+    Header,
+    FormUrlEncoded,
+}
+
+impl RequestKvKind {
+    fn rows_mut(self, http: &mut RequestHttp) -> &mut Vec<KeyValueRow> {
+        match self {
+            RequestKvKind::Param => &mut http.params,
+            RequestKvKind::Header => &mut http.headers,
+            RequestKvKind::FormUrlEncoded => &mut http.form_url_encoded,
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "parameters",
+            RequestKvKind::Header => "headers",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded",
+        }
+    }
+
+    fn row_id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "param-row",
+            RequestKvKind::Header => "header-row",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-row",
+        }
+    }
+
+    fn checkbox_id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "param-checkbox",
+            RequestKvKind::Header => "header-checkbox",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-checkbox",
+        }
+    }
+
+    fn remove_id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "param-delete",
+            RequestKvKind::Header => "header-delete",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-delete",
+        }
+    }
+
+    fn add_id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "param-add",
+            RequestKvKind::Header => "header-add",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-add",
+        }
+    }
+
+    fn add_label(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "Add Parameter",
+            RequestKvKind::Header => "Add Header",
+            RequestKvKind::FormUrlEncoded => "Add Field",
+        }
+    }
+
+    fn scrollbar_id(self) -> &'static str {
+        match self {
+            RequestKvKind::Param => "parameters-scrollbar",
+            RequestKvKind::Header => "headers-scrollbar",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-scrollbar",
+        }
+    }
+}
+
+struct KeyValueRow {
+    key: Entity<Editor>,
+    value: Entity<Editor>,
+    disabled: bool,
+}
+
+impl KeyValueRow {
+    fn set_disabled(&mut self, disabled: bool, cx: &mut App) {
+        self.disabled = disabled;
+        for editor in [&self.key, &self.value] {
+            editor.update(cx, |editor, cx| {
+                editor.set_muted(disabled);
+                cx.notify();
+            });
+        }
+    }
+}
+
+fn new_kv_row(
+    key: Option<&str>,
+    value: Option<&str>,
+    kind: RequestKvKind,
+    window: &mut Window,
+    cx: &mut App,
+) -> KeyValueRow {
+    let key = cx.new(|cx| {
+        let mut editor = Editor::single_line(window, cx);
+        editor.set_placeholder_text("Key", cx);
+        if let Some(key) = key {
+            editor.set_text(key, cx);
+        }
+        editor
+    });
+    let value = cx.new(|cx| {
+        let mut editor = match kind {
+            RequestKvKind::Param | RequestKvKind::FormUrlEncoded => {
+                Editor::auto_height(1, Some(4), window, cx)
+            }
+            RequestKvKind::Header => Editor::single_line(window, cx),
+        };
+        editor.set_placeholder_text("Value", cx);
+        if let Some(value) = value {
+            editor.set_text(value, cx);
+        }
+        editor
+    });
+    KeyValueRow {
+        key,
+        value,
+        disabled: false,
+    }
+}
+
+fn input_box(editor: &Entity<Editor>, disabled: bool, cx: &mut App) -> Div {
+    let text_style = TextStyleRefinement {
+        color: Some(cx.theme().colors().text),
+        line_height: Some(gpui::relative(1.2)),
+        ..Default::default()
+    };
+    editor.update(cx, |editor, _| {
+        editor.set_text_style_refinement(text_style);
+    });
+
+    let colors = cx.theme().colors();
+    let focus_handle = editor.focus_handle(cx).tab_index(0).tab_stop(true);
+    gpui::div()
+        .flex()
+        .flex_1()
+        .min_w_0()
+        .min_h_8()
+        .px_2()
+        .py_1p5()
+        .rounded_md()
+        .border_1()
+        .border_color(if disabled {
+            colors.border_disabled
+        } else {
+            colors.border_variant
+        })
+        .bg(colors.editor_background)
+        .track_focus(&focus_handle)
+        .focus(|this| {
+            this.border_color(if disabled {
+                colors.border_disabled
+            } else {
+                colors.border_focused
+            })
+        })
+        .child(editor.clone())
 }
 
 pub struct RequestEditor {
@@ -513,6 +648,7 @@ pub struct RequestEditor {
     http_client: Arc<dyn HttpClient>,
     params_scroll_handle: ScrollHandle,
     headers_scroll_handle: ScrollHandle,
+    form_url_encoded_scroll_handle: ScrollHandle,
     input_subscriptions: Vec<Subscription>,
     body_subscription: Option<Subscription>,
     _buffer_subscription: Subscription,
@@ -593,6 +729,7 @@ impl RequestEditor {
             http_client: AppState::global(cx).client.http_client(),
             params_scroll_handle: ScrollHandle::new(),
             headers_scroll_handle: ScrollHandle::new(),
+            form_url_encoded_scroll_handle: ScrollHandle::new(),
             input_subscriptions,
             body_subscription,
             _buffer_subscription: buffer_subscription,
@@ -697,13 +834,15 @@ impl RequestEditor {
     ) -> Vec<Subscription> {
         let mut subscriptions = Vec::new();
         subscriptions.push(Self::subscribe_to_input(&request.http.url, window, cx));
-        for param in &request.http.params {
-            subscriptions.push(Self::subscribe_to_input(&param.name, window, cx));
-            subscriptions.push(Self::subscribe_to_input(&param.value, window, cx));
-        }
-        for header in &request.http.headers {
-            subscriptions.push(Self::subscribe_to_input(&header.name, window, cx));
-            subscriptions.push(Self::subscribe_to_input(&header.value, window, cx));
+        for row in request
+            .http
+            .params
+            .iter()
+            .chain(&request.http.headers)
+            .chain(&request.http.form_url_encoded)
+        {
+            subscriptions.push(Self::subscribe_to_editor(&row.key, window, cx));
+            subscriptions.push(Self::subscribe_to_editor(&row.value, window, cx));
         }
         subscriptions
     }
@@ -730,7 +869,7 @@ impl RequestEditor {
         )
     }
 
-    fn subscribe_to_body(
+    fn subscribe_to_editor(
         editor: &Entity<Editor>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -760,9 +899,6 @@ impl RequestEditor {
         };
 
         let language_name = match body_type {
-            Some(RequestBodyType::Json) => "JSON",
-            Some(RequestBodyType::Html) => "HTML",
-            Some(RequestBodyType::Xml) => "XML",
             Some(RequestBodyType::Text) | None => {
                 payload.update(cx, |payload, cx| {
                     if let Some(buffer) = payload.as_singleton() {
@@ -773,6 +909,10 @@ impl RequestEditor {
                 });
                 return;
             }
+            Some(RequestBodyType::Json) => "JSON",
+            Some(RequestBodyType::Html) => "HTML",
+            Some(RequestBodyType::Xml) => "XML",
+            Some(RequestBodyType::FormUrlEncoded) => return,
         };
 
         let payload_id = payload.entity_id();
@@ -853,7 +993,7 @@ impl RequestEditor {
                 .http
                 .body
                 .as_ref()
-                .map(|body| Self::subscribe_to_body(&body.editor, window, cx)),
+                .map(|body| Self::subscribe_to_editor(&body.editor, window, cx)),
             RequestEditorState::Invalid { .. } => None,
         };
 
@@ -894,41 +1034,9 @@ impl RequestEditor {
         cx.notify();
     }
 
-    fn add_param(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !matches!(&self.request, RequestEditorState::Ready(_)) {
-            return;
-        }
-
-        let param = RequestParam::new(window, cx);
-        let name_subscription = Self::subscribe_to_input(&param.name, window, cx);
-        let value_subscription = Self::subscribe_to_input(&param.value, window, cx);
-        if let RequestEditorState::Ready(request) = &mut self.request {
-            request.http.params.push(param);
-        }
-        self.input_subscriptions.push(name_subscription);
-        self.input_subscriptions.push(value_subscription);
-        self.mark_edited(cx);
-    }
-
-    fn add_header(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !matches!(&self.request, RequestEditorState::Ready(_)) {
-            return;
-        }
-
-        let header = RequestHeader::new(window, cx);
-        let name_subscription = Self::subscribe_to_input(&header.name, window, cx);
-        let value_subscription = Self::subscribe_to_input(&header.value, window, cx);
-        if let RequestEditorState::Ready(request) = &mut self.request {
-            request.http.headers.push(header);
-        }
-        self.input_subscriptions.push(name_subscription);
-        self.input_subscriptions.push(value_subscription);
-        self.mark_edited(cx);
-    }
-
     fn set_body_type(
         &mut self,
-        r#type: Option<RequestBodyType>,
+        body_type: Option<RequestBodyType>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -936,19 +1044,30 @@ impl RequestEditor {
         let mut should_set_language_for_body = false;
 
         if let RequestEditorState::Ready(request) = &mut self.request {
-            match r#type {
-                Some(r#type) => {
+            match body_type {
+                Some(
+                    RequestBodyType::Text
+                    | RequestBodyType::Json
+                    | RequestBodyType::Html
+                    | RequestBodyType::Xml,
+                ) => {
                     if request.http.body.is_none() {
                         let body = RequestBody::new("", window, cx);
                         self.body_subscription =
-                            Some(Self::subscribe_to_body(&body.editor, window, cx));
+                            Some(Self::subscribe_to_editor(&body.editor, window, cx));
                         request.http.body = Some(body);
                         should_set_language_for_body = true;
                     }
 
-                    if request.http.body_type != Some(r#type) {
-                        request.http.body_type = Some(r#type);
+                    if request.http.body_type != body_type {
+                        request.http.body_type = body_type;
                         should_set_language_for_body = true;
+                        edited = true;
+                    }
+                }
+                Some(RequestBodyType::FormUrlEncoded) => {
+                    if request.http.body_type != Some(RequestBodyType::FormUrlEncoded) {
+                        request.http.body_type = Some(RequestBodyType::FormUrlEncoded);
                         edited = true;
                     }
                 }
@@ -986,38 +1105,71 @@ impl RequestEditor {
                     return None;
                 }
 
-                let name = param.name.read(cx).value(cx).trim().to_string();
+                let name = param.key.read(cx).text(cx).trim().to_string();
                 if name.is_empty() {
                     return None;
                 }
 
-                let value = param.value.read(cx).value(cx);
+                let value = param.value.read(cx).text(cx);
                 Some((name, value))
             })
             .collect::<Vec<_>>();
-        let request_headers = request
-            .http
-            .headers
-            .iter()
-            .filter_map(|header| {
-                if header.disabled {
-                    return None;
-                }
+        let mut request_headers = Vec::new();
+        let mut content_type = None;
+        for header in &request.http.headers {
+            if header.disabled {
+                continue;
+            }
 
-                let name = header.name.read(cx).value(cx).trim().to_string();
-                if name.is_empty() {
-                    return None;
-                }
+            let name = header.key.read(cx).text(cx).trim().to_string();
+            if name.is_empty() {
+                continue;
+            }
 
-                let value = header.value.read(cx).value(cx);
-                Some((name, value))
-            })
-            .collect::<Vec<_>>();
-        let request_body = request
-            .http
-            .body_type
-            .and_then(|_| request.http.body.as_ref().map(|body| body.data(cx)))
-            .filter(|body| !body.is_empty());
+            let value = header.value.read(cx).text(cx);
+            if name.eq_ignore_ascii_case("content-type") {
+                content_type = Some((name, value));
+            } else {
+                request_headers.push((name, value));
+            }
+        }
+        let request_body = match request.http.body_type {
+            Some(
+                RequestBodyType::Text
+                | RequestBodyType::Json
+                | RequestBodyType::Html
+                | RequestBodyType::Xml,
+            ) => request
+                .http
+                .body
+                .as_ref()
+                .map(|body| body.data(cx))
+                .filter(|body| !body.is_empty()),
+            Some(RequestBodyType::FormUrlEncoded) => {
+                content_type.get_or_insert_with(|| {
+                    (
+                        "Content-Type".to_string(),
+                        "application/x-www-form-urlencoded".to_string(),
+                    )
+                });
+                let fields = request
+                    .http
+                    .form_url_encoded
+                    .iter()
+                    .filter(|row| !row.disabled)
+                    .map(|row| (row.key.read(cx).text(cx), row.value.read(cx).text(cx)));
+
+                Some(
+                    url::form_urlencoded::Serializer::new(String::new())
+                        .extend_pairs(fields)
+                        .finish(),
+                )
+            }
+            None => None,
+        };
+        if let Some(content_type) = content_type {
+            request_headers.push(content_type);
+        }
 
         let Ok(Some(response_panel)) = self.workspace.update(cx, |workspace, cx| {
             workspace.open_panel::<ResponsePanel>(window, cx);
@@ -1375,8 +1527,54 @@ impl RequestEditor {
             .child(Text::new(error.to_string()).color(Color::Muted))
     }
 
-    fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_tab_bar(
+        &self,
+        request: &Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let active_tab = self.active_tab;
+        let body_type_dropdown = (active_tab == RequestEditorTab::Body).then(|| {
+            let body_type = request.http.body_type;
+            let label = body_type.map_or("None", |body_type| body_type.display_name());
+            let request_editor = cx.weak_entity();
+
+            let context_menu = ContextMenu::build(window, cx, |mut menu, _, _| {
+                for type_option in [
+                    None,
+                    Some(RequestBodyType::Text),
+                    Some(RequestBodyType::Json),
+                    Some(RequestBodyType::Html),
+                    Some(RequestBodyType::Xml),
+                    Some(RequestBodyType::FormUrlEncoded),
+                ] {
+                    let request_editor = request_editor.clone();
+                    let display_name =
+                        type_option.map_or("None", |body_type| body_type.display_name());
+                    menu = menu.toggleable_entry(
+                        display_name,
+                        type_option == body_type,
+                        IconPosition::End,
+                        None,
+                        move |window, cx| {
+                            if let Err(error) = request_editor.update(cx, |request_editor, cx| {
+                                request_editor.set_body_type(type_option, window, cx);
+                            }) {
+                                log::debug!("Failed to update request body type: {error:?}");
+                            }
+                        },
+                    );
+                }
+                menu
+            });
+
+            DropdownMenu::new("body-type", label, context_menu)
+                .variant(DropdownVariant::OutlinedGhost)
+                .trigger_text_size(TextSize::Small)
+                .trigger_icon(IconAsset::CaretDown)
+                .anchor(Anchor::TopRight)
+                .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
+        });
         let colors = cx.theme().colors();
 
         let render_tab =
@@ -1436,10 +1634,12 @@ impl RequestEditor {
         gpui::div()
             .id("request-editor-tabs")
             .flex()
+            .flex_none()
             .items_center()
             .w_full()
             .h(DynamicSpacing::Base36.px(cx))
-            .px_1()
+            .pl_1()
+            .pr_2()
             .border_y_1()
             .border_color(colors.border)
             .bg(colors.panel_tab_bar_background)
@@ -1461,6 +1661,10 @@ impl RequestEditor {
                 "Body".into(),
                 RequestEditorTab::Body,
             ))
+            .when_some(body_type_dropdown, |this, body_type_dropdown| {
+                this.child(gpui::div().flex_1().min_w_0())
+                    .child(gpui::div().flex_none().child(body_type_dropdown))
+            })
             .into_any_element()
     }
 
@@ -1471,275 +1675,190 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         match self.active_tab {
-            RequestEditorTab::Parameters => self.render_parameters(request, window, cx),
-            RequestEditorTab::Headers => self.render_headers(request, window, cx),
-            RequestEditorTab::Body => Self::render_body(request, window, cx),
+            RequestEditorTab::Parameters => {
+                self.render_kv_section(&request.http.params, RequestKvKind::Param, window, cx)
+            }
+            RequestEditorTab::Headers => {
+                self.render_kv_section(&request.http.headers, RequestKvKind::Header, window, cx)
+            }
+            RequestEditorTab::Body => self.render_body(request, window, cx),
         }
     }
 
-    fn render_parameters(
+    fn render_kv_section(
         &self,
-        request: &Request,
+        rows: &[KeyValueRow],
+        kind: RequestKvKind,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let mut rows = Vec::new();
-        for (index, param) in request.http.params.iter().enumerate() {
-            let checkbox = ui::checkbox(
-                ("param-disabled", index),
-                ToggleState::from(!param.disabled),
-            )
-            .on_click(cx.listener(
-                move |request_editor, new_state: &ToggleState, window, cx| {
-                    let disabled = !new_state.selected();
-                    let mut edited = false;
-                    if let RequestEditorState::Ready(request) = &mut request_editor.request
-                        && let Some(param) = request.http.params.get_mut(index)
-                        && param.disabled != disabled
-                    {
-                        param.set_disabled(disabled, window, cx);
-                        edited = true;
-                    }
-
-                    if edited {
-                        request_editor.mark_edited(cx);
-                    }
-                },
-            ));
-            let delete_button = IconButton::new(("param-delete", index), IconAsset::Trash)
-                .shape(IconButtonShape::Square)
-                .variant(ButtonVariant::Outline)
-                .icon_color(Color::Muted)
-                .tooltip(Tooltip::text("Delete"))
-                .on_click(cx.listener(move |request_editor, _, _, cx| {
-                    let mut edited = false;
-                    if let RequestEditorState::Ready(request) = &mut request_editor.request {
-                        edited = request.delete_param(index);
-                    }
-
-                    if edited {
-                        request_editor.mark_edited(cx);
-                    }
-                }));
-
-            rows.push(
-                gpui::div()
-                    .id(("param-row", index))
-                    .flex()
-                    .items_center()
-                    .w_full()
-                    .child(gpui::div().pr_1p5().child(checkbox))
-                    .child(
-                        gpui::div()
-                            .flex()
-                            .items_center()
-                            .flex_1()
-                            .gap_2p5()
-                            .child(gpui::div().flex_1().child(param.name.clone()))
-                            .child(gpui::div().flex_1().child(param.value.clone()))
-                            .child(delete_button),
-                    )
-                    .into_any_element(),
-            );
-        }
-
-        let add_button = Button::new("param-add", "Add Parameter")
-            .icon(IconAsset::Plus)
-            .icon_size(IconSize::Small)
-            .icon_color(Color::Muted)
-            .variant(ButtonVariant::OutlinedGhost)
-            .size(ButtonSize::Medium)
-            .on_click(cx.listener(|request_editor, _, window, cx| {
-                request_editor.add_param(window, cx);
-            }));
-        let colors = cx.theme().colors();
-
-        gpui::div()
-            .flex()
-            .flex_col()
-            .w_full()
-            .flex_1()
-            .min_h_0()
-            .child(
-                gpui::div()
-                    .id("parameters")
-                    .flex()
-                    .flex_col()
-                    .track_scroll(&self.params_scroll_handle)
-                    .size_full()
-                    .min_w_0()
-                    .overflow_y_scroll()
-                    .pl_2()
-                    .pr_6()
-                    .gap_2()
-                    .py_3()
-                    .children(rows)
-                    .child(gpui::div().flex().items_center().pl_1().child(add_button)),
-            )
-            .custom_scrollbars(
-                Scrollbars::new(ScrollAxes::Vertical)
-                    .id("parameters-scrollbar")
-                    .tracked_scroll_handle(&self.params_scroll_handle)
-                    .with_track_along(
-                        ScrollAxes::Vertical,
-                        colors.scrollbar_track_background,
-                        TrackLayout::Overlay,
-                    ),
-                window,
-                cx,
-            )
-            .into_any_element()
-    }
-
-    fn render_headers(
-        &self,
-        request: &Request,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let mut rows = Vec::new();
-        for (index, header) in request.http.headers.iter().enumerate() {
-            let checkbox = ui::checkbox(
-                ("header-disabled", index),
-                ToggleState::from(!header.disabled),
-            )
-            .on_click(cx.listener(
-                move |request_editor, new_state: &ToggleState, window, cx| {
-                    let disabled = !new_state.selected();
-                    let mut edited = false;
-                    if let RequestEditorState::Ready(request) = &mut request_editor.request
-                        && let Some(header) = request.http.headers.get_mut(index)
-                        && header.disabled != disabled
-                    {
-                        header.set_disabled(disabled, window, cx);
-                        edited = true;
-                    }
-
-                    if edited {
-                        request_editor.mark_edited(cx);
-                    }
-                },
-            ));
-            let delete_button = IconButton::new(("header-delete", index), IconAsset::Trash)
-                .shape(IconButtonShape::Square)
-                .variant(ButtonVariant::Outline)
-                .icon_color(Color::Muted)
-                .tooltip(Tooltip::text("Delete"))
-                .on_click(cx.listener(move |request_editor, _, _, cx| {
-                    let mut edited = false;
-                    if let RequestEditorState::Ready(request) = &mut request_editor.request {
-                        edited = request.delete_header(index);
-                    }
-
-                    if edited {
-                        request_editor.mark_edited(cx);
-                    }
-                }));
-
-            rows.push(
-                gpui::div()
-                    .id(("header-row", index))
-                    .flex()
-                    .items_center()
-                    .w_full()
-                    .child(gpui::div().pr_1p5().child(checkbox))
-                    .child(
-                        gpui::div()
-                            .flex()
-                            .items_center()
-                            .flex_1()
-                            .gap_2p5()
-                            .child(gpui::div().flex_1().child(header.name.clone()))
-                            .child(gpui::div().flex_1().child(header.value.clone()))
-                            .child(delete_button),
-                    )
-                    .into_any_element(),
-            );
-        }
-
-        let add_button = Button::new("header-add", "Add Header")
-            .icon(IconAsset::Plus)
-            .icon_size(IconSize::Small)
-            .icon_color(Color::Muted)
-            .variant(ButtonVariant::OutlinedGhost)
-            .size(ButtonSize::Medium)
-            .on_click(cx.listener(|request_editor, _, window, cx| {
-                request_editor.add_header(window, cx);
-            }));
-        let colors = cx.theme().colors();
-
-        gpui::div()
-            .flex()
-            .flex_col()
-            .w_full()
-            .flex_1()
-            .min_h_0()
-            .child(
-                gpui::div()
-                    .id("headers")
-                    .flex()
-                    .flex_col()
-                    .track_scroll(&self.headers_scroll_handle)
-                    .size_full()
-                    .min_w_0()
-                    .overflow_y_scroll()
-                    .pl_2()
-                    .pr_6()
-                    .gap_2()
-                    .py_3()
-                    .children(rows)
-                    .child(gpui::div().flex().items_center().pl_1().child(add_button)),
-            )
-            .custom_scrollbars(
-                Scrollbars::new(ScrollAxes::Vertical)
-                    .id("headers-scrollbar")
-                    .tracked_scroll_handle(&self.headers_scroll_handle)
-                    .with_track_along(
-                        ScrollAxes::Vertical,
-                        colors.scrollbar_track_background,
-                        TrackLayout::Overlay,
-                    ),
-                window,
-                cx,
-            )
-            .into_any_element()
-    }
-
-    fn render_body(request: &Request, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let body_type = request.http.body_type;
-        let body_type_display_name = body_type.map_or("None", |body_type| body_type.display_name());
-        let body = match body_type {
-            Some(_) => request.http.body.as_ref(),
-            None => None,
-        };
-        let request_editor = cx.weak_entity();
-        let context_menu = ContextMenu::build(window, cx, move |menu, _, _| {
-            let mut menu = menu;
-            for type_option in [
-                None,
-                Some(RequestBodyType::Text),
-                Some(RequestBodyType::Json),
-                Some(RequestBodyType::Html),
-                Some(RequestBodyType::Xml),
-            ] {
-                let request_editor = request_editor.clone();
-                let display_name = type_option.map_or("None", |body_type| body_type.display_name());
-                menu = menu.toggleable_entry(
-                    display_name,
-                    type_option == body_type,
-                    IconPosition::End,
-                    None,
-                    move |window, cx| {
-                        if let Err(error) = request_editor.update(cx, |request_editor, cx| {
-                            request_editor.set_body_type(type_option, window, cx);
-                        }) {
-                            log::debug!("Failed to update request body type: {error:?}");
+        let rows = rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| {
+                let checkbox = ui::checkbox(
+                    (kind.checkbox_id(), index),
+                    ToggleState::from(!row.disabled),
+                )
+                .on_click(cx.listener(
+                    move |request_editor, new_state: &ToggleState, _, cx| {
+                        let disabled = !new_state.selected();
+                        if let RequestEditorState::Ready(request) = &mut request_editor.request
+                            && let Some(row) = kind.rows_mut(&mut request.http).get_mut(index)
+                            && row.disabled != disabled
+                        {
+                            row.set_disabled(disabled, cx);
+                            request_editor.mark_edited(cx);
                         }
                     },
-                );
-            }
-            menu
-        });
+                ));
+                let delete_button = IconButton::new((kind.remove_id(), index), IconAsset::Trash)
+                    .shape(IconButtonShape::Square)
+                    .variant(ButtonVariant::Outline)
+                    .icon_color(Color::Muted)
+                    .tooltip(Tooltip::text("Delete"))
+                    .on_click(cx.listener(move |request_editor, _, window, cx| {
+                        let RequestEditorState::Ready(request) = &mut request_editor.request else {
+                            return;
+                        };
+                        let rows = kind.rows_mut(&mut request.http);
+                        if index >= rows.len() {
+                            return;
+                        }
+                        rows.remove(index);
+                        request_editor.input_subscriptions =
+                            Self::subscribe_to_request(request, window, cx);
+                        request_editor.mark_edited(cx);
+                    }));
+
+                gpui::div()
+                    .id((kind.row_id(), index))
+                    .flex()
+                    .items_center()
+                    .w_full()
+                    .child(gpui::div().pr_1p5().child(checkbox))
+                    .child(
+                        gpui::div()
+                            .flex()
+                            .items_stretch()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_2p5()
+                            .child(self::input_box(&row.key, row.disabled, cx).items_center())
+                            .child(self::input_box(&row.value, row.disabled, cx))
+                            .child(gpui::div().flex().items_center().child(delete_button)),
+                    )
+            })
+            .collect::<Vec<_>>();
+        let add_button = Button::new(kind.add_id(), kind.add_label())
+            .icon(IconAsset::Plus)
+            .icon_size(IconSize::Small)
+            .icon_color(Color::Muted)
+            .variant(ButtonVariant::OutlinedGhost)
+            .size(ButtonSize::Medium)
+            .on_click(cx.listener(move |request_editor, _, window, cx| {
+                let RequestEditorState::Ready(request) = &mut request_editor.request else {
+                    return;
+                };
+
+                let row = self::new_kv_row(None, None, kind, window, cx);
+                request_editor
+                    .input_subscriptions
+                    .push(Self::subscribe_to_editor(&row.key, window, cx));
+                request_editor
+                    .input_subscriptions
+                    .push(Self::subscribe_to_editor(&row.value, window, cx));
+                kind.rows_mut(&mut request.http).push(row);
+                request_editor.mark_edited(cx);
+            }));
+        let scroll_handle = match kind {
+            RequestKvKind::Param => &self.params_scroll_handle,
+            RequestKvKind::Header => &self.headers_scroll_handle,
+            RequestKvKind::FormUrlEncoded => &self.form_url_encoded_scroll_handle,
+        };
+        let colors = cx.theme().colors();
+
+        gpui::div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(
+                gpui::div()
+                    .id(kind.id())
+                    .key_context("RequestForm")
+                    .flex()
+                    .flex_col()
+                    .track_scroll(scroll_handle)
+                    .size_full()
+                    .min_w_0()
+                    .overflow_y_scroll()
+                    .pl_2()
+                    .pr_6()
+                    .gap_2()
+                    .py_3()
+                    .children(rows)
+                    .child(gpui::div().flex().items_center().pl_1().child(add_button)),
+            )
+            .custom_scrollbars(
+                Scrollbars::new(ScrollAxes::Vertical)
+                    .id(kind.scrollbar_id())
+                    .tracked_scroll_handle(scroll_handle)
+                    .with_track_along(
+                        ScrollAxes::Vertical,
+                        colors.scrollbar_track_background,
+                        TrackLayout::Overlay,
+                    ),
+                window,
+                cx,
+            )
+            .into_any_element()
+    }
+
+    fn render_body(
+        &self,
+        request: &Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let body_type = request.http.body_type;
+        let body = match body_type {
+            Some(
+                RequestBodyType::Text
+                | RequestBodyType::Json
+                | RequestBodyType::Html
+                | RequestBodyType::Xml,
+            ) => request.http.body.as_ref().map(|body| {
+                gpui::div()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .min_w_0()
+                    .child(body.editor())
+                    .into_any_element()
+            }),
+            Some(RequestBodyType::FormUrlEncoded) => Some(self.render_kv_section(
+                &request.http.form_url_encoded,
+                RequestKvKind::FormUrlEncoded,
+                window,
+                cx,
+            )),
+            None => Some(
+                gpui::div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        Text::new("No request body")
+                            .size(TextSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .into_any_element(),
+            ),
+        };
         let colors = cx.theme().colors();
 
         gpui::div()
@@ -1750,41 +1869,7 @@ impl RequestEditor {
             .flex_1()
             .min_h_0()
             .bg(colors.panel_background)
-            .child(
-                gpui::div()
-                    .flex()
-                    .items_center()
-                    .w_full()
-                    .h(DynamicSpacing::Base36.px(cx))
-                    .px_3()
-                    .gap_2()
-                    .border_b_1()
-                    .border_color(colors.border)
-                    .bg(colors.panel_tab_bar_background.opacity(0.5))
-                    .child(
-                        Text::new("Content Type")
-                            .size(TextSize::Small)
-                            .color(Color::Muted)
-                            .single_line(),
-                    )
-                    .child(
-                        DropdownMenu::new("body-type", body_type_display_name, context_menu)
-                            .variant(DropdownVariant::OutlinedGhost)
-                            .attach(Anchor::BottomLeft)
-                            .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
-                            .trigger_size(ButtonSize::Default),
-                    ),
-            )
-            .when_some(body, |this, body| {
-                this.child(
-                    gpui::div()
-                        .flex_1()
-                        .min_h_0()
-                        .w_full()
-                        .min_w_0()
-                        .child(body.editor()),
-                )
-            })
+            .children(body)
             .into_any_element()
     }
 
@@ -1897,7 +1982,7 @@ impl RequestEditor {
                             })),
                     ),
             )
-            .child(self.render_tab_bar(cx))
+            .child(self.render_tab_bar(request, window, cx))
             .child(self.render_tab_content(request, window, cx))
     }
 }
@@ -1923,7 +2008,7 @@ impl Render for RequestEditor {
 mod tests {
     use super::*;
 
-    use futures::channel::oneshot;
+    use futures::channel::{mpsc, oneshot};
     use gpui::{TestAppContext, VisualTestContext};
     use indoc::indoc;
     use parking_lot::Mutex;
@@ -1978,8 +2063,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let (tx, rx) = oneshot::channel();
-        let rx = Arc::new(Mutex::new(Some(rx)));
+        let (tx, mut rx) = oneshot::channel();
+        let tx = Mutex::new(Some(tx));
 
         let http_client = FakeHttpClient::create(move |request| {
             assert_eq!(request.uri().path(), "/search");
@@ -1992,22 +2077,25 @@ mod tests {
                 Some("application/json")
             );
             assert!(request.headers().get("X-Debug").is_none());
-            let rx = rx.lock().take().unwrap();
+            let tx = tx.lock().take().unwrap();
 
             async move {
                 let mut body = request.into_body();
                 let mut data = String::new();
-                body.read_to_string(&mut data).await?;
+                body.read_to_string(&mut data).await.unwrap();
                 assert_eq!(
                     data,
                     indoc! {r#"
                         {
                           "hello": "world"
-                        }
-                    "#}
+                        }"#}
                 );
+                tx.send(()).unwrap();
 
-                Ok(rx.await.unwrap())
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(AsyncBody::empty())
+                    .unwrap())
             }
         });
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
@@ -2025,20 +2113,15 @@ mod tests {
                         [http]
                         method = "POST"
                         url = "https://api.zaku.dev/search"
-                        params = [
-                            { name = "query", value = "zaku" },
-                            { name = "debug", value = "1", disabled = true },
-                            { name = "test", value = "1", disabled = false },
-                        ]
-                        headers = [
-                            { name = "Content-Type", value = "application/json" },
-                            { name = "X-Debug", value = "1", disabled = true },
-                        ]
-                        body = { type = "json", data = '''
+                        params = [{ name = "query", value = "zaku" }, { name = "debug", value = "1", disabled = true }, { name = "test", value = "1" }]
+                        headers = [{ name = "Content-Type", value = "application/json" }, { name = "X-Debug", value = "1", disabled = true }]
+                        body = {
+                          type = "json",
+                          data = """
                         {
                           "hello": "world"
+                        }"""
                         }
-                        ''' }
                     "#}
                 }
             }),
@@ -2067,14 +2150,327 @@ mod tests {
             pane.send_request(window, cx);
         });
         cx.run_until_parked();
+        assert_eq!(rx.try_recv().unwrap(), Some(()));
+    }
 
-        let response = Response::builder()
-            .status(StatusCode::OK)
-            .body(AsyncBody::empty())
+    #[gpui::test]
+    async fn test_send_request_form_url_encoded(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, mut rx) = oneshot::channel();
+        let tx = Mutex::new(Some(tx));
+
+        let http_client = FakeHttpClient::create(move |request| {
+            assert_eq!(
+                request
+                    .headers()
+                    .get("Content-Type")
+                    .and_then(|value| value.to_str().ok()),
+                Some("application/x-www-form-urlencoded")
+            );
+            let tx = tx.lock().take().unwrap();
+
+            async move {
+                let mut body = request.into_body();
+                let mut data = String::new();
+                body.read_to_string(&mut data).await.unwrap();
+                assert_eq!(
+                    data,
+                    "foo=bar&foo=+baz&+baz+=the+quick+brown+fox%0Ajumps+over+the+lazy+dog&=bar&baz=%09+&%C3%A9=%09%E6%9D%B1%E4%BA%AC&qux=%2B%26%3D%2520&qux="
+                );
+                tx.send(()).unwrap();
+
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(AsyncBody::empty())
+                    .unwrap())
+            }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "POST"
+                        url = "https://api.zaku.dev/form-urlencoded"
+                        body = {
+                          type = "form-urlencoded",
+                          data = [
+                            { name = "foo", value = "bar" },
+                            { name = "foo", value = " baz" },
+                            { name = "bar", value = "qux", disabled = true },
+                            {
+                              name = " baz ",
+                              value = """
+                        the quick brown fox
+                        jumps over the lazy dog"""
+                            },
+                            { name = "", value = "bar" },
+                            { name = "baz", value = "\t " },
+                            { name = "é", value = "\t東京" },
+                            { name = "qux", value = "+&=%20" },
+                            { name = "qux", value = "" }
+                          ]
+                        }
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
             .unwrap();
-        assert!(
-            matches!(tx.send(response), Ok(())),
-            "response receiver should be active"
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(rx.try_recv().unwrap(), Some(()));
+    }
+
+    #[gpui::test]
+    async fn test_send_request_empty_form_url_encoded(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, mut rx) = mpsc::unbounded();
+
+        let http_client = FakeHttpClient::create(move |request| {
+            assert_eq!(request.headers().get_all("Content-Type").iter().count(), 1);
+            assert_eq!(
+                request
+                    .headers()
+                    .get("Content-Type")
+                    .and_then(|value| value.to_str().ok()),
+                Some("application/x-www-form-urlencoded")
+            );
+            let tx = tx.clone();
+
+            async move {
+                let mut body = request.into_body();
+                let mut data = String::new();
+                body.read_to_string(&mut data).await.unwrap();
+                tx.unbounded_send(data).unwrap();
+
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(AsyncBody::empty())
+                    .unwrap())
+            }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "POST"
+                        url = "https://api.zaku.dev/form-urlencoded"
+                        body = {
+                          type = "form-urlencoded",
+                          data = [
+                            { name = "", value = "" },
+                          ]
+                        }
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        let data = rx.try_recv().unwrap();
+        assert_eq!(data, "=");
+
+        request_editor.update_in(cx, |editor, _, _| {
+            let RequestEditorState::Ready(request) = &mut editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            request.http.form_url_encoded.clear();
+        });
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        let data = rx.try_recv().unwrap();
+        assert_eq!(data, "");
+    }
+
+    #[gpui::test]
+    async fn test_send_request_form_url_encoded_content_type(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, mut rx) = mpsc::unbounded();
+
+        let http_client = FakeHttpClient::create(move |request| {
+            assert_eq!(request.headers().get_all("Content-Type").iter().count(), 1);
+            let headers = request.headers().clone();
+            let tx = tx.clone();
+
+            async move {
+                let mut body = request.into_body();
+                let mut data = String::new();
+                body.read_to_string(&mut data).await.unwrap();
+                assert_eq!(data, "foo=bar");
+                tx.unbounded_send(headers).unwrap();
+
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(AsyncBody::empty())
+                    .unwrap())
+            }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "POST"
+                        url = "https://api.zaku.dev/form-urlencoded"
+                        headers = [
+                          { name = "Content-Type", value = "application/x-www-form-urlencoded; charset=UTF-8" },
+                          { name = "content-type", value = "text/plain" },
+                          { name = "CONTENT-TYPE", value = "application/json", disabled = true },
+                        ]
+                        body = {
+                          type = "form-urlencoded",
+                          data = [
+                            { name = "foo", value = "bar" },
+                          ]
+                        }
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        let headers = rx.try_recv().unwrap();
+        assert_eq!(
+            headers
+                .get("Content-Type")
+                .and_then(|value| value.to_str().ok()),
+            Some("text/plain")
+        );
+
+        request_editor.update_in(cx, |editor, _, cx| {
+            let RequestEditorState::Ready(request) = &mut editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            for header in &mut request.http.headers {
+                header.set_disabled(true, cx);
+            }
+        });
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        let headers = rx.try_recv().unwrap();
+        assert_eq!(
+            headers
+                .get("Content-Type")
+                .and_then(|value| value.to_str().ok()),
+            Some("application/x-www-form-urlencoded")
+        );
+
+        request_editor.update_in(cx, |editor, _, _| {
+            let RequestEditorState::Ready(request) = &mut editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            request.http.headers.clear();
+        });
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        let headers = rx.try_recv().unwrap();
+        assert_eq!(
+            headers
+                .get("Content-Type")
+                .and_then(|value| value.to_str().ok()),
+            Some("application/x-www-form-urlencoded")
         );
     }
 
@@ -2096,17 +2492,24 @@ mod tests {
                         version = 1
 
                         [http]
-                        method = "GET"
-                        url = "https://api.zaku.dev/me"
+                        method = "POST"
+                        url = "https://api.zaku.dev/form-urlencoded"
                         params = [
-                            { name = "query", value = "zaku" },
-                            { name = "debug", value = "1", disabled = true },
-                            { name = "test", value = "1", disabled = false },
+                          { name = "query", value = "zaku" },
+                          { name = "debug", value = "1", disabled = true },
+                          { name = "test", value = "1", disabled = false },
                         ]
                         headers = [
-                            { name = "Content-Type", value = "application/json" },
-                            { name = "X-Debug", value = "1", disabled = true },
+                          { name = "Content-Type", value = "application/x-www-form-urlencoded" },
+                          { name = "X-Debug", value = "1", disabled = true },
                         ]
+                        body = {
+                          type = "form-urlencoded",
+                          data = [
+                            { name = "foo", value = "bar" },
+                            { name = "baz", value = "qux", disabled = true },
+                          ]
+                        }
                     "#}
                 }
             }),
@@ -2132,17 +2535,35 @@ mod tests {
             .downcast::<RequestEditor>()
             .unwrap();
 
-        request_editor.update_in(cx, |editor, window, cx| {
+        assert!(!request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
+
+        request_editor.update_in(cx, |editor, _, cx| {
             let RequestEditorState::Ready(request) = &mut editor.request else {
-                panic!("Expected request editor to be ready");
+                panic!("expected request editor to be ready");
             };
-            request.http.url.update(cx, |field, cx| {
-                field.set_value("https://api.zaku.dev/me/edit", window, cx);
+            let row = request.http.form_url_encoded.first().unwrap();
+            row.key.update(cx, |editor, cx| {
+                editor.set_text("bar", cx);
             });
-            editor.mark_edited(cx);
+            row.value.update(cx, |editor, cx| {
+                editor.set_text("baz", cx);
+            });
+            let row = request.http.form_url_encoded.last().unwrap();
+            row.value.update(cx, |editor, cx| {
+                editor.set_text("the quick brown fox\njumps over the lazy dog", cx);
+            });
         });
 
         assert!(request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
+
+        request_editor.update_in(cx, |editor, window, cx| {
+            let RequestEditorState::Ready(request) = &mut editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            request.http.url.update(cx, |field, cx| {
+                field.set_value("https://api.zaku.dev/form-urlencoded/edit", window, cx);
+            });
+        });
 
         workspace
             .update_in(cx, |workspace, window, cx| {
@@ -2162,8 +2583,8 @@ mod tests {
         let expected_request = RequestFile {
             meta: RequestFileMeta { version: 1 },
             http: RequestFileHttp {
-                method: "GET".to_string(),
-                url: "https://api.zaku.dev/me/edit".to_string(),
+                method: "POST".to_string(),
+                url: "https://api.zaku.dev/form-urlencoded/edit".to_string(),
                 params: vec![
                     RequestFileParam {
                         name: "query".to_string(),
@@ -2184,7 +2605,7 @@ mod tests {
                 headers: vec![
                     RequestFileHeader {
                         name: "Content-Type".to_string(),
-                        value: "application/json".to_string(),
+                        value: "application/x-www-form-urlencoded".to_string(),
                         disabled: false,
                     },
                     RequestFileHeader {
@@ -2193,7 +2614,20 @@ mod tests {
                         disabled: true,
                     },
                 ],
-                body: None,
+                body: Some(RequestFileBody::FormUrlEncoded {
+                    data: vec![
+                        RequestFileFormField {
+                            name: "bar".to_string(),
+                            value: "baz".to_string(),
+                            disabled: false,
+                        },
+                        RequestFileFormField {
+                            name: "baz".to_string(),
+                            value: "the quick brown fox\njumps over the lazy dog".to_string(),
+                            disabled: true,
+                        },
+                    ],
+                }),
             },
         };
 

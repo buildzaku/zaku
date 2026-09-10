@@ -1,4 +1,4 @@
-use gpui::{App, Context, Window};
+use gpui::{App, Context, TextStyleRefinement, Window};
 
 use actions::editor::ToggleLineNumbers;
 use settings::Settings;
@@ -6,6 +6,10 @@ use settings::Settings;
 use crate::{Editor, EditorSettings};
 
 impl Editor {
+    pub fn set_text_style_refinement(&mut self, style: TextStyleRefinement) {
+        self.text_style_refinement = Some(style);
+    }
+
     pub fn toggle_line_numbers(
         &mut self,
         _: &ToggleLineNumbers,

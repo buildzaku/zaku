@@ -177,6 +177,12 @@
     }
   },
   {
+    "context": "RequestForm > Editor && mode == auto_height",
+    "bindings": {
+      "enter": "editor::Newline"
+    }
+  },
+  {
     "context": "Picker > Editor",
     "bindings": {
       "escape": "menu::Cancel",

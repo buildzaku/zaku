@@ -16,7 +16,8 @@ use gpui::{
     AnyElement, App, Axis, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontId, FontStyle, HighlightStyle,
     Hsla, KeyContext, MouseDownEvent, MouseUpEvent, Pixels, Point, Render, SharedString,
-    Subscription, TextRun, TextStyle, UTF16Selection, UnderlineStyle, Window, prelude::*,
+    Subscription, TextRun, TextStyle, TextStyleRefinement, UTF16Selection, UnderlineStyle, Window,
+    prelude::*,
 };
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
@@ -416,6 +417,7 @@ pub struct Editor {
     selection_mark_mode: bool,
     masked: bool,
     muted: bool,
+    text_style_refinement: Option<TextStyleRefinement>,
     current_line_highlight: Option<CurrentLineHighlight>,
     _subscriptions: Vec<Subscription>,
 }
@@ -541,6 +543,7 @@ impl Editor {
             selection_mark_mode: false,
             masked: false,
             muted: false,
+            text_style_refinement: None,
             current_line_highlight: None,
             _subscriptions: subscriptions,
         };
@@ -1290,7 +1293,7 @@ impl Editor {
         cx.notify();
     }
 
-    fn set_placeholder_text(&mut self, text: &str, cx: &mut Context<Self>) {
+    pub fn set_placeholder_text(&mut self, text: &str, cx: &mut Context<Self>) {
         self.placeholder = SharedString::new(text);
         cx.notify();
     }
@@ -1309,7 +1312,7 @@ impl Editor {
         self.input_enabled = input_enabled;
     }
 
-    fn set_muted(&mut self, muted: bool) {
+    pub fn set_muted(&mut self, muted: bool) {
         self.muted = muted;
     }
 
@@ -2465,14 +2468,9 @@ impl Editor {
         let theme_colors = cx.theme().colors();
         let theme_settings = ThemeSettings::get_global(cx);
 
-        let color = if self.muted {
-            theme_colors.text_disabled
-        } else {
-            theme_colors.editor_foreground
-        };
-        let text_style = match self.mode {
+        let mut text_style = match self.mode {
             EditorMode::SingleLine | EditorMode::AutoHeight { .. } => TextStyle {
-                color,
+                color: theme_colors.editor_foreground,
                 font_family: theme_settings.ui_font.family.clone(),
                 font_features: theme_settings.ui_font.features.clone(),
                 font_fallbacks: theme_settings.ui_font.fallbacks.clone(),
@@ -2483,7 +2481,7 @@ impl Editor {
                 ..Default::default()
             },
             EditorMode::Full { .. } => TextStyle {
-                color,
+                color: theme_colors.editor_foreground,
                 font_family: theme_settings.buffer_font.family.clone(),
                 font_features: theme_settings.buffer_font.features.clone(),
                 font_fallbacks: theme_settings.buffer_font.fallbacks.clone(),
@@ -2495,8 +2493,20 @@ impl Editor {
             },
         };
 
+        if let Some(text_style_refinement) = &self.text_style_refinement {
+            text_style.refine(text_style_refinement);
+        }
+        if self.muted {
+            text_style.color = theme_colors.text_disabled;
+        }
+
+        let background = match self.mode {
+            EditorMode::SingleLine | EditorMode::AutoHeight { .. } => Hsla::transparent_black(),
+            EditorMode::Full { .. } => theme_colors.editor_background,
+        };
+
         EditorStyle {
-            background: theme_colors.editor_background,
+            background,
             text: text_style,
             syntax: cx.theme().syntax().clone(),
         }

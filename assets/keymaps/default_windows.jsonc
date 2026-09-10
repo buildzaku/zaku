@@ -180,6 +180,12 @@
     }
   },
   {
+    "context": "RequestForm > Editor && mode == auto_height",
+    "bindings": {
+      "enter": "editor::Newline"
+    }
+  },
+  {
     "context": "Picker > Editor",
     "use_key_equivalents": true,
     "bindings": {
