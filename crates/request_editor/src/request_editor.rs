@@ -2008,7 +2008,7 @@ impl Render for RequestEditor {
 mod tests {
     use super::*;
 
-    use futures::channel::oneshot;
+    use futures::channel::{mpsc, oneshot};
     use gpui::{TestAppContext, VisualTestContext};
     use indoc::indoc;
     use parking_lot::Mutex;
@@ -2253,30 +2253,23 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_send_request_uses_last_enabled_content_type(cx: &mut TestAppContext) {
+    async fn test_send_request_form_url_encoded_content_type(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let (tx, mut rx) = oneshot::channel();
-        let tx = Mutex::new(Some(tx));
+        let (tx, mut rx) = mpsc::unbounded();
 
         let http_client = FakeHttpClient::create(move |request| {
             assert_eq!(request.headers().get_all("Content-Type").iter().count(), 1);
-            assert_eq!(
-                request
-                    .headers()
-                    .get("Content-Type")
-                    .and_then(|value| value.to_str().ok()),
-                Some("application/x-www-form-urlencoded; charset=UTF-8")
-            );
-            let tx = tx.lock().take().unwrap();
+            let headers = request.headers().clone();
+            let tx = tx.clone();
 
             async move {
                 let mut body = request.into_body();
                 let mut data = String::new();
                 body.read_to_string(&mut data).await.unwrap();
                 assert_eq!(data, "foo=bar");
-                tx.send(()).unwrap();
+                tx.unbounded_send(headers).unwrap();
 
                 Ok(Response::builder()
                     .status(StatusCode::OK)
@@ -2300,9 +2293,9 @@ mod tests {
                         method = "POST"
                         url = "https://api.zaku.dev/form-urlencoded"
                         headers = [
-                          { name = "Content-Type", value = "application/json" },
-                          { name = "content-type", value = "application/x-www-form-urlencoded; charset=UTF-8" },
-                          { name = "CONTENT-TYPE", value = "text/plain", disabled = true },
+                          { name = "Content-Type", value = "application/x-www-form-urlencoded; charset=UTF-8" },
+                          { name = "content-type", value = "text/plain" },
+                          { name = "CONTENT-TYPE", value = "application/json", disabled = true },
                         ]
                         body = {
                           type = "form-urlencoded",
@@ -2326,7 +2319,7 @@ mod tests {
             path: Arc::from(rel_path("collection/request.toml")),
         };
 
-        workspace
+        let request_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(request_path, None, true, window, cx)
             })
@@ -2338,7 +2331,51 @@ mod tests {
             pane.send_request(window, cx);
         });
         cx.run_until_parked();
-        assert_eq!(rx.try_recv().unwrap(), Some(()));
+        let headers = rx.try_recv().unwrap();
+        assert_eq!(
+            headers
+                .get("Content-Type")
+                .and_then(|value| value.to_str().ok()),
+            Some("text/plain")
+        );
+
+        request_editor.update_in(cx, |editor, _, cx| {
+            let RequestEditorState::Ready(request) = &mut editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            for header in &mut request.http.headers {
+                header.set_disabled(true, cx);
+            }
+        });
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        let headers = rx.try_recv().unwrap();
+        assert_eq!(
+            headers
+                .get("Content-Type")
+                .and_then(|value| value.to_str().ok()),
+            Some("application/x-www-form-urlencoded")
+        );
+
+        request_editor.update_in(cx, |editor, _, _| {
+            let RequestEditorState::Ready(request) = &mut editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            request.http.headers.clear();
+        });
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        let headers = rx.try_recv().unwrap();
+        assert_eq!(
+            headers
+                .get("Content-Type")
+                .and_then(|value| value.to_str().ok()),
+            Some("application/x-www-form-urlencoded")
+        );
     }
 
     #[gpui::test]
