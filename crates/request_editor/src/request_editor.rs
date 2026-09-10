@@ -2062,8 +2062,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let (tx, rx) = oneshot::channel();
-        let rx = Arc::new(Mutex::new(Some(rx)));
+        let (tx, mut rx) = oneshot::channel();
+        let tx = Mutex::new(Some(tx));
 
         let http_client = FakeHttpClient::create(move |request| {
             assert_eq!(request.uri().path(), "/search");
@@ -2076,12 +2076,12 @@ mod tests {
                 Some("application/json")
             );
             assert!(request.headers().get("X-Debug").is_none());
-            let rx = rx.lock().take().unwrap();
+            let tx = tx.lock().take().unwrap();
 
             async move {
                 let mut body = request.into_body();
                 let mut data = String::new();
-                body.read_to_string(&mut data).await?;
+                body.read_to_string(&mut data).await.unwrap();
                 assert_eq!(
                     data,
                     indoc! {r#"
@@ -2090,8 +2090,12 @@ mod tests {
                         }
                     "#}
                 );
+                tx.send(()).unwrap();
 
-                Ok(rx.await.unwrap())
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(AsyncBody::empty())
+                    .unwrap())
             }
         });
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
@@ -2151,15 +2155,100 @@ mod tests {
             pane.send_request(window, cx);
         });
         cx.run_until_parked();
+        assert_eq!(rx.try_recv().unwrap(), Some(()));
+    }
 
-        let response = Response::builder()
-            .status(StatusCode::OK)
-            .body(AsyncBody::empty())
-            .unwrap();
-        assert!(
-            matches!(tx.send(response), Ok(())),
-            "response receiver should be active"
+    #[gpui::test]
+    async fn test_send_request_form_url_encoded(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, mut rx) = oneshot::channel();
+        let tx = Mutex::new(Some(tx));
+
+        let http_client = FakeHttpClient::create(move |request| {
+            assert_eq!(
+                request
+                    .headers()
+                    .get("Content-Type")
+                    .and_then(|value| value.to_str().ok()),
+                Some("application/x-www-form-urlencoded")
+            );
+            let tx = tx.lock().take().unwrap();
+
+            async move {
+                let mut body = request.into_body();
+                let mut data = String::new();
+                body.read_to_string(&mut data).await.unwrap();
+                assert_eq!(
+                    data,
+                    "foo=bar&foo=+baz&+baz+=the+quick+brown+fox%0Ajumps+over+the+lazy+dog&=bar&baz=%09+&%C3%A9=%09%E6%9D%B1%E4%BA%AC&qux=%2B%26%3D%2520&qux="
+                );
+                tx.send(()).unwrap();
+
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(AsyncBody::empty())
+                    .unwrap())
+            }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "POST"
+                        url = "https://api.zaku.dev/form-urlencoded"
+                        body = { type = "form-urlencoded", data = [
+                            { name = "foo", value = "bar" },
+                            { name = "foo", value = " baz" },
+                            { name = "bar", value = "qux", disabled = true },
+                            { name = " baz ", value = """
+                        the quick brown fox
+                        jumps over the lazy dog""" },
+                            { name = "", value = "bar" },
+                            { name = "baz", value = "\t " },
+                            { name = "é", value = "\t東京" },
+                            { name = "qux", value = "+&=%20" },
+                            { name = "qux", value = "" },
+                        ] }
+                    "#}
+                }
+            }),
         );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(rx.try_recv().unwrap(), Some(()));
     }
 
     #[gpui::test]

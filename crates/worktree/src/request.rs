@@ -342,4 +342,117 @@ mod tests {
             RequestFileState::Parsed(request_file)
         );
     }
+
+    #[test]
+    fn test_form_url_encoded_round_trip() {
+        let request_file = RequestFile {
+            meta: RequestFileMeta {
+                version: REQUEST_FILE_VERSION,
+            },
+            http: RequestFileHttp {
+                method: "POST".to_string(),
+                url: "https://api.zaku.dev/form-urlencoded".to_string(),
+                params: Vec::new(),
+                headers: Vec::new(),
+                body: Some(RequestFileBody::FormUrlEncoded {
+                    data: vec![
+                        RequestFileFormField {
+                            name: "foo".to_string(),
+                            value: "bar".to_string(),
+                            disabled: false,
+                        },
+                        RequestFileFormField {
+                            name: "foo".to_string(),
+                            value: " baz".to_string(),
+                            disabled: false,
+                        },
+                        RequestFileFormField {
+                            name: "bar".to_string(),
+                            value: "qux".to_string(),
+                            disabled: true,
+                        },
+                        RequestFileFormField {
+                            name: " baz ".to_string(),
+                            value: "the quick brown fox\njumps over the lazy dog".to_string(),
+                            disabled: false,
+                        },
+                        RequestFileFormField {
+                            name: String::new(),
+                            value: "bar".to_string(),
+                            disabled: false,
+                        },
+                        RequestFileFormField {
+                            name: "baz".to_string(),
+                            value: "\t ".to_string(),
+                            disabled: false,
+                        },
+                        RequestFileFormField {
+                            name: "é".to_string(),
+                            value: "\t東京".to_string(),
+                            disabled: false,
+                        },
+                        RequestFileFormField {
+                            name: "qux".to_string(),
+                            value: "+&=%20".to_string(),
+                            disabled: false,
+                        },
+                        RequestFileFormField {
+                            name: "qux".to_string(),
+                            value: String::new(),
+                            disabled: false,
+                        },
+                    ],
+                }),
+            },
+        };
+
+        let serialized = serialize_request_file(&request_file).unwrap();
+        let expected = indoc! {r#"
+            [meta]
+            version = 1
+
+            [http]
+            method = "POST"
+            url = "https://api.zaku.dev/form-urlencoded"
+            body = { type = "form-urlencoded", data = [{ name = "foo", value = "bar" }, { name = "foo", value = " baz" }, { name = "bar", value = "qux", disabled = true }, { name = " baz ", value = """
+            the quick brown fox
+            jumps over the lazy dog""" }, { name = "", value = "bar" }, { name = "baz", value = "\t " }, { name = "é", value = "\t東京" }, { name = "qux", value = "+&=%20" }, { name = "qux", value = "" }] }
+        "#};
+
+        assert_eq!(serialized, expected);
+        assert_eq!(
+            parse_request_file(&serialized),
+            RequestFileState::Parsed(request_file)
+        );
+
+        let request_file = RequestFile {
+            meta: RequestFileMeta {
+                version: REQUEST_FILE_VERSION,
+            },
+            http: RequestFileHttp {
+                method: "POST".to_string(),
+                url: "https://api.zaku.dev/form-urlencoded".to_string(),
+                params: Vec::new(),
+                headers: Vec::new(),
+                body: Some(RequestFileBody::FormUrlEncoded { data: Vec::new() }),
+            },
+        };
+
+        let serialized = serialize_request_file(&request_file).unwrap();
+        let expected = indoc! {r#"
+            [meta]
+            version = 1
+
+            [http]
+            method = "POST"
+            url = "https://api.zaku.dev/form-urlencoded"
+            body = { type = "form-urlencoded" }
+        "#};
+
+        assert_eq!(serialized, expected);
+        assert_eq!(
+            parse_request_file(&serialized),
+            RequestFileState::Parsed(request_file)
+        );
+    }
 }
