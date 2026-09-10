@@ -2088,8 +2088,7 @@ mod tests {
                     indoc! {r#"
                         {
                           "hello": "world"
-                        }
-                    "#}
+                        }"#}
                 );
                 tx.send(()).unwrap();
 
@@ -2114,20 +2113,15 @@ mod tests {
                         [http]
                         method = "POST"
                         url = "https://api.zaku.dev/search"
-                        params = [
-                            { name = "query", value = "zaku" },
-                            { name = "debug", value = "1", disabled = true },
-                            { name = "test", value = "1", disabled = false },
-                        ]
-                        headers = [
-                            { name = "Content-Type", value = "application/json" },
-                            { name = "X-Debug", value = "1", disabled = true },
-                        ]
-                        body = { type = "json", data = '''
+                        params = [{ name = "query", value = "zaku" }, { name = "debug", value = "1", disabled = true }, { name = "test", value = "1" }]
+                        headers = [{ name = "Content-Type", value = "application/json" }, { name = "X-Debug", value = "1", disabled = true }]
+                        body = {
+                          type = "json",
+                          data = """
                         {
                           "hello": "world"
+                        }"""
                         }
-                        ''' }
                     "#}
                 }
             }),
@@ -2208,19 +2202,25 @@ mod tests {
                         [http]
                         method = "POST"
                         url = "https://api.zaku.dev/form-urlencoded"
-                        body = { type = "form-urlencoded", data = [
+                        body = {
+                          type = "form-urlencoded",
+                          data = [
                             { name = "foo", value = "bar" },
                             { name = "foo", value = " baz" },
                             { name = "bar", value = "qux", disabled = true },
-                            { name = " baz ", value = """
+                            {
+                              name = " baz ",
+                              value = """
                         the quick brown fox
-                        jumps over the lazy dog""" },
+                        jumps over the lazy dog"""
+                            },
                             { name = "", value = "bar" },
                             { name = "baz", value = "\t " },
                             { name = "é", value = "\t東京" },
                             { name = "qux", value = "+&=%20" },
-                            { name = "qux", value = "" },
-                        ] }
+                            { name = "qux", value = "" }
+                          ]
+                        }
                     "#}
                 }
             }),

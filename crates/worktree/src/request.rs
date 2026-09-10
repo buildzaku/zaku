@@ -207,19 +207,15 @@ mod tests {
             [http]
             method = "POST"
             url = "https://api.zaku.dev/search"
-            params = [
-                { name = "query", value = "zaku" },
-                { name = "debug", value = "1", disabled = true },
-                { name = "test", value = "1", disabled = false },
-            ]
-            headers = [
-                { name = "Content-Type", value = "application/json" },
-                { name = "X-Debug", value = "1", disabled = true },
-            ]
-            body = { type = "json", data = '''
+            params = [{ name = "query", value = "zaku" }, { name = "debug", value = "1", disabled = true }, { name = "test", value = "1" }]
+            headers = [{ name = "Content-Type", value = "application/json" }, { name = "X-Debug", value = "1", disabled = true }]
+            body = {
+                type = "json",
+                data = """
             {
               "hello": "world"
-            }''' }
+            }"""
+            }
         "#});
 
         assert_eq!(
