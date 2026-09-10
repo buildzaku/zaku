@@ -1,7 +1,7 @@
 use anyhow::{Context, anyhow};
 use serde::{Deserialize, Serialize};
 use std::mem;
-use tombi_config::TomlVersion;
+use tombi_config::{LineWidth, TomlVersion, format::FormatRules};
 use tombi_formatter::{FormatOptions, Formatter};
 use tombi_schema_store::SchemaStore;
 use toml_edit::{Item, Table};
@@ -152,7 +152,12 @@ pub fn serialize_request_file(request_file: &RequestFile) -> anyhow::Result<Stri
 }
 
 pub async fn format_request_file(contents: &str) -> anyhow::Result<String> {
-    let options = FormatOptions::default();
+    let options = FormatOptions {
+        rules: Some(FormatRules {
+            line_width: Some(LineWidth::try_from(100).unwrap()),
+            ..Default::default()
+        }),
+    };
     let schema_store = SchemaStore::new_with_options(tombi_schema_store::Options {
         strict: None,
         offline: Some(true),
