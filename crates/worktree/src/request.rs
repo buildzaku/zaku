@@ -407,7 +407,7 @@ mod tests {
                         },
                         RequestFileFormField {
                             name: " baz ".to_string(),
-                            value: "the quick brown fox\njumps over the lazy dog".to_string(),
+                            value: "\nthe quick brown fox\njumps over the lazy dog\n".to_string(),
                             disabled: false,
                         },
                         RequestFileFormField {
@@ -435,6 +435,11 @@ mod tests {
                             value: String::new(),
                             disabled: false,
                         },
+                        RequestFileFormField {
+                            name: "path".to_string(),
+                            value: r"C:\a\b".to_string(),
+                            disabled: false,
+                        },
                     ],
                 }),
             },
@@ -457,14 +462,17 @@ mod tests {
                 {
                   name = " baz ",
                   value = """
+
             the quick brown fox
-            jumps over the lazy dog"""
+            jumps over the lazy dog
+            """
                 },
                 { name = "", value = "bar" },
                 { name = "baz", value = "\t " },
                 { name = "é", value = "\t東京" },
                 { name = "qux", value = "+&=%20" },
-                { name = "qux", value = "" }
+                { name = "qux", value = "" },
+                { name = "path", value = 'C:\a\b' }
               ]
             }
         "#};
