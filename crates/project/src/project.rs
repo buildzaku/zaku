@@ -759,11 +759,7 @@ impl Project {
         }
 
         let content_task = cx.background_spawn(async move {
-            let contents = worktree::serialize_request_file(&RequestFile::default())?;
-            let contents = worktree::format_request_file(&contents)
-                .await
-                .log_err()
-                .unwrap_or(contents);
+            let contents = worktree::serialize_request_file(&RequestFile::default()).await?;
             anyhow::Ok(contents.into_bytes())
         });
 

@@ -5,7 +5,7 @@ pub use language::DiskState;
 pub use request::{
     REQUEST_FILE_VERSION, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileFormField,
     RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState,
-    format_request_file, parse_request_file, request_method_short_name, serialize_request_file,
+    parse_request_file, request_method_short_name, serialize_request_file,
 };
 pub use settings::WorktreeId;
 
@@ -197,11 +197,7 @@ impl Worktree {
         let fs = self.fs().clone();
         let abs_path = self.absolutize(&path);
         let write_task = cx.background_spawn(async move {
-            let contents = request::serialize_request_file(&request_file)?;
-            let contents = request::format_request_file(&contents)
-                .await
-                .log_err()
-                .unwrap_or(contents);
+            let contents = request::serialize_request_file(&request_file).await?;
             fs.write(&abs_path, contents.as_bytes()).await
         });
 

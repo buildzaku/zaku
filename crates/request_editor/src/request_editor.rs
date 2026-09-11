@@ -2500,7 +2500,7 @@ mod tests {
                           { name = "test", value = "1", disabled = false },
                         ]
                         headers = [
-                          { name = "Content-Type", value = "application/x-www-form-urlencoded" },
+                          { name = "Content-Type", value = "application/x-www-form-urlencoded", disabled = true },
                           { name = "X-Debug", value = "1", disabled = true },
                         ]
                         body = {
@@ -2579,6 +2579,38 @@ mod tests {
             .load("project/collection/request.toml".as_ref())
             .await
             .unwrap();
+        let expected = indoc! {r#"
+            [meta]
+            version = 1
+
+            [http]
+            method = "POST"
+            url = "https://api.zaku.dev/form-urlencoded/edit"
+            params = [
+              { name = "query", value = "zaku" },
+              { name = "debug", value = "1", disabled = true },
+              { name = "test", value = "1" }
+            ]
+            headers = [
+              { name = "Content-Type", value = "application/x-www-form-urlencoded", disabled = true },
+              { name = "X-Debug", value = "1", disabled = true }
+            ]
+            body = {
+              type = "form-urlencoded",
+              data = [
+                { name = "bar", value = "baz" },
+                {
+                  name = "baz",
+                  value = """
+            the quick brown fox
+            jumps over the lazy dog""",
+                  disabled = true
+                }
+              ]
+            }
+        "#};
+        assert_eq!(saved, expected);
+
         let saved_request = toml::from_str::<RequestFile>(&saved).unwrap();
         let expected_request = RequestFile {
             meta: RequestFileMeta { version: 1 },
@@ -2606,7 +2638,7 @@ mod tests {
                     RequestFileHeader {
                         name: "Content-Type".to_string(),
                         value: "application/x-www-form-urlencoded".to_string(),
-                        disabled: false,
+                        disabled: true,
                     },
                     RequestFileHeader {
                         name: "X-Debug".to_string(),
