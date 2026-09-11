@@ -15,4 +15,14 @@ if (-not $packageSpecified) {
     $clippyArgs += "--workspace"
 }
 
+if ($env:GITHUB_ACTIONS -ne "true") {
+    if (-not (Get-Command "typos" -ErrorAction SilentlyContinue)) {
+        throw "Missing required command: typos"
+    }
+}
+
 cargo clippy @clippyArgs --release --all-targets --all-features -- --deny warnings
+
+if ($env:GITHUB_ACTIONS -ne "true") {
+    typos --config typos.toml
+}
