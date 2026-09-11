@@ -46,9 +46,18 @@ update)
   ;;
 esac
 
-if [[ $# -lt 3 ]]; then
-  argument_names=("destination branch" "commit message" "file path")
-  echo "Missing ${argument_names[$#]}" >&2
+if [[ $# -eq 0 ]]; then
+  echo "Missing destination branch" >&2
+  echo "Run ./script/gh-commit --help" >&2
+  exit 1
+fi
+if [[ $# -eq 1 ]]; then
+  echo "Missing commit message" >&2
+  echo "Run ./script/gh-commit --help" >&2
+  exit 1
+fi
+if [[ $# -eq 2 ]]; then
+  echo "Missing file path" >&2
   echo "Run ./script/gh-commit --help" >&2
   exit 1
 fi

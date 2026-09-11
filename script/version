@@ -41,8 +41,8 @@ if [[ $# -gt 2 ]]; then
 fi
 
 version_operation="$1"
-version_argument="$2"
-version_cmd="$version_operation $version_argument"
+version_arg="$2"
+version_cmd="$version_operation $version_arg"
 case "$version_cmd" in
 "bump patch")
   source_channel=stable
@@ -98,7 +98,7 @@ if [[ "$branch" != "$release_branch" ]]; then
   echo "Checked out branch $branch does not match Zaku $current_version; expected $release_branch" >&2
   exit 1
 fi
-target_version=$(cargo app-version "$version_operation" "$current_version" "$version_argument")
+target_version=$(cargo app-version "$version_operation" "$current_version" "$version_arg")
 
 active_version=$(cargo app-version latest "$source_channel" --active)
 if [[ -z "$active_version" ]]; then

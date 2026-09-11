@@ -155,7 +155,7 @@ try {
     Copy-Item "crates/zaku/resources/windows/app-icon.ico" (Join-Path $sourceDirectory "app-icon.ico")
 
     Write-Output "Creating Windows installer"
-    $compilerArguments = @(
+    $compilerArgs = @(
         "/DArchitecture=$Arch"
         "/DVersion=$version"
         "/DVersionInfoVersion=$versionInfoVersion"
@@ -163,7 +163,7 @@ try {
         "/DOutputDir=$outputDirectory"
         "crates/zaku/resources/windows/zaku.iss"
     )
-    & $compilerPath @compilerArguments
+    & $compilerPath @compilerArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Could not create the Zaku installer"
     }

@@ -442,8 +442,8 @@ jobs:
             throw "Unexpected Inno Setup installer checksum: $sha256"
           }
 
-          $arguments = "/SP- /CURRENTUSER /DIR=`"$directory`" /NORESTART /PORTABLE=1 /SUPPRESSMSGBOXES /VERYSILENT"
-          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+          $installerArgs = "/SP- /CURRENTUSER /DIR=`"$directory`" /NORESTART /PORTABLE=1 /SUPPRESSMSGBOXES /VERYSILENT"
+          $process = Start-Process -FilePath $installer -ArgumentList $installerArgs -Wait -PassThru
           if ($process.ExitCode -ne 0) {
             throw "Could not install Inno Setup: exit code $($process.ExitCode)"
           }
