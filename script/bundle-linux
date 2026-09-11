@@ -7,21 +7,24 @@ if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); th
   exit 1
 fi
 
-if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
-  if [[ $# -ne 1 ]]; then
-    echo "Unexpected argument: $2" >&2
-    echo "Run ./script/bundle-linux --help" >&2
-    exit 1
-  fi
-  echo "Build a Linux application bundle."
-  echo
-  echo "Usage: ./script/bundle-linux [OPTIONS]"
-  echo
-  echo "Options:"
-  echo "  --arch <aarch64|x86_64>  [default: current]"
-  echo "  -h, --help               Show help."
-  exit 0
-fi
+for arg in "$@"; do
+  case "$arg" in
+  -h | --help)
+    echo "Build a Linux application bundle."
+    echo
+    echo "Usage: ./script/bundle-linux [OPTIONS]"
+    echo
+    echo "Options:"
+    echo "  --arch <aarch64|x86_64>  [default: system architecture]"
+    echo "  -h, --help               Show help."
+    exit 0
+    ;;
+  --)
+    break
+    ;;
+  esac
+done
+
 if [[ $# -gt 2 ]]; then
   echo "Unexpected argument: $3" >&2
   echo "Run ./script/bundle-linux --help" >&2

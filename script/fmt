@@ -9,21 +9,24 @@ fi
 
 PRETTIER_VERSION="3.9.6"
 
-if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
-  if [[ $# -ne 1 ]]; then
-    echo "Unexpected argument: $2" >&2
-    echo "Run ./script/fmt --help" >&2
-    exit 1
-  fi
-  echo "Fix or check repository formatting."
-  echo
-  echo "Usage: ./script/fmt [OPTIONS]"
-  echo
-  echo "Options:"
-  echo "  --check     Check formatting without writing changes."
-  echo "  -h, --help  Show help."
-  exit 0
-fi
+for arg in "$@"; do
+  case "$arg" in
+  -h | --help)
+    echo "Fix or check repository formatting."
+    echo
+    echo "Usage: ./script/fmt [OPTIONS]"
+    echo
+    echo "Options:"
+    echo "  --check     Check formatting without writing changes."
+    echo "  -h, --help  Show help."
+    exit 0
+    ;;
+  --)
+    break
+    ;;
+  esac
+done
+
 if [[ $# -gt 1 ]]; then
   echo "Unexpected argument: $2" >&2
   echo "Run ./script/fmt --help" >&2
@@ -53,10 +56,6 @@ else
   shfmt_mode=(--write)
   powershell_mode=()
 fi
-
-script_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-workspace_directory=$(dirname "$script_directory")
-cd "$workspace_directory"
 
 pnpm dlx "prettier@${PRETTIER_VERSION}" '**/*.{yml,yaml,json,jsonc,md,svg}' "${prettier_mode[@]}"
 

@@ -8,8 +8,8 @@ if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); th
 fi
 
 package_specified=false
-for argument in "$@"; do
-  case "$argument" in
+for arg in "$@"; do
+  case "$arg" in
   -p | --package | --package=*)
     package_specified=true
     break
@@ -21,6 +21,17 @@ if ! $package_specified; then
   set -- "$@" --workspace
 fi
 
+if [[ "${GITHUB_ACTIONS:-}" != "true" ]]; then
+  if ! command -v typos >/dev/null 2>&1; then
+    echo "Missing required command: typos" >&2
+    exit 1
+  fi
+fi
+
 set -x
 
 cargo clippy "$@" --release --all-targets --all-features -- --deny warnings
+
+if [[ "${GITHUB_ACTIONS:-}" != "true" ]]; then
+  typos --config typos.toml
+fi
