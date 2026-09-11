@@ -32,8 +32,11 @@ jobs:
 
           commenter_permission=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" "repos/${REPOSITORY}/collaborators/${COMMENTER_LOGIN}/permission" --jq .permission)
           case "$commenter_permission" in
-            admin | write) ;;
-            *) exit 0 ;;
+          admin | write)
+            ;;
+          *)
+            exit 0
+            ;;
           esac
 
           source_pull_request=$(gh pr view "$SOURCE_PULL_REQUEST_NUMBER" --repo "$REPOSITORY" --json baseRefName,mergeCommit,mergedAt)

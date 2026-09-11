@@ -70,19 +70,19 @@ jobs:
 
       - name: "Setup sccache (Linux and macOS)"
         if: runner.os != 'Windows'
-        run: ./script/setup-sccache
-        shell: bash
         env: &sccache_env
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_SCCACHE_BUCKET: ${{ vars.R2_SCCACHE_BUCKET }}
+        run: ./script/setup-sccache
+        shell: bash
 
       - name: "Setup sccache (Windows)"
         if: runner.os == 'Windows'
+        env: *sccache_env
         run: ./script/setup-sccache.ps1
         shell: pwsh
-        env: *sccache_env
 
       - name: "Run Clippy (Linux and macOS)"
         if: runner.os != 'Windows'

@@ -7,22 +7,24 @@ if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); th
   exit 1
 fi
 
-if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
-  if [[ $# -ne 1 ]]; then
-    echo "Unexpected argument: $2" >&2
-    echo "Run ./script/version --help" >&2
-    exit 1
-  fi
-  echo "Update an existing release line."
-  echo
-  echo "Usage: ./script/version bump patch"
-  echo "       ./script/version bump beta"
-  echo "       ./script/version promote stable"
-  echo
-  echo "Options:"
-  echo "  -h, --help  Show help."
-  exit 0
-fi
+for arg in "$@"; do
+  case "$arg" in
+  -h | --help)
+    echo "Update an existing release line."
+    echo
+    echo "Usage: ./script/version bump patch"
+    echo "       ./script/version bump beta"
+    echo "       ./script/version promote stable"
+    echo
+    echo "Options:"
+    echo "  -h, --help  Show help."
+    exit 0
+    ;;
+  --)
+    break
+    ;;
+  esac
+done
 
 if [[ $# -eq 0 ]]; then
   echo "Missing version operation" >&2

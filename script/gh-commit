@@ -9,20 +9,22 @@ fi
 
 GH_API_VERSION="2026-03-10"
 
-if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
-  if [[ $# -ne 1 ]]; then
-    echo "Unexpected argument: $2" >&2
-    echo "Run ./script/gh-commit --help" >&2
-    exit 1
-  fi
-  echo "Create a verified GitHub commit."
-  echo
-  echo "Usage: ./script/gh-commit <create|update> <branch> <message> <file>..."
-  echo
-  echo "Options:"
-  echo "  -h, --help  Show help."
-  exit 0
-fi
+for arg in "$@"; do
+  case "$arg" in
+  -h | --help)
+    echo "Create a verified GitHub commit."
+    echo
+    echo "Usage: ./script/gh-commit <create|update> <branch> <message> <file>..."
+    echo
+    echo "Options:"
+    echo "  -h, --help  Show help."
+    exit 0
+    ;;
+  --)
+    break
+    ;;
+  esac
+done
 
 if [[ $# -eq 0 ]]; then
   echo "Missing operation" >&2

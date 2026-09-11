@@ -7,21 +7,23 @@ if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); th
   exit 1
 fi
 
-if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
-  if [[ $# -ne 1 ]]; then
-    echo "Unexpected argument: $2" >&2
-    echo "Run ./script/cherry-pick --help" >&2
-    exit 1
-  fi
-  echo "Cherry-pick a commit to a release branch and create a pull request."
-  echo
-  echo "Usage: ./script/cherry-pick [OPTIONS] <branch> <commit-sha> <beta|stable>"
-  echo
-  echo "Options:"
-  echo "  --continue  Continue after resolving conflicts."
-  echo "  -h, --help  Show help."
-  exit 0
-fi
+for arg in "$@"; do
+  case "$arg" in
+  -h | --help)
+    echo "Cherry-pick a commit to a release branch and create a pull request."
+    echo
+    echo "Usage: ./script/cherry-pick [OPTIONS] <branch> <commit-sha> <beta|stable>"
+    echo
+    echo "Options:"
+    echo "  --continue  Continue after resolving conflicts."
+    echo "  -h, --help  Show help."
+    exit 0
+    ;;
+  --)
+    break
+    ;;
+  esac
+done
 
 should_continue=false
 if [[ ${1:-} == "--continue" ]]; then

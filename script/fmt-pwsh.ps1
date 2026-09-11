@@ -9,12 +9,6 @@ param(
 $workspaceDirectory = Split-Path -Parent $PSScriptRoot
 $scriptPath = Resolve-Path -LiteralPath $PSCommandPath -RelativeBasePath $workspaceDirectory -Relative
 
-if ($args.Length -gt 0) {
-    Write-Error "Unexpected argument: $($args[0])"
-    Write-Error "Run pwsh -File $scriptPath -Help"
-    exit 1
-}
-
 if ($Help) {
     Write-Output "Fix or check PowerShell script formatting."
     Write-Output ""
@@ -24,6 +18,12 @@ if ($Help) {
     Write-Output "  -Check     Check formatting without writing changes."
     Write-Output "  -h, -Help  Show help."
     exit 0
+}
+
+if ($args.Length -gt 0) {
+    Write-Error "Unexpected argument: $($args[0])"
+    Write-Error "Run pwsh -File $scriptPath -Help"
+    exit 1
 }
 
 $ErrorActionPreference = "Stop"

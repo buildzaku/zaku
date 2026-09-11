@@ -7,21 +7,23 @@ if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); th
   exit 1
 fi
 
-if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
-  if [[ $# -ne 1 ]]; then
-    echo "Unexpected argument: $2" >&2
-    echo "Run ./script/check --help" >&2
-    exit 1
-  fi
-  echo "Check shell scripts with ShellCheck."
-  echo
-  echo "Usage: ./script/check [OPTIONS]"
-  echo
-  echo "Options:"
-  echo "  --verbose   List scripts being checked."
-  echo "  -h, --help  Show help."
-  exit 0
-fi
+for arg in "$@"; do
+  case "$arg" in
+  -h | --help)
+    echo "Check shell scripts with ShellCheck."
+    echo
+    echo "Usage: ./script/check [OPTIONS]"
+    echo
+    echo "Options:"
+    echo "  --verbose   List scripts being checked."
+    echo "  -h, --help  Show help."
+    exit 0
+    ;;
+  --)
+    break
+    ;;
+  esac
+done
 if [[ $# -gt 1 ]]; then
   echo "Unexpected argument: $2" >&2
   echo "Run ./script/check --help" >&2

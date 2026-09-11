@@ -7,21 +7,23 @@ if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); th
   exit 1
 fi
 
-if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
-  if [[ $# -ne 1 ]]; then
-    echo "Unexpected argument: $2" >&2
-    echo "Run ./script/start-release --help" >&2
-    exit 1
-  fi
-  echo "Create a release branch and a pull request to advance main."
-  echo
-  echo "Usage: ./script/start-release <beta|stable> [OPTIONS]"
-  echo
-  echo "Options:"
-  echo "  --bump-year  Bump to the next year before releasing."
-  echo "  -h, --help   Show help."
-  exit 0
-fi
+for arg in "$@"; do
+  case "$arg" in
+  -h | --help)
+    echo "Create a release branch and a pull request to advance main."
+    echo
+    echo "Usage: ./script/start-release <beta|stable> [OPTIONS]"
+    echo
+    echo "Options:"
+    echo "  --bump-year  Bump to the next year before releasing."
+    echo "  -h, --help   Show help."
+    exit 0
+    ;;
+  --)
+    break
+    ;;
+  esac
+done
 
 if [[ $# -eq 0 ]]; then
   echo "Missing release channel" >&2
