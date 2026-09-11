@@ -1157,9 +1157,9 @@ async fn cleanup_stale_installer_dirs(cache_dir: PathBuf) {
         }
 
         // A recent directory may belong to an update in another process.
-        let is_stale = entry.metadata().await.ok().is_some_and(|metadata| {
+        let is_stale = entry.metadata().await.is_ok_and(|metadata| {
             metadata.is_dir()
-                && metadata.modified().ok().is_some_and(|modified| {
+                && metadata.modified().is_ok_and(|modified| {
                     SystemTime::now()
                         .duration_since(modified)
                         .is_ok_and(|age| age > STALE_INSTALLER_DIR_AGE)
