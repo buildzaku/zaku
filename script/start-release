@@ -15,7 +15,7 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   fi
   echo "Create a release branch and a pull request to advance main."
   echo
-  echo "Usage: ./script/start-release <beta|stable> [--bump-year]"
+  echo "Usage: ./script/start-release <beta|stable> [OPTIONS]"
   echo
   echo "Options:"
   echo "  --bump-year  Bump to the next year before releasing."

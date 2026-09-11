@@ -20,7 +20,7 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   echo "Usage: ./script/bundle-macos [OPTIONS]"
   echo
   echo "Options:"
-  echo "  --arch <aarch64|x86_64>  [default: current]"
+  echo "  --arch <aarch64|x86_64>  [default: system architecture]"
   echo "  -h, --help               Show help."
   exit 0
 fi

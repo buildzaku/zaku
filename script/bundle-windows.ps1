@@ -24,8 +24,8 @@ if ($Help) {
     Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
     Write-Output ""
     Write-Output "Options:"
-    Write-Output "  -Arch <aarch64|x86_64>  [default: current]"
-    Write-Output "  -h, -Help                Show help."
+    Write-Output "  -Arch <aarch64|x86_64>  [default: system architecture]"
+    Write-Output "  -h, -Help               Show help."
     exit 0
 }
 
