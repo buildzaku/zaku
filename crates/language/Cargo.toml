@@ -15,13 +15,7 @@ path = "src/language.rs"
 workspace = true
 
 [features]
-test = [
-  "gpui/test-support",
-  "toml",
-  "tree-sitter-html",
-  "tree-sitter-json",
-  "tree-sitter-xml",
-]
+test = ["gpui/test-support", "toml", "tree-sitter-html", "tree-sitter-json", "tree-sitter-xml"]
 
 [dependencies]
 anyhow = { workspace = true }

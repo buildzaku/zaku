@@ -15,7 +15,7 @@ path = "src/settings.rs"
 workspace = true
 
 [features]
-test = ["gpui/test-support", "fs/test"]
+test = ["fs/test", "gpui/test-support"]
 
 [dependencies]
 anyhow = { workspace = true }
