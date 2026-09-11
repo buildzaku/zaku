@@ -1717,9 +1717,8 @@ impl ProjectPanel {
         let worktree = self.project.read(cx).worktree_for_id(worktree_id, cx)?;
         let entry = worktree.read(cx).entry_for_id(edit_state.entry_id)?.clone();
 
-        let edit_task;
         let edited_entry_id;
-        if is_new_entry {
+        let edit_task = if is_new_entry {
             let new_path = entry.path.join(&file_name);
             if worktree.read(cx).entry_for_path(&new_path).is_some() {
                 return None;
@@ -1728,9 +1727,9 @@ impl ProjectPanel {
             edited_entry_id = Self::NEW_ENTRY_ID;
             self.selection = Some(SelectedEntry(Self::NEW_ENTRY_ID));
             let new_project_path: ProjectPath = (worktree_id, new_path).into();
-            edit_task = self.project.update(cx, |project, cx| {
+            self.project.update(cx, |project, cx| {
                 project.create_entry(new_project_path, is_dir, cx)
-            });
+            })
         } else {
             let new_path = if let Some(parent) = entry.path.parent() {
                 parent.join(&file_name)
@@ -1746,10 +1745,10 @@ impl ProjectPanel {
 
             edited_entry_id = entry.id;
             let new_project_path: ProjectPath = (worktree_id, new_path).into();
-            edit_task = self.project.update(cx, |project, cx| {
+            self.project.update(cx, |project, cx| {
                 project.rename_entry(edited_entry_id, new_project_path, cx)
-            });
-        }
+            })
+        };
 
         if refocus {
             window.focus(&self.focus_handle, cx);

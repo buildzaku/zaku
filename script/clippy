@@ -28,8 +28,6 @@ if [[ "${GITHUB_ACTIONS:-}" != "true" ]]; then
   fi
 fi
 
-set -x
-
 cargo clippy "$@" --release --all-targets --all-features -- --deny warnings
 
 if [[ "${GITHUB_ACTIONS:-}" != "true" ]]; then
