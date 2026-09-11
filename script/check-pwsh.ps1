@@ -7,12 +7,11 @@ param(
 )
 
 $workspaceDirectory = Split-Path -Parent $PSScriptRoot
-$scriptPath = Resolve-Path -LiteralPath $PSCommandPath -RelativeBasePath $workspaceDirectory -Relative
 
 if ($Help) {
     Write-Output "Check PowerShell scripts with PSScriptAnalyzer."
     Write-Output ""
-    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
+    Write-Output "Usage: ./script/check-pwsh.ps1 [OPTIONS]"
     Write-Output ""
     Write-Output "Options:"
     Write-Output "  -Verbose   List scripts being checked."
@@ -22,7 +21,7 @@ if ($Help) {
 
 if ($args.Length -gt 0) {
     Write-Error "Unexpected argument: $($args[0])"
-    Write-Error "Run pwsh -File $scriptPath -Help"
+    Write-Error "Run ./script/check-pwsh.ps1 -Help"
     exit 1
 }
 
