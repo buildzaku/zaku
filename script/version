@@ -7,22 +7,24 @@ if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); th
   exit 1
 fi
 
-if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
-  if [[ $# -ne 1 ]]; then
-    echo "Unexpected argument: $2" >&2
-    echo "Run ./script/version --help" >&2
-    exit 1
-  fi
-  echo "Update an existing release line."
-  echo
-  echo "Usage: ./script/version bump patch"
-  echo "       ./script/version bump beta"
-  echo "       ./script/version promote stable"
-  echo
-  echo "Options:"
-  echo "  -h, --help  Show help."
-  exit 0
-fi
+for arg in "$@"; do
+  case "$arg" in
+  -h | --help)
+    echo "Update an existing release line."
+    echo
+    echo "Usage: ./script/version bump patch"
+    echo "       ./script/version bump beta"
+    echo "       ./script/version promote stable"
+    echo
+    echo "Options:"
+    echo "  -h, --help  Show help."
+    exit 0
+    ;;
+  --)
+    break
+    ;;
+  esac
+done
 
 if [[ $# -eq 0 ]]; then
   echo "Missing version operation" >&2
@@ -41,8 +43,8 @@ if [[ $# -gt 2 ]]; then
 fi
 
 version_operation="$1"
-version_argument="$2"
-version_cmd="$version_operation $version_argument"
+version_arg="$2"
+version_cmd="$version_operation $version_arg"
 case "$version_cmd" in
 "bump patch")
   source_channel=stable
@@ -98,7 +100,7 @@ if [[ "$branch" != "$release_branch" ]]; then
   echo "Checked out branch $branch does not match Zaku $current_version; expected $release_branch" >&2
   exit 1
 fi
-target_version=$(cargo app-version "$version_operation" "$current_version" "$version_argument")
+target_version=$(cargo app-version "$version_operation" "$current_version" "$version_arg")
 
 active_version=$(cargo app-version latest "$source_channel" --active)
 if [[ -z "$active_version" ]]; then

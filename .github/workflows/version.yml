@@ -53,28 +53,28 @@ jobs:
           TARGET_BRANCH: ${{ inputs.branch }}
         run: |
           case "$COMMAND" in
-            "bump patch")
-              source_channel=stable
-              version_operation=bump
-              version_argument=patch
-              cargo_bump=patch
-              ;;
-            "bump beta")
-              source_channel=beta
-              version_operation=bump
-              version_argument=beta
-              cargo_bump=beta
-              ;;
-            "promote stable")
-              source_channel=beta
-              version_operation=promote
-              version_argument=stable
-              cargo_bump=release
-              ;;
-            *)
-              echo "::error::Unsupported version command: $COMMAND"
-              exit 1
-              ;;
+          "bump patch")
+            source_channel=stable
+            version_operation=bump
+            version_arg=patch
+            cargo_bump=patch
+            ;;
+          "bump beta")
+            source_channel=beta
+            version_operation=bump
+            version_arg=beta
+            cargo_bump=beta
+            ;;
+          "promote stable")
+            source_channel=beta
+            version_operation=promote
+            version_arg=stable
+            cargo_bump=release
+            ;;
+          *)
+            echo "::error::Unsupported version command: $COMMAND"
+            exit 1
+            ;;
           esac
 
           current_version=$(cargo app-version show)
@@ -84,7 +84,7 @@ jobs:
             exit 1
           fi
 
-          version=$(cargo app-version "$version_operation" "$current_version" "$version_argument")
+          version=$(cargo app-version "$version_operation" "$current_version" "$version_arg")
 
           active_version=$(cargo app-version latest "$source_channel" --active)
           if [[ -z "$active_version" ]]; then

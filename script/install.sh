@@ -3,17 +3,9 @@
 set -eu
 
 main() {
-  channel="stable"
-  version="latest"
-  version_set=0
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
+  for arg in "$@"; do
+    case "$arg" in
     -h | --help)
-      if [ "$#" -ne 1 ]; then
-        echo "Unexpected argument: $2" >&2
-        echo "Run ./script/install.sh --help" >&2
-        exit 1
-      fi
       echo "Install Zaku on Linux."
       echo
       echo "Usage: ./script/install.sh [OPTIONS]"
@@ -24,6 +16,17 @@ main() {
       echo "  -h, --help               Show help."
       exit 0
       ;;
+    --)
+      break
+      ;;
+    esac
+  done
+
+  channel="stable"
+  version="latest"
+  version_set=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
     --channel)
       if [ "$#" -lt 2 ] || [ -z "$2" ]; then
         echo "Missing value for --channel" >&2
