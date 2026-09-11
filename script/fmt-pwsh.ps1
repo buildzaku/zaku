@@ -6,8 +6,6 @@ param(
     [switch]$Check
 )
 
-$workspaceDirectory = Split-Path -Parent $PSScriptRoot
-
 if ($Help) {
     Write-Output "Fix or check PowerShell script formatting."
     Write-Output ""
@@ -27,7 +25,7 @@ if ($args.Length -gt 0) {
 
 $ErrorActionPreference = "Stop"
 
-$powerShellScripts = @(Get-ChildItem -Path $PSScriptRoot -Filter "*.ps1" -File | Sort-Object -Property Name)
+$powerShellScripts = @(Get-ChildItem -Path "script" -Filter "*.ps1" -File | Sort-Object -Property Name)
 $unformattedPowerShellScripts = @()
 $utf8Encoding = [System.Text.UTF8Encoding]::new($false)
 $additionalFormattingSettings = @{
@@ -54,7 +52,7 @@ foreach ($powerShellScript in $powerShellScripts) {
     $formattedSource = $formattedSource.Replace("`r`n", "`n").Replace("`r", "`n")
 
     if ($source -cne $formattedSource) {
-        $relativePath = Resolve-Path -LiteralPath $powerShellScript.FullName -RelativeBasePath $workspaceDirectory -Relative
+        $relativePath = "./script/$($powerShellScript.Name)"
         if ($Check) {
             $unformattedPowerShellScripts += $relativePath
         }
@@ -70,6 +68,6 @@ if ($unformattedPowerShellScripts.Length -gt 0) {
     foreach ($unformattedPowerShellScript in $unformattedPowerShellScripts) {
         Write-Output "  $unformattedPowerShellScript"
     }
-    Write-Output "Run ./script/fmt"
+    Write-Output "Run ./script/fmt-pwsh.ps1"
     exit 1
 }

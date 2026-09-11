@@ -26,6 +26,7 @@ for arg in "$@"; do
     ;;
   esac
 done
+
 if [[ $# -gt 1 ]]; then
   echo "Unexpected argument: $2" >&2
   echo "Run ./script/fmt --help" >&2
@@ -55,10 +56,6 @@ else
   shfmt_mode=(--write)
   powershell_mode=()
 fi
-
-script_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-workspace_directory=$(dirname "$script_directory")
-cd "$workspace_directory"
 
 pnpm dlx "prettier@${PRETTIER_VERSION}" '**/*.{yml,yaml,json,jsonc,md,svg}' "${prettier_mode[@]}"
 

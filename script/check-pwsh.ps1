@@ -6,8 +6,6 @@ param(
     [switch]$Verbose
 )
 
-$workspaceDirectory = Split-Path -Parent $PSScriptRoot
-
 if ($Help) {
     Write-Output "Check PowerShell scripts with PSScriptAnalyzer."
     Write-Output ""
@@ -27,11 +25,11 @@ if ($args.Length -gt 0) {
 
 $ErrorActionPreference = "Stop"
 
-$powerShellScripts = @(Get-ChildItem -Path $PSScriptRoot -Filter "*.ps1" -File | Sort-Object -Property Name)
+$powerShellScripts = @(Get-ChildItem -Path "script" -Filter "*.ps1" -File | Sort-Object -Property Name)
 if ($Verbose) {
     Write-Information "Checking $($powerShellScripts.Count) PowerShell scripts:" -InformationAction Continue
     foreach ($powerShellScript in $powerShellScripts) {
-        Write-Information "  $(Resolve-Path -LiteralPath $powerShellScript.FullName -RelativeBasePath $workspaceDirectory -Relative)" -InformationAction Continue
+        Write-Information "  ./script/$($powerShellScript.Name)" -InformationAction Continue
     }
 }
-Invoke-ScriptAnalyzer -Path "$PSScriptRoot/*.ps1" -Severity Error, Warning -EnableExit
+Invoke-ScriptAnalyzer -Path "script/*.ps1" -Severity Error, Warning -EnableExit

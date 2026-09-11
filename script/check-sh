@@ -24,6 +24,7 @@ for arg in "$@"; do
     ;;
   esac
 done
+
 if [[ $# -gt 1 ]]; then
   echo "Unexpected argument: $2" >&2
   echo "Run ./script/check-sh --help" >&2

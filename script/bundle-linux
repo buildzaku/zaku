@@ -24,6 +24,7 @@ for arg in "$@"; do
     ;;
   esac
 done
+
 if [[ $# -gt 2 ]]; then
   echo "Unexpected argument: $3" >&2
   echo "Run ./script/bundle-linux --help" >&2
