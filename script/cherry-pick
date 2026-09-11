@@ -59,7 +59,11 @@ if ! gh auth status --active --hostname github.com >/dev/null 2>&1; then
   exit 1
 fi
 
-git fetch --depth 2 origin "+${commit_sha}" "$target_branch" >&2
+fetch_args=()
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  fetch_args=(--depth 2)
+fi
+git fetch "${fetch_args[@]}" origin "+${commit_sha}" "$target_branch" >&2
 short_sha=$(git rev-parse --short "$commit_sha")
 cherry_pick_branch="cherry-pick-${target_branch}-${short_sha}"
 
