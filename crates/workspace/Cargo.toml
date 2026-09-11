@@ -24,7 +24,7 @@ test = [
   "project/test",
   "session/test",
   "settings/test",
-  "util/test",
+  "util/test"
 ]
 
 [dependencies]

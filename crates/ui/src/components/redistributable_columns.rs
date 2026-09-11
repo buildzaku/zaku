@@ -376,15 +376,7 @@ impl RedistributableColumnsState {
             return diff;
         }
 
-        let step_right;
-        let step_left;
-        if direction < 0 {
-            step_right = 0;
-            step_left = 1;
-        } else {
-            step_right = 1;
-            step_left = 0;
-        }
+        let (step_right, step_left) = if direction < 0 { (0, 1) } else { (1, 0) };
 
         if column_index == 0 && direction < 0 {
             return diff;

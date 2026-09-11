@@ -81,11 +81,7 @@ workspace = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { workspace = true }
-gpui_platform = { workspace = true, features = [
-  "screen-capture",
-  "wayland",
-  "x11",
-] }
+gpui_platform = { workspace = true, features = ["screen-capture", "wayland", "x11"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { workspace = true }
