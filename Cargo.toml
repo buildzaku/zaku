@@ -33,6 +33,7 @@ members = [
   "crates/request_buffer",
   "crates/request_editor",
   "crates/reqwest_client",
+  "crates/resources",
   "crates/response_panel",
   "crates/session",
   "crates/settings",
@@ -55,10 +56,9 @@ members = [
   "crates/updater_windows",
   "crates/util",
   "crates/util_macros",
-  "crates/resources",
   "crates/workspace",
   "crates/worktree",
-  "crates/zaku",
+  "crates/zaku"
 ]
 default-members = ["crates/zaku"]
 
@@ -75,10 +75,7 @@ publish = false
 # External crates
 ##################################################
 anyhow = { version = "1.0" }
-ashpd = { version = "0.13", default-features = false, features = [
-  "async-io",
-  "notification",
-] }
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "notification"] }
 async-lock = { version = "3.4" }
 async-process = { version = "2.5" }
 async-trait = { version = "0.1" }
@@ -92,10 +89,22 @@ dirs = { version = "6.0" }
 dunce = { version = "1.0" }
 embed-resource = { version = "3.0" }
 futures = { version = "0.3" }
-fuzzy_nucleo = { git = "https://github.com/zed-industries/zed", rev = "72c53bf0aa", package = "fuzzy_nucleo" }
+fuzzy_nucleo = {
+  git = "https://github.com/zed-industries/zed",
+  rev = "72c53bf0aa",
+  package = "fuzzy_nucleo"
+}
 gpui = { git = "https://github.com/zed-industries/zed", rev = "72c53bf0aa", package = "gpui" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "72c53bf0aa", package = "gpui_platform" }
-gpui_util = { git = "https://github.com/zed-industries/zed", rev = "72c53bf0aa", package = "gpui_util" }
+gpui_platform = {
+  git = "https://github.com/zed-industries/zed",
+  rev = "72c53bf0aa",
+  package = "gpui_platform"
+}
+gpui_util = {
+  git = "https://github.com/zed-industries/zed",
+  rev = "72c53bf0aa",
+  package = "gpui_util"
+}
 hex = { version = "0.4" }
 http = { version = "1.5" }
 http-body = { version = "1.0" }
@@ -107,12 +116,10 @@ inventory = { version = "0.3" }
 is_executable = { version = "1.0" }
 itertools = { version = "0.14" }
 jiff = { version = "0.2" }
-jsonc-parser = { version = "0.32", features = [
-  "cst",
-  "error_unicode_width",
-  "serde",
-  "serde_json",
-] }
+jsonc-parser = {
+  version = "0.32",
+  features = ["cst", "error_unicode_width", "serde", "serde_json"]
+}
 junkyard = { version = "0.1" }
 libc = { version = "0.2" }
 libsqlite3-sys = { version = "0.38", features = ["bundled"] }
@@ -122,13 +129,21 @@ mimalloc = { version = "0.1" }
 minidumper = { version = "0.11" }
 notify = { version = "8.2" }
 num-traits = { version = "0.2" }
-objc2-foundation = { version = "0.3", default-features = false, features = [
-  "NSProcessInfo",
-  "NSString",
-  "std",
-] }
-oxc_allocator = { git = "https://github.com/oxc-project/oxc", rev = "ca7104f775", package = "oxc_allocator" }
-oxc_formatter_json = { git = "https://github.com/oxc-project/oxc", rev = "ca7104f775", package = "oxc_formatter_json" }
+objc2-foundation = {
+  version = "0.3",
+  default-features = false,
+  features = ["NSProcessInfo", "NSString", "std"]
+}
+oxc_allocator = {
+  git = "https://github.com/oxc-project/oxc",
+  rev = "ca7104f775",
+  package = "oxc_allocator"
+}
+oxc_formatter_json = {
+  git = "https://github.com/oxc-project/oxc",
+  rev = "ca7104f775",
+  package = "oxc_formatter_json"
+}
 palette = { version = "0.7", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12" }
 pciid-parser = { version = "0.8" }
@@ -137,15 +152,11 @@ proc-macro2 = { version = "1.0" }
 quote = { version = "1.0" }
 rand = { version = "0.10" }
 regex = { version = "1.12" }
-reqwest = { version = "0.13", default-features = false, features = [
-  "charset",
-  "http2",
-  "multipart",
-  "rustls",
-  "socks",
-  "stream",
-  "system-proxy",
-] }
+reqwest = {
+  version = "0.13",
+  default-features = false,
+  features = ["charset", "http2", "multipart", "rustls", "socks", "stream", "system-proxy"]
+}
 rust-embed = { version = "8.11", features = ["include-exclude"] }
 rustc-hash = { version = "2.1" }
 schemars = { version = "1.2" }
@@ -159,7 +170,11 @@ smol = { version = "2.0" }
 sqlformat = { version = "0.5" }
 streaming-iterator = { version = "0.1" }
 strum = { version = "0.28", features = ["derive"] }
-sum_tree = { git = "https://github.com/zed-industries/zed", rev = "72c53bf0aa", package = "sum_tree" }
+sum_tree = {
+  git = "https://github.com/zed-industries/zed",
+  rev = "72c53bf0aa",
+  package = "sum_tree"
+}
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
 sysinfo = { version = "0.39" }
 tempfile = { version = "3.27" }
@@ -167,11 +182,33 @@ tendril = { version = "0.5" }
 text = { git = "https://github.com/zed-industries/zed", rev = "72c53bf0aa", package = "text" }
 thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
-tombi-cache = { git = "https://github.com/tombi-toml/tombi", rev = "1938bd3e8", package = "tombi-cache" }
-tombi-config = { git = "https://github.com/tombi-toml/tombi", rev = "1938bd3e8", package = "tombi-config" }
-tombi-formatter = { git = "https://github.com/tombi-toml/tombi", rev = "1938bd3e8", package = "tombi-formatter" }
-tombi-future = { git = "https://github.com/tombi-toml/tombi", rev = "1938bd3e8", package = "tombi-future", features = ["native"] }
-tombi-schema-store = { git = "https://github.com/tombi-toml/tombi", rev = "1938bd3e8", package = "tombi-schema-store", default-features = false }
+tombi-cache = {
+  git = "https://github.com/tombi-toml/tombi",
+  rev = "1938bd3e8",
+  package = "tombi-cache"
+}
+tombi-config = {
+  git = "https://github.com/tombi-toml/tombi",
+  rev = "1938bd3e8",
+  package = "tombi-config"
+}
+tombi-formatter = {
+  git = "https://github.com/tombi-toml/tombi",
+  rev = "1938bd3e8",
+  package = "tombi-formatter"
+}
+tombi-future = {
+  git = "https://github.com/tombi-toml/tombi",
+  rev = "1938bd3e8",
+  package = "tombi-future",
+  features = ["native"]
+}
+tombi-schema-store = {
+  git = "https://github.com/tombi-toml/tombi",
+  rev = "1938bd3e8",
+  package = "tombi-schema-store",
+  default-features = false
+}
 toml = { version = "1.1" }
 toml_edit = { version = "0.25", features = ["serde"] }
 tree-sitter = { version = "0.26" }
@@ -182,24 +219,28 @@ unicode-segmentation = { version = "1.13" }
 url = { version = "2.5" }
 uuid = { version = "1.24", features = ["v4"] }
 which = { version = "8.0" }
-windows = { version = "0.62", features = [
-  "Wdk_System_SystemServices",
-  "Win32_Foundation",
-  "Win32_Graphics_Gdi",
-  "Win32_Storage_FileSystem",
-  "Win32_System_Console",
-  "Win32_System_IO",
-  "Win32_System_LibraryLoader",
-  "Win32_System_RestartManager",
-  "Win32_System_SystemInformation",
-  "Win32_System_Threading",
-  "Win32_System_WindowsProgramming",
-  "Win32_UI_Controls",
-  "Win32_UI_HiDpi",
-  "Win32_UI_Shell",
-  "Win32_UI_WindowsAndMessaging",
-] }
+windows = {
+  version = "0.62",
+  features = [
+    "Wdk_System_SystemServices",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_IO",
+    "Win32_System_LibraryLoader",
+    "Win32_System_RestartManager",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_System_WindowsProgramming",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging"
+  ]
+}
 zstd = { version = "0.13" }
+
 ##################################################
 # Workspace member crates
 ##################################################
@@ -235,6 +276,7 @@ refineable_derive = { path = "crates/refineable_derive" }
 request_buffer = { path = "crates/request_buffer" }
 request_editor = { path = "crates/request_editor" }
 reqwest_client = { path = "crates/reqwest_client" }
+resources = { path = "crates/resources" }
 response_panel = { path = "crates/response_panel" }
 session = { path = "crates/session" }
 settings = { path = "crates/settings" }
@@ -257,7 +299,6 @@ updater = { path = "crates/updater" }
 updater_windows = { path = "crates/updater_windows" }
 util = { path = "crates/util" }
 util_macros = { path = "crates/util_macros" }
-resources = { path = "crates/resources" }
 workspace = { path = "crates/workspace" }
 worktree = { path = "crates/worktree" }
 
