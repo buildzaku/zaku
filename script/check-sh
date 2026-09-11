@@ -12,7 +12,7 @@ for arg in "$@"; do
   -h | --help)
     echo "Check shell scripts with ShellCheck."
     echo
-    echo "Usage: ./script/check [OPTIONS]"
+    echo "Usage: ./script/check-sh [OPTIONS]"
     echo
     echo "Options:"
     echo "  --verbose   List scripts being checked."
@@ -26,12 +26,12 @@ for arg in "$@"; do
 done
 if [[ $# -gt 1 ]]; then
   echo "Unexpected argument: $2" >&2
-  echo "Run ./script/check --help" >&2
+  echo "Run ./script/check-sh --help" >&2
   exit 1
 fi
 if [[ $# -eq 1 && $1 != "--verbose" ]]; then
   echo "Unexpected argument: $1" >&2
-  echo "Run ./script/check --help" >&2
+  echo "Run ./script/check-sh --help" >&2
   exit 1
 fi
 
