@@ -1,7 +1,12 @@
 use anyhow::{Context, anyhow};
 use serde::{Deserialize, Serialize};
 use std::mem;
+use tombi_config::{LineWidth, TomlVersion, format::FormatRules};
+use tombi_formatter::{FormatOptions, Formatter};
+use tombi_schema_store::SchemaStore;
 use toml_edit::{Item, Table};
+
+use util::ResultExt;
 
 pub const REQUEST_FILE_VERSION: u32 = 1;
 
@@ -139,13 +144,36 @@ impl RequestFileBodyType {
     }
 }
 
-pub fn serialize_request_file(request_file: &RequestFile) -> anyhow::Result<String> {
+pub async fn serialize_request_file(request_file: &RequestFile) -> anyhow::Result<String> {
     let mut document = toml_edit::ser::to_document(request_file)?;
     promote_to_table(document.as_table_mut(), "meta")
         .context("Failed to serialize request meta")?;
     promote_to_table(document.as_table_mut(), "http")
         .context("Failed to serialize request http")?;
-    Ok(document.to_string())
+    let contents = document.to_string();
+    let options = FormatOptions {
+        rules: Some(FormatRules {
+            line_width: Some(LineWidth::try_from(100).expect("line width should be non-zero")),
+            ..Default::default()
+        }),
+    };
+    let schema_store = SchemaStore::new_with_options(tombi_schema_store::Options {
+        strict: None,
+        offline: Some(true),
+        cache: Some(tombi_cache::Options {
+            no_cache: Some(true),
+            cache_ttl: None,
+        }),
+    });
+
+    Ok(
+        Formatter::new(TomlVersion::V1_1_0, &options, None, &schema_store)
+            .format(&contents)
+            .await
+            .map_err(|diagnostics| anyhow!("failed to format request file: {diagnostics:?}"))
+            .log_err()
+            .unwrap_or(contents),
+    )
 }
 
 fn promote_to_table(parent: &mut Table, key: &str) -> anyhow::Result<()> {
@@ -268,8 +296,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_serialize_request_file() {
+    #[gpui::test]
+    async fn test_serialize_request_file() {
         let request_file = RequestFile {
             meta: RequestFileMeta {
                 version: REQUEST_FILE_VERSION,
@@ -316,7 +344,7 @@ mod tests {
             },
         };
 
-        let serialized = serialize_request_file(&request_file).unwrap();
+        let serialized = serialize_request_file(&request_file).await.unwrap();
         let expected = indoc! {r#"
             [meta]
             version = 1
@@ -324,12 +352,22 @@ mod tests {
             [http]
             method = "POST"
             url = "https://api.zaku.dev/search"
-            params = [{ name = "query", value = "zaku" }, { name = "debug", value = "1", disabled = true }, { name = "test", value = "1" }]
-            headers = [{ name = "Content-Type", value = "application/json" }, { name = "X-Debug", value = "1", disabled = true }]
-            body = { type = "json", data = """
+            params = [
+              { name = "query", value = "zaku" },
+              { name = "debug", value = "1", disabled = true },
+              { name = "test", value = "1" }
+            ]
+            headers = [
+              { name = "Content-Type", value = "application/json" },
+              { name = "X-Debug", value = "1", disabled = true }
+            ]
+            body = {
+              type = "json",
+              data = """
             {
               "hello": "world"
-            }""" }
+            }"""
+            }
         "#};
 
         assert_eq!(serialized, expected);
@@ -339,8 +377,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_form_url_encoded_round_trip() {
+    #[gpui::test]
+    async fn test_form_url_encoded_round_trip() {
         let request_file = RequestFile {
             meta: RequestFileMeta {
                 version: REQUEST_FILE_VERSION,
@@ -369,7 +407,7 @@ mod tests {
                         },
                         RequestFileFormField {
                             name: " baz ".to_string(),
-                            value: "the quick brown fox\njumps over the lazy dog".to_string(),
+                            value: "\nthe quick brown fox\njumps over the lazy dog\n".to_string(),
                             disabled: false,
                         },
                         RequestFileFormField {
@@ -397,12 +435,17 @@ mod tests {
                             value: String::new(),
                             disabled: false,
                         },
+                        RequestFileFormField {
+                            name: "path".to_string(),
+                            value: r"C:\a\b".to_string(),
+                            disabled: false,
+                        },
                     ],
                 }),
             },
         };
 
-        let serialized = serialize_request_file(&request_file).unwrap();
+        let serialized = serialize_request_file(&request_file).await.unwrap();
         let expected = indoc! {r#"
             [meta]
             version = 1
@@ -410,9 +453,28 @@ mod tests {
             [http]
             method = "POST"
             url = "https://api.zaku.dev/form-urlencoded"
-            body = { type = "form-urlencoded", data = [{ name = "foo", value = "bar" }, { name = "foo", value = " baz" }, { name = "bar", value = "qux", disabled = true }, { name = " baz ", value = """
+            body = {
+              type = "form-urlencoded",
+              data = [
+                { name = "foo", value = "bar" },
+                { name = "foo", value = " baz" },
+                { name = "bar", value = "qux", disabled = true },
+                {
+                  name = " baz ",
+                  value = """
+
             the quick brown fox
-            jumps over the lazy dog""" }, { name = "", value = "bar" }, { name = "baz", value = "\t " }, { name = "é", value = "\t東京" }, { name = "qux", value = "+&=%20" }, { name = "qux", value = "" }] }
+            jumps over the lazy dog
+            """
+                },
+                { name = "", value = "bar" },
+                { name = "baz", value = "\t " },
+                { name = "é", value = "\t東京" },
+                { name = "qux", value = "+&=%20" },
+                { name = "qux", value = "" },
+                { name = "path", value = 'C:\a\b' }
+              ]
+            }
         "#};
 
         assert_eq!(serialized, expected);
@@ -434,7 +496,7 @@ mod tests {
             },
         };
 
-        let serialized = serialize_request_file(&request_file).unwrap();
+        let serialized = serialize_request_file(&request_file).await.unwrap();
         let expected = indoc! {r#"
             [meta]
             version = 1

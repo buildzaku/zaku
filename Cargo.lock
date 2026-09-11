@@ -103,6 +103,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "addr"
+version = "0.15.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a93b8a41dbe230ad5087cc721f8d41611de654542180586b315d9f4cf6b72bef"
+dependencies = [
+ "psl",
+ "psl-types",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -137,7 +147,9 @@ checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
 dependencies = [
  "cfg-if",
  "const-random",
+ "getrandom 0.3.4",
  "once_cell",
+ "serde",
  "version_check",
  "zerocopy",
 ]
@@ -680,6 +692,15 @@ dependencies = [
 
 [[package]]
 name = "bit-set"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0700ddab506f33b20a03b13996eccd309a48e5ff77d0d95926aa0210fb4e95f1"
+dependencies = [
+ "bit-vec 0.6.3",
+]
+
+[[package]]
+name = "bit-set"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3"
@@ -695,6 +716,12 @@ checksum = "34ddef2995421ab6a5c779542c81ee77c115206f4ad9d5a8e05f4ff49716a3dd"
 dependencies = [
  "bit-vec 0.9.1",
 ]
+
+[[package]]
+name = "bit-vec"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
 
 [[package]]
 name = "bit-vec"
@@ -1904,6 +1931,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd8e701084c37e7ef62d3f9e453b618130cbc0ef3573847785952a3ac3f746bf"
 
 [[package]]
+name = "drop_bomb"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bda8e21c04aca2ae33ffc2fd8c23134f3cac46db123ba97bd9d3f3b8a4a85e1"
+
+[[package]]
 name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1965,6 +1998,15 @@ name = "either"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
+
+[[package]]
+name = "email_address"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e079f19b08ca6239f47f8ba8509c11cf3ea30095831f7fed61441475edd8c449"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "embed-resource"
@@ -2143,6 +2185,17 @@ name = "failspot"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c942e64b20ecd39933d5ff938ca4fdb6ef0d298cc3855b231179a5ef0b24948d"
+
+[[package]]
+name = "fancy-regex"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "531e46835a22af56d1e3b66f04844bed63158bc094a628bec1d321d9b4c44bf2"
+dependencies = [
+ "bit-set 0.5.3",
+ "regex-automata",
+ "regex-syntax",
+]
 
 [[package]]
 name = "fast-srgb8"
@@ -5928,6 +5981,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "psl"
+version = "2.1.232"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62834e308cc83aea5e30cd8c80b8aa82cdb104a3240c7f210d4f68d46e29f308"
+dependencies = [
+ "psl-types",
+]
+
+[[package]]
+name = "psl-types"
+version = "2.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33cb294fe86a74cbcf50d4445b37da762029549ebeea341421c7c70370f86cac"
+
+[[package]]
 name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8061,6 +8129,428 @@ dependencies = [
 ]
 
 [[package]]
+name = "tombi-accessor"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "itertools 0.14.0",
+ "tombi-hashmap",
+ "tombi-text",
+ "tombi-toml-text",
+ "tombi-toml-version",
+]
+
+[[package]]
+name = "tombi-ast"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "tombi-date-time",
+ "tombi-text",
+ "tombi-toml-version",
+]
+
+[[package]]
+name = "tombi-ast-syntax"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "itertools 0.14.0",
+ "memchr",
+ "thiserror 2.0.18",
+ "tombi-accessor",
+ "tombi-ast",
+ "tombi-text",
+ "tombi-toml-text",
+ "tombi-toml-version",
+ "tombi-uri",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "tombi-cache"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "dirs",
+ "log",
+ "thiserror 2.0.18",
+ "tokio",
+ "tombi-uri",
+]
+
+[[package]]
+name = "tombi-comment-directive"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "serde",
+ "thiserror 2.0.18",
+ "tombi-schema-type",
+ "tombi-severity-level",
+ "tombi-text",
+ "tombi-toml-version",
+ "tombi-uri",
+ "tombi-x-keyword",
+]
+
+[[package]]
+name = "tombi-comment-directive-serde"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "serde",
+ "tombi-ast-syntax",
+ "tombi-comment-directive",
+ "tombi-document",
+ "tombi-document-tree-syntax",
+ "tombi-parser",
+]
+
+[[package]]
+name = "tombi-comment-directive-store"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "tokio",
+ "tombi-schema-store",
+ "tombi-uri",
+]
+
+[[package]]
+name = "tombi-config"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "serde",
+ "thiserror 2.0.18",
+ "tombi-schema-type",
+ "tombi-severity-level",
+ "tombi-toml-version",
+ "tombi-uri",
+ "tombi-x-keyword",
+]
+
+[[package]]
+name = "tombi-date-time"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "chrono",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "tombi-diagnostic"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "nu-ansi-term",
+ "serde",
+ "tombi-text",
+]
+
+[[package]]
+name = "tombi-document"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "itertools 0.14.0",
+ "serde",
+ "thiserror 2.0.18",
+ "tombi-date-time",
+ "tombi-document-tree",
+ "tombi-document-tree-syntax",
+ "tombi-hashmap",
+ "tombi-parser",
+ "tombi-text",
+ "tombi-toml-version",
+]
+
+[[package]]
+name = "tombi-document-tree"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "tombi-accessor",
+ "tombi-date-time",
+ "tombi-text",
+]
+
+[[package]]
+name = "tombi-document-tree-syntax"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "chrono",
+ "itertools 0.14.0",
+ "thiserror 2.0.18",
+ "tombi-accessor",
+ "tombi-ast-syntax",
+ "tombi-date-time",
+ "tombi-diagnostic",
+ "tombi-document-tree",
+ "tombi-hashmap",
+ "tombi-text",
+ "tombi-toml-text",
+ "tombi-toml-version",
+]
+
+[[package]]
+name = "tombi-formatter"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "itertools 0.14.0",
+ "log",
+ "thiserror 2.0.18",
+ "tombi-ast-syntax",
+ "tombi-comment-directive",
+ "tombi-comment-directive-serde",
+ "tombi-config",
+ "tombi-diagnostic",
+ "tombi-document-tree-syntax",
+ "tombi-future",
+ "tombi-hashmap",
+ "tombi-parser",
+ "tombi-regex",
+ "tombi-schema-store",
+ "tombi-text",
+ "tombi-uri",
+ "tombi-validator",
+ "tombi-version-sort",
+ "tombi-x-keyword",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "tombi-future"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "futures",
+ "tokio",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "tombi-hashmap"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "ahash",
+ "getrandom 0.3.4",
+ "indexmap",
+]
+
+[[package]]
+name = "tombi-json"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "itertools 0.14.0",
+ "serde",
+ "thiserror 2.0.18",
+ "tombi-hashmap",
+ "tombi-json-lexer",
+ "tombi-json-syntax",
+ "tombi-json-value",
+ "tombi-text",
+]
+
+[[package]]
+name = "tombi-json-lexer"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "memchr",
+ "tombi-json-syntax",
+ "tombi-text",
+]
+
+[[package]]
+name = "tombi-json-syntax"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+
+[[package]]
+name = "tombi-json-value"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "serde",
+ "tombi-hashmap",
+]
+
+[[package]]
+name = "tombi-lexer"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "memchr",
+ "tombi-ast-syntax",
+ "tombi-regex",
+ "tombi-text",
+]
+
+[[package]]
+name = "tombi-parser"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "drop_bomb",
+ "itertools 0.14.0",
+ "log",
+ "thiserror 2.0.18",
+ "tombi-ast-syntax",
+ "tombi-diagnostic",
+ "tombi-lexer",
+ "tombi-text",
+]
+
+[[package]]
+name = "tombi-regex"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "fancy-regex",
+]
+
+[[package]]
+name = "tombi-schema-store"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "bytes",
+ "futures",
+ "glob",
+ "itertools 0.14.0",
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tombi-accessor",
+ "tombi-ast-syntax",
+ "tombi-cache",
+ "tombi-config",
+ "tombi-diagnostic",
+ "tombi-document-tree-syntax",
+ "tombi-future",
+ "tombi-hashmap",
+ "tombi-json",
+ "tombi-schema-type",
+ "tombi-severity-level",
+ "tombi-text",
+ "tombi-uri",
+ "tombi-x-keyword",
+]
+
+[[package]]
+name = "tombi-schema-type"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "tombi-severity-level"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "tombi-text"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "log",
+ "memchr",
+ "serde",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "tombi-toml-text"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "thiserror 2.0.18",
+ "tombi-toml-version",
+]
+
+[[package]]
+name = "tombi-toml-version"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "clap",
+ "serde",
+]
+
+[[package]]
+name = "tombi-uri"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "percent-encoding",
+ "serde",
+ "url",
+]
+
+[[package]]
+name = "tombi-validator"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "addr",
+ "email_address",
+ "itertools 0.14.0",
+ "log",
+ "serde",
+ "thiserror 2.0.18",
+ "tombi-accessor",
+ "tombi-ast-syntax",
+ "tombi-comment-directive",
+ "tombi-comment-directive-store",
+ "tombi-diagnostic",
+ "tombi-document",
+ "tombi-document-tree-syntax",
+ "tombi-future",
+ "tombi-hashmap",
+ "tombi-json-value",
+ "tombi-parser",
+ "tombi-regex",
+ "tombi-schema-store",
+ "tombi-severity-level",
+ "tombi-text",
+ "tombi-uri",
+ "tombi-x-keyword",
+ "unicode-segmentation",
+ "uuid",
+]
+
+[[package]]
+name = "tombi-version-sort"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "itertools 0.14.0",
+]
+
+[[package]]
+name = "tombi-x-keyword"
+version = "0.0.0-dev"
+source = "git+https://github.com/tombi-toml/tombi?rev=1938bd3e8#1938bd3e8b9248818d65f6141de7c1b3a1fae39c"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "toml"
 version = "0.8.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8531,6 +9021,7 @@ dependencies = [
  "idna",
  "percent-encoding",
  "serde",
+ "serde_derive",
 ]
 
 [[package]]
@@ -9783,6 +10274,11 @@ dependencies = [
  "smol",
  "sum_tree",
  "tokio",
+ "tombi-cache",
+ "tombi-config",
+ "tombi-formatter",
+ "tombi-future",
+ "tombi-schema-store",
  "toml 1.1.2+spec-1.1.0",
  "toml_edit 0.25.12+spec-1.1.0",
  "util 26.0.0-beta.2",

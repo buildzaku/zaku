@@ -167,6 +167,11 @@ tendril = { version = "0.5" }
 text = { git = "https://github.com/zed-industries/zed", rev = "72c53bf0aa", package = "text" }
 thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
+tombi-cache = { git = "https://github.com/tombi-toml/tombi", rev = "1938bd3e8", package = "tombi-cache" }
+tombi-config = { git = "https://github.com/tombi-toml/tombi", rev = "1938bd3e8", package = "tombi-config" }
+tombi-formatter = { git = "https://github.com/tombi-toml/tombi", rev = "1938bd3e8", package = "tombi-formatter" }
+tombi-future = { git = "https://github.com/tombi-toml/tombi", rev = "1938bd3e8", package = "tombi-future", features = ["native"] }
+tombi-schema-store = { git = "https://github.com/tombi-toml/tombi", rev = "1938bd3e8", package = "tombi-schema-store", default-features = false }
 toml = { version = "1.1" }
 toml_edit = { version = "0.25", features = ["serde"] }
 tree-sitter = { version = "0.26" }
