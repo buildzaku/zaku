@@ -33,7 +33,7 @@ jobs:
             shfmt
 
       - name: "Check shell scripts"
-        run: ./script/check --verbose
+        run: ./script/check-sh --verbose
         shell: bash
 
       - name: "Install PSScriptAnalyzer"
@@ -41,7 +41,7 @@ jobs:
         shell: pwsh
 
       - name: "Check PowerShell scripts"
-        run: ./script/check.ps1 -Verbose
+        run: ./script/check-pwsh.ps1 -Verbose
         shell: pwsh
 
       - name: "Setup pnpm"

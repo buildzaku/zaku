@@ -6,19 +6,10 @@ param(
     [switch]$Check
 )
 
-$workspaceDirectory = Split-Path -Parent $PSScriptRoot
-$scriptPath = Resolve-Path -LiteralPath $PSCommandPath -RelativeBasePath $workspaceDirectory -Relative
-
-if ($args.Length -gt 0) {
-    Write-Error "Unexpected argument: $($args[0])"
-    Write-Error "Run pwsh -File $scriptPath -Help"
-    exit 1
-}
-
 if ($Help) {
     Write-Output "Fix or check PowerShell script formatting."
     Write-Output ""
-    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
+    Write-Output "Usage: ./script/fmt-pwsh.ps1 [OPTIONS]"
     Write-Output ""
     Write-Output "Options:"
     Write-Output "  -Check     Check formatting without writing changes."
@@ -26,9 +17,15 @@ if ($Help) {
     exit 0
 }
 
+if ($args.Length -gt 0) {
+    Write-Error "Unexpected argument: $($args[0])"
+    Write-Error "Run ./script/fmt-pwsh.ps1 -Help"
+    exit 1
+}
+
 $ErrorActionPreference = "Stop"
 
-$powerShellScripts = @(Get-ChildItem -Path $PSScriptRoot -Filter "*.ps1" -File | Sort-Object -Property Name)
+$powerShellScripts = @(Get-ChildItem -Path "script" -Filter "*.ps1" -File | Sort-Object -Property Name)
 $unformattedPowerShellScripts = @()
 $utf8Encoding = [System.Text.UTF8Encoding]::new($false)
 $additionalFormattingSettings = @{
@@ -55,7 +52,7 @@ foreach ($powerShellScript in $powerShellScripts) {
     $formattedSource = $formattedSource.Replace("`r`n", "`n").Replace("`r", "`n")
 
     if ($source -cne $formattedSource) {
-        $relativePath = Resolve-Path -LiteralPath $powerShellScript.FullName -RelativeBasePath $workspaceDirectory -Relative
+        $relativePath = "./script/$($powerShellScript.Name)"
         if ($Check) {
             $unformattedPowerShellScripts += $relativePath
         }
@@ -71,6 +68,6 @@ if ($unformattedPowerShellScripts.Length -gt 0) {
     foreach ($unformattedPowerShellScript in $unformattedPowerShellScripts) {
         Write-Output "  $unformattedPowerShellScript"
     }
-    Write-Output "Run ./script/fmt"
+    Write-Output "Run ./script/fmt-pwsh.ps1"
     exit 1
 }
