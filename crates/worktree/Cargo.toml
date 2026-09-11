@@ -39,6 +39,11 @@ smallvec = { workspace = true }
 smol = { workspace = true }
 sum_tree = { workspace = true }
 tokio = { workspace = true }
+tombi-cache = { workspace = true }
+tombi-config = { workspace = true }
+tombi-formatter = { workspace = true }
+tombi-future = { workspace = true }
+tombi-schema-store = { workspace = true }
 toml = { workspace = true }
 toml_edit = { workspace = true }
 util = { workspace = true }

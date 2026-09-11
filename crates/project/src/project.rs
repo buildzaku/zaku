@@ -752,18 +752,24 @@ impl Project {
             ))));
         };
 
-        let content = if is_directory {
-            None
-        } else {
-            let contents = match worktree::serialize_request_file(&RequestFile::default()) {
-                Ok(contents) => contents,
-                Err(error) => return Task::ready(Err(error)),
-            };
-            Some(contents.into_bytes())
-        };
+        if is_directory {
+            return worktree.update(cx, |worktree, cx| {
+                worktree.create_entry(project_path.path, true, None, cx)
+            });
+        }
 
-        worktree.update(cx, |worktree, cx| {
-            worktree.create_entry(project_path.path, is_directory, content, cx)
+        let content_task = cx.background_spawn(async move {
+            let contents = worktree::serialize_request_file(&RequestFile::default()).await?;
+            anyhow::Ok(contents.into_bytes())
+        });
+
+        cx.spawn(async move |_, cx| {
+            let content = content_task.await?;
+            worktree
+                .update(cx, |worktree, cx| {
+                    worktree.create_entry(project_path.path, false, Some(content), cx)
+                })
+                .await
         })
     }
 

@@ -197,7 +197,7 @@ impl Worktree {
         let fs = self.fs().clone();
         let abs_path = self.absolutize(&path);
         let write_task = cx.background_spawn(async move {
-            let contents = request::serialize_request_file(&request_file)?;
+            let contents = request::serialize_request_file(&request_file).await?;
             fs.write(&abs_path, contents.as_bytes()).await
         });
 
