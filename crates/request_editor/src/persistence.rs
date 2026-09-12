@@ -71,3 +71,47 @@ impl Domain for RequestEditorDb {
 }
 
 db::static_connection!(RequestEditorDb, [workspace::WorkspaceDb]);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::TestAppContext;
+
+    use workspace::WorkspaceDb;
+
+    #[gpui::test]
+    async fn test_save_and_load_serialized_request_editor(cx: &mut TestAppContext) {
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let request_editor_db = cx.update(|cx| RequestEditorDb::global(cx));
+
+        let serialized_request_editor = SerializedRequestEditor {
+            absolute_path: PathBuf::from("request.toml"),
+        };
+        request_editor_db
+            .save_serialized_request_editor(1234, workspace_id, serialized_request_editor.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            request_editor_db
+                .load_serialized_request_editor(1234, workspace_id)
+                .unwrap(),
+            Some(serialized_request_editor)
+        );
+
+        let serialized_request_editor = SerializedRequestEditor {
+            absolute_path: PathBuf::from("renamed.toml"),
+        };
+        request_editor_db
+            .save_serialized_request_editor(1234, workspace_id, serialized_request_editor.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            request_editor_db
+                .load_serialized_request_editor(1234, workspace_id)
+                .unwrap(),
+            Some(serialized_request_editor)
+        );
+    }
+}

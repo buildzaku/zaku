@@ -67,10 +67,9 @@ mod tests {
 
         let temp_fs = TempFs::new(cx.executor());
         let settings_path = temp_fs.path().join("settings.jsonc");
-        let (mut receiver, _watcher) =
-            watch_config_file(&cx.background_executor, temp_fs, settings_path);
+        let (mut rx, _watcher) = watch_config_file(&cx.background_executor, temp_fs, settings_path);
 
-        assert_eq!(receiver.next().await.as_deref(), Some(""));
+        assert_eq!(rx.next().await.as_deref(), Some(""));
     }
 
     #[gpui::test]
@@ -90,14 +89,14 @@ mod tests {
             .await
             .unwrap();
 
-        let (mut receiver, _watcher) = watch_config_file(
+        let (mut rx, _watcher) = watch_config_file(
             &cx.background_executor,
             temp_fs.clone(),
             settings_path.clone(),
         );
 
         assert_eq!(
-            receiver.next().await.as_deref(),
+            rx.next().await.as_deref(),
             Some(indoc! {r#"
                 { "ui": { "font_size": 14 } }
             "#})
@@ -115,7 +114,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            receiver.next().await.as_deref(),
+            rx.next().await.as_deref(),
             Some(indoc! {r#"
                 { "ui": { "font_size": 16 } }
             "#})
@@ -147,17 +146,17 @@ mod tests {
             .await
             .unwrap();
 
-        let (mut receiver, _watcher) = watch_config_file(
+        let (mut rx, _watcher) = watch_config_file(
             &cx.background_executor,
             temp_fs.clone(),
             config_dir_path.join("settings.jsonc"),
         );
 
-        assert_eq!(receiver.next().await.as_deref(), Some("A"));
+        assert_eq!(rx.next().await.as_deref(), Some("A"));
         temp_fs
             .write(&target_dir_path.join("settings.jsonc"), b"B")
             .await
             .unwrap();
-        assert_eq!(receiver.next().await.as_deref(), Some("B"));
+        assert_eq!(rx.next().await.as_deref(), Some("B"));
     }
 }

@@ -26,9 +26,9 @@ pub use persistence::{
 };
 pub use toolbar::{Toolbar, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView};
 
-use anyhow::anyhow;
+use anyhow::{Context as _, anyhow};
 use futures::{
-    StreamExt,
+    Future, StreamExt,
     channel::{
         mpsc::{self, UnboundedReceiver, UnboundedSender},
         oneshot,
@@ -255,6 +255,7 @@ impl Global for GlobalAppState {}
 
 pub fn init(app_state: Arc<AppState>, cx: &mut App) {
     AppState::set_global(app_state.clone(), cx);
+    cx.on_app_quit(flush_windows_serialization_on_quit).detach();
 
     cx.observe_new({
         move |workspace: &mut Workspace, window, cx| {
@@ -889,6 +890,36 @@ pub fn reload(cx: &mut App) {
     .detach_and_log_err(cx);
 }
 
+fn flush_windows_serialization_on_quit(cx: &mut App) -> impl Future<Output = ()> + use<> {
+    let workspace_windows = cx
+        .windows()
+        .into_iter()
+        .filter_map(|window| window.downcast::<Root>())
+        .collect::<Vec<_>>();
+    let mut flush_tasks = Vec::new();
+    for window in workspace_windows {
+        if let Some(task) = window
+            .update(cx, |root, window, cx| {
+                root.workspace().update(cx, |workspace, cx| {
+                    workspace.flush_serialization(window, cx)
+                })
+            })
+            .with_context(|| {
+                format!(
+                    "flushing pending serialization for window {:?}",
+                    window.window_id()
+                )
+            })
+            .log_err()
+        {
+            flush_tasks.push(task);
+        }
+    }
+    async move {
+        futures::future::join_all(flush_tasks).await;
+    }
+}
+
 #[cfg(any(test, feature = "test"))]
 pub fn build_workspace<'a>(
     project: &Entity<Project>,
@@ -1301,6 +1332,11 @@ impl Workspace {
 
     pub fn database_id(&self) -> Option<WorkspaceId> {
         self.database_id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_database_id(&mut self, id: WorkspaceId) {
+        self.database_id = Some(id);
     }
 
     pub fn session_id(&self) -> Option<String> {
@@ -2051,11 +2087,31 @@ impl Workspace {
         self.serialization_task.take();
         self.bounds_save_task_queued.take();
 
+        let serializable_items = self
+            .pane
+            .read(cx)
+            .items()
+            .filter_map(|item| item.to_serializable_item_handle(cx))
+            .collect::<Vec<_>>();
+        let item_tasks = serializable_items
+            .into_iter()
+            .filter_map(|item| {
+                let item_id = item.item_id();
+                let task = item.serialize(self, false, cx)?;
+                Some(async move {
+                    task.await
+                        .with_context(|| format!("flushing serialization of item {item_id:?}"))
+                })
+            })
+            .collect::<Vec<_>>();
         let bounds_task = self.save_window_bounds(window, cx);
         let serialize_task = self.serialize_workspace_internal(window, cx);
-        cx.spawn(async move |_| {
+        cx.background_spawn(async move {
             bounds_task.await;
             serialize_task.await;
+            for result in futures::future::join_all(item_tasks).await {
+                result.log_err();
+            }
         })
     }
 
@@ -2138,7 +2194,7 @@ impl Workspace {
             };
 
             let workspace_db = WorkspaceDb::global(cx);
-            window.spawn(cx, async move |_| {
+            cx.background_spawn(async move {
                 workspace_db.save_workspace(serialized_workspace).await;
             })
         } else {
@@ -2170,9 +2226,9 @@ impl Workspace {
             );
 
             for (_, item) in unique_items {
-                if let Ok(Some(task)) = workspace.update_in(cx, |workspace, window, cx| {
-                    item.serialize(workspace, false, window, cx)
-                }) {
+                if let Ok(Some(task)) =
+                    workspace.update(cx, |workspace, cx| item.serialize(workspace, false, cx))
+                {
                     cx.background_spawn(async move { task.await.log_err() })
                         .detach();
                 }
@@ -2916,6 +2972,28 @@ mod tests {
         assert!(cx.windows().is_empty());
 
         bounds
+    }
+
+    async fn restore_pane(
+        workspace: &Entity<Workspace>,
+        serialized_pane: SerializedPane,
+        cx: &mut VisualTestContext,
+    ) -> Entity<Pane> {
+        let (pane, task) = workspace.update_in(cx, |workspace, window, cx| {
+            let pane = workspace.add_pane(window, cx);
+            let weak_pane = pane.downgrade();
+            let project = workspace.project().clone();
+            let workspace = cx.entity().downgrade();
+            let task = window.spawn(cx, async move |cx| {
+                serialized_pane
+                    .deserialize_to(&project, &weak_pane, WorkspaceId::from(1), workspace, cx)
+                    .await
+            });
+            (pane, task)
+        });
+        task.await.unwrap();
+
+        pane
     }
 
     #[gpui::test]
@@ -4633,5 +4711,66 @@ mod tests {
             pane.read_with(cx, |pane, _| pane.preview_item().map(|item| item.item_id()));
         assert_eq!(active_item_id.as_ref(), expected_item_ids.get(2));
         assert_eq!(preview_item_id.as_ref(), expected_item_ids.get(4));
+    }
+
+    #[gpui::test]
+    async fn test_restoring_active_and_preview_tabs_when_items_fail_to_deserialize(
+        cx: &mut TestAppContext,
+    ) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+        cx.update(register_serializable_item::<TestItem>);
+
+        temp_fs.insert_tree(path!("project"), Value::default());
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let pane = restore_pane(
+            &workspace,
+            SerializedPane::new(
+                vec![
+                    SerializedItem::new("Unrestorable", 1, false, false),
+                    SerializedItem::new("TestItem", 2, true, false),
+                    SerializedItem::new("TestItem", 3, false, true),
+                ],
+                true,
+            ),
+            cx,
+        )
+        .await;
+
+        pane.read_with(cx, |pane, _| {
+            assert_eq!(pane.items_len(), 2);
+            assert_eq!(pane.active_item_index(), 0);
+            assert_eq!(
+                pane.preview_item().map(|item| item.item_id()),
+                pane.item_for_index(1).map(|item| item.item_id()),
+                "the preview tab should follow the item it was serialized with"
+            );
+        });
+
+        let pane = restore_pane(
+            &workspace,
+            SerializedPane::new(
+                vec![
+                    SerializedItem::new("Unrestorable", 1, true, true),
+                    SerializedItem::new("TestItem", 2, false, false),
+                    SerializedItem::new("TestItem", 3, false, false),
+                ],
+                true,
+            ),
+            cx,
+        )
+        .await;
+
+        pane.read_with(cx, |pane, _| {
+            assert_eq!(pane.items_len(), 2);
+            assert_eq!(pane.active_item_index(), 1);
+            assert!(pane.preview_item().is_none());
+        });
     }
 }

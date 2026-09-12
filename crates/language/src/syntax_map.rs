@@ -526,12 +526,12 @@ impl SyntaxSnapshot {
 impl Drop for SyntaxSnapshot {
     fn drop(&mut self) {
         static DROP_TX: LazyLock<mpsc::Sender<SumTree<SyntaxLayerEntry>>> = LazyLock::new(|| {
-            let (sender, receiver) = mpsc::channel();
+            let (tx, rx) = mpsc::channel();
             std::thread::Builder::new()
                 .name("SyntaxSnapshot::drop".into())
-                .spawn(move || while receiver.recv().is_ok() {})
+                .spawn(move || while rx.recv().is_ok() {})
                 .expect("drop thread should spawn");
-            sender
+            tx
         });
 
         let empty_layers = SumTree::from_summary(SyntaxLayerSummary {

@@ -185,9 +185,9 @@ impl LanguageRegistry {
     }
 
     pub fn subscribe(&self) -> mpsc::UnboundedReceiver<()> {
-        let (sender, receiver) = mpsc::unbounded();
-        self.state.write().subscriptions.push(sender);
-        receiver
+        let (tx, rx) = mpsc::unbounded();
+        self.state.write().subscriptions.push(tx);
+        rx
     }
 
     pub fn version(&self) -> usize {
@@ -213,7 +213,7 @@ impl LanguageRegistry {
         name: &str,
     ) -> impl Future<Output = anyhow::Result<Arc<Language>>> + use<> {
         let name = name.to_string();
-        let receiver = self.get_or_load_language(|language_name, _, current_best_match| {
+        let rx = self.get_or_load_language(|language_name, _, current_best_match| {
             match current_best_match {
                 LanguageMatchPrecedence::Undetermined
                     if language_name.as_ref().eq_ignore_ascii_case(&name) =>
@@ -224,7 +224,7 @@ impl LanguageRegistry {
                 | LanguageMatchPrecedence::PathOrContent(_) => None,
             }
         });
-        async move { receive_loaded_language(receiver).await }
+        async move { receive_loaded_language(rx).await }
     }
 
     pub fn language_name_for_extension(self: &Arc<Self>, extension: &str) -> Option<LanguageName> {
@@ -377,19 +377,19 @@ impl LanguageRegistry {
         self: &Arc<Self>,
         language: &AvailableLanguage,
     ) -> oneshot::Receiver<anyhow::Result<Arc<Language>>> {
-        let (sender, receiver) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
 
         let mut state = self.state.write();
 
         for loaded_language in &state.languages {
             if loaded_language.id == language.id {
-                send_language_result(sender, Ok(loaded_language.clone()));
-                return receiver;
+                send_language_result(tx, Ok(loaded_language.clone()));
+                return rx;
             }
         }
 
         match state.loading_languages.entry(language.id) {
-            hash_map::Entry::Occupied(mut entry) => entry.get_mut().push(sender),
+            hash_map::Entry::Occupied(mut entry) => entry.get_mut().push(tx),
             hash_map::Entry::Vacant(entry) => {
                 let registry = self.clone();
                 let id = language.id;
@@ -418,9 +418,9 @@ impl LanguageRegistry {
 
                                 state.add(language.clone());
                                 state.mark_language_loaded(id);
-                                if let Some(mut senders) = state.loading_languages.remove(&id) {
-                                    for sender in senders.drain(..) {
-                                        send_language_result(sender, Ok(language.clone()));
+                                if let Some(mut txs) = state.loading_languages.remove(&id) {
+                                    for tx in txs.drain(..) {
+                                        send_language_result(tx, Ok(language.clone()));
                                     }
                                 }
                             }
@@ -428,10 +428,10 @@ impl LanguageRegistry {
                                 log::error!("Failed to load language {name}: {error:?}");
                                 let mut state = registry.state.write();
                                 state.mark_language_loaded(id);
-                                if let Some(mut senders) = state.loading_languages.remove(&id) {
-                                    for sender in senders.drain(..) {
+                                if let Some(mut txs) = state.loading_languages.remove(&id) {
+                                    for tx in txs.drain(..) {
                                         send_language_result(
-                                            sender,
+                                            tx,
                                             Err(anyhow!("failed to load language {name}: {error}")),
                                         );
                                     }
@@ -441,11 +441,11 @@ impl LanguageRegistry {
                     })
                     .detach();
 
-                entry.insert(vec![sender]);
+                entry.insert(vec![tx]);
             }
         }
 
-        receiver
+        rx
     }
 
     fn get_or_load_language(
@@ -457,9 +457,9 @@ impl LanguageRegistry {
         ) -> Option<LanguageMatchPrecedence>,
     ) -> oneshot::Receiver<anyhow::Result<Arc<Language>>> {
         let Some(language) = self.find_matching_language(callback) else {
-            let (sender, receiver) = oneshot::channel();
-            send_language_result(sender, Err(anyhow!(LanguageNotFound)));
-            return receiver;
+            let (tx, rx) = oneshot::channel();
+            send_language_result(tx, Err(anyhow!(LanguageNotFound)));
+            return rx;
         };
 
         self.load_language(&language)
@@ -522,21 +522,21 @@ impl LanguageRegistryState {
 
     fn notify_subscribers(&mut self) {
         self.subscriptions
-            .retain(|sender| sender.unbounded_send(()).is_ok());
+            .retain(|tx| tx.unbounded_send(()).is_ok());
     }
 }
 
 async fn receive_loaded_language(
-    receiver: oneshot::Receiver<anyhow::Result<Arc<Language>>>,
+    rx: oneshot::Receiver<anyhow::Result<Arc<Language>>>,
 ) -> anyhow::Result<Arc<Language>> {
-    receiver.await?
+    rx.await?
 }
 
 fn send_language_result(
-    sender: oneshot::Sender<anyhow::Result<Arc<Language>>>,
+    tx: oneshot::Sender<anyhow::Result<Arc<Language>>>,
     result: anyhow::Result<Arc<Language>>,
 ) {
-    if sender.send(result).is_err() {
+    if tx.send(result).is_err() {
         log::trace!("Language load receiver dropped");
     }
 }
