@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{Context as _, anyhow};
 use gpui::{
     AnyElement, App, AppContext, Context, Entity, EntityId, FontWeight, SharedString, Task,
     WeakEntity, Window, prelude::*,
@@ -305,7 +305,6 @@ impl SerializableItem for RequestEditor {
         workspace: &mut Workspace,
         item_id: ItemId,
         _closing: bool,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Task<anyhow::Result<()>>> {
         let project_path = project::ProjectItem::project_path(self.buffer.read(cx), cx)?;
@@ -313,7 +312,7 @@ impl SerializableItem for RequestEditor {
         let workspace_id = workspace.database_id()?;
         let request_editor_db = RequestEditorDb::global(cx);
 
-        Some(cx.spawn_in(window, async move |_, _| {
+        Some(cx.background_spawn(async move {
             request_editor_db
                 .save_serialized_request_editor(
                     item_id,
@@ -323,6 +322,7 @@ impl SerializableItem for RequestEditor {
                     },
                 )
                 .await
+                .context("failed to save serialized request editor")
         }))
     }
 

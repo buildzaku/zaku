@@ -245,7 +245,7 @@ impl Worktree {
         let (tx, rx) = oneshot::channel();
         let request = ScanRequest {
             relative_paths,
-            completion_senders: smallvec![tx],
+            completion_txs: smallvec![tx],
         };
         if self.scan_requests_tx.try_send(request).is_err() {
             log::trace!("Worktree scan request receiver dropped");
@@ -257,7 +257,7 @@ impl Worktree {
         let (tx, rx) = oneshot::channel();
         let request = PathPrefixScanRequest {
             path: path_prefix,
-            completion_senders: smallvec![tx],
+            completion_txs: smallvec![tx],
         };
         if self.path_prefixes_to_scan_tx.try_send(request).is_err() {
             log::trace!("Worktree path prefix scan request receiver dropped");
@@ -587,13 +587,13 @@ impl Worktree {
                     ScanState::Updated {
                         snapshot,
                         changes,
-                        completion_senders,
+                        completion_txs,
                         scanning,
                     } => {
                         this.is_scanning.0.send_replace(scanning);
                         this.set_snapshot(snapshot, changes, cx);
-                        for completion_sender in completion_senders {
-                            if completion_sender.send(()).is_err() {
+                        for tx in completion_txs {
+                            if tx.send(()).is_err() {
                                 log::trace!("Worktree scan completion receiver dropped");
                             }
                         }
@@ -1635,12 +1635,12 @@ impl ContextLessSummary for PathEntrySummary {
 
 struct ScanRequest {
     relative_paths: Vec<Arc<RelPath>>,
-    completion_senders: SmallVec<[oneshot::Sender<()>; 1]>,
+    completion_txs: SmallVec<[oneshot::Sender<()>; 1]>,
 }
 
 struct PathPrefixScanRequest {
     path: Arc<RelPath>,
-    completion_senders: SmallVec<[oneshot::Sender<()>; 1]>,
+    completion_txs: SmallVec<[oneshot::Sender<()>; 1]>,
 }
 
 enum ScanState {
@@ -1648,7 +1648,7 @@ enum ScanState {
     Updated {
         snapshot: WorktreeSnapshot,
         changes: UpdatedEntriesSet,
-        completion_senders: SmallVec<[oneshot::Sender<()>; 1]>,
+        completion_txs: SmallVec<[oneshot::Sender<()>; 1]>,
         scanning: bool,
     },
     RootUpdated {
@@ -1762,7 +1762,7 @@ impl BackgroundScanner {
                             .await;
                         }
                     }
-                    self.send_status_update(false, request.completion_senders, &[])
+                    self.send_status_update(false, request.completion_txs, &[])
                         .await;
                 }
                 event_batch = events.next().fuse() => {
@@ -1788,9 +1788,7 @@ impl BackgroundScanner {
         let mut request = self.scan_requests_rx.recv().await?;
         while let Ok(next_request) = self.scan_requests_rx.try_recv() {
             request.relative_paths.extend(next_request.relative_paths);
-            request
-                .completion_senders
-                .extend(next_request.completion_senders);
+            request.completion_txs.extend(next_request.completion_txs);
         }
         Ok(request)
     }
@@ -1810,8 +1808,8 @@ impl BackgroundScanner {
                     "Failed to canonicalize worktree root {}: {error:#}",
                     root_path.as_path().display()
                 );
-                for completion_sender in request.completion_senders {
-                    if completion_sender.send(()).is_err() {
+                for tx in request.completion_txs {
+                    if tx.send(()).is_err() {
                         log::trace!("Worktree scan completion receiver dropped");
                     }
                 }
@@ -1849,7 +1847,7 @@ impl BackgroundScanner {
         )
         .await;
 
-        self.send_status_update(scanning, request.completion_senders, &[])
+        self.send_status_update(scanning, request.completion_txs, &[])
             .await
     }
 
@@ -2282,13 +2280,13 @@ impl BackgroundScanner {
     async fn send_status_update(
         &self,
         scanning: bool,
-        completion_senders: SmallVec<[oneshot::Sender<()>; 1]>,
+        completion_txs: SmallVec<[oneshot::Sender<()>; 1]>,
         event_roots: &[EventRoot],
     ) -> bool {
         let mut state = self.state.lock().await;
         if state.changed_paths.is_empty() && event_roots.is_empty() && scanning {
-            for completion_sender in completion_senders {
-                if completion_sender.send(()).is_err() {
+            for tx in completion_txs {
+                if tx.send(()).is_err() {
                     log::trace!("Worktree scan completion receiver dropped");
                 }
             }
@@ -2310,17 +2308,15 @@ impl BackgroundScanner {
         match self.status_updates_tx.unbounded_send(ScanState::Updated {
             snapshot: new_snapshot,
             changes,
-            completion_senders,
+            completion_txs,
             scanning,
         }) {
             Ok(()) => true,
             Err(error) => {
                 match error.into_inner() {
-                    ScanState::Updated {
-                        completion_senders, ..
-                    } => {
-                        for completion_sender in completion_senders {
-                            if completion_sender.send(()).is_err() {
+                    ScanState::Updated { completion_txs, .. } => {
+                        for tx in completion_txs {
+                            if tx.send(()).is_err() {
                                 log::trace!("Worktree scan completion receiver dropped");
                             }
                         }
