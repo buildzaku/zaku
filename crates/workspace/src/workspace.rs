@@ -1334,6 +1334,11 @@ impl Workspace {
         self.database_id
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_database_id(&mut self, id: WorkspaceId) {
+        self.database_id = Some(id);
+    }
+
     pub fn session_id(&self) -> Option<String> {
         self.session_id.clone()
     }

@@ -1,6 +1,6 @@
 use futures::channel::oneshot;
 use gpui::{Entity, ListOffset, TestAppContext};
-use indoc::indoc;
+use indoc::{formatdoc, indoc};
 use parking_lot::Mutex;
 use serde_json::json;
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -112,6 +112,180 @@ fn activate_item_for_path(open_result: &OpenResult, path: &str, cx: &mut TestApp
             });
         })
         .expect("window should update to activate item");
+}
+
+#[gpui::test]
+async fn test_reload_restores_project_windows_and_tabs(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let kv_store = KeyValueStore::open(&app_db);
+    let session = Session::new(Uuid::new_v4().to_string(), kv_store.clone()).await;
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+    cx.update(|cx| {
+        app_state
+            .session
+            .update(cx, |app_session, _| app_session.replace_session(session));
+    });
+    init_test(app_state.clone(), app_db, cx);
+
+    let mut windows = Vec::new();
+    for (project, request, preview_request, settings_file) in [
+        ("first", "request1", "preview1", "settings.jsonc"),
+        ("second", "request2", "preview2", "keymap.jsonc"),
+    ] {
+        temp_fs.insert_tree(
+            project,
+            json!({
+                "collection": {
+                    format!("{request}.toml"): formatdoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/{request}"
+                    "#},
+                    format!("{preview_request}.toml"): formatdoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/{preview_request}"
+                    "#}
+                },
+                (settings_file): "{}",
+            }),
+        );
+
+        let project_path = temp_fs.path().join(project);
+        let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        let request_path = format!("collection/{request}.toml");
+        let preview_path = format!("collection/{preview_request}.toml");
+
+        open_path(
+            &open_result,
+            ProjectPath::from((worktree_id, rel_path(&request_path))),
+            cx,
+        )
+        .await;
+        open_path(
+            &open_result,
+            ProjectPath::from((worktree_id, rel_path(settings_file))),
+            cx,
+        )
+        .await;
+        open_path_preview(
+            &open_result,
+            ProjectPath::from((worktree_id, rel_path(&preview_path))),
+            cx,
+        )
+        .await;
+
+        activate_item_for_path(&open_result, settings_file, cx);
+        windows.push(open_result.window);
+    }
+
+    let restart = cx.expect_restart();
+    cx.update(workspace::reload);
+    let (restart_path, restart_arguments) = restart.await.expect("restart was not requested");
+    assert_eq!(restart_path, None);
+    assert!(restart_arguments.is_empty());
+
+    let session_id = cx.read(|cx| app_state.session.read(cx).id().to_owned());
+    let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+    let locations = workspace::last_session_workspace_locations(
+        &workspace_db,
+        &session_id,
+        None,
+        temp_fs.as_ref(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(locations.len(), 2);
+
+    for window in windows {
+        window
+            .update(cx, |_, window, _| window.remove_window())
+            .unwrap();
+    }
+    cx.run_until_parked();
+
+    let restored_session = Session::new(Uuid::new_v4().to_string(), kv_store).await;
+
+    cx.update(|cx| {
+        app_state.session.update(cx, |app_session, _| {
+            app_session.replace_session(restored_session);
+        });
+    });
+
+    let mut async_cx = cx.to_async();
+    zaku::restore_or_create_workspace(app_state, &mut async_cx)
+        .await
+        .unwrap();
+
+    let mut restored_tabs = cx.read(|cx| {
+        cx.windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<Root>())
+            .map(|window| {
+                window
+                    .read_with(cx, |root, cx| {
+                        let workspace = root.workspace().read(cx);
+                        let root_path = workspace
+                            .project()
+                            .read(cx)
+                            .root_worktree(cx)
+                            .unwrap()
+                            .read(cx)
+                            .abs_path()
+                            .to_path_buf();
+                        let pane = workspace.pane().read(cx);
+                        let tab_paths = pane
+                            .items()
+                            .map(|item| item.project_path(cx).unwrap().path)
+                            .collect::<Vec<_>>();
+                        let preview_path =
+                            pane.preview_item().unwrap().project_path(cx).unwrap().path;
+
+                        assert_eq!(pane.active_item_index(), 1);
+
+                        (root_path, tab_paths, preview_path)
+                    })
+                    .unwrap()
+            })
+            .collect::<Vec<_>>()
+    });
+    restored_tabs.sort_by(|left, right| left.0.cmp(&right.0));
+
+    assert_eq!(
+        restored_tabs,
+        vec![
+            (
+                temp_fs.path().join("first"),
+                vec![
+                    rel_path("collection/request1.toml").into(),
+                    rel_path("settings.jsonc").into(),
+                    rel_path("collection/preview1.toml").into(),
+                ],
+                rel_path("collection/preview1.toml").into(),
+            ),
+            (
+                temp_fs.path().join("second"),
+                vec![
+                    rel_path("collection/request2.toml").into(),
+                    rel_path("keymap.jsonc").into(),
+                    rel_path("collection/preview2.toml").into(),
+                ],
+                rel_path("collection/preview2.toml").into(),
+            ),
+        ]
+    );
 }
 
 #[gpui::test]
@@ -663,7 +837,6 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
 
     let project_path = temp_fs.path().join("project");
     let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
-
     let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
     let response_panel = open_result
         .workspace
@@ -940,7 +1113,6 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
 
     let project_path = temp_fs.path().join("project");
     let (open_result, worktree) = open_workspace(project_path.clone(), app_state.clone(), cx).await;
-
     let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
 
     open_path(
@@ -1142,7 +1314,6 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
 
     let project_path = temp_fs.path().join("project");
     let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
-
     let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
     let response_panel = open_result
         .workspace

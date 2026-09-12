@@ -750,7 +750,7 @@ fn parse_timestamp(text: &str) -> Timestamp {
 mod tests {
     use super::*;
 
-    use gpui::{TestAppContext, WindowId};
+    use gpui::{AppContext, TestAppContext, WindowId};
     use indoc::indoc;
     use serde_json::json;
 
@@ -758,6 +758,7 @@ mod tests {
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
     use fs::TempFs;
+    use project::Project;
     use util_macros::path;
     use worktree::WorktreeModelHandle;
 
@@ -872,6 +873,40 @@ mod tests {
         let rows = workspace_db.recent_workspaces().unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].1, path);
+    }
+
+    #[gpui::test]
+    async fn test_pending_serialization_flushed_on_shutdown(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (root, visual_cx) = cx.add_window_view(|window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.read_with(visual_cx, |root, _| root.workspace().clone());
+        let workspace_db = visual_cx.update(|_, cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        workspace.update(visual_cx, |workspace, _| {
+            workspace.set_database_id(workspace_id);
+        });
+        workspace.update_in(visual_cx, |workspace, window, cx| {
+            workspace.serialize_workspace(window, cx);
+        });
+
+        assert!(workspace_db.workspace_for_path(&project_path).is_none());
+
+        cx.update(|cx| cx.shutdown());
+
+        let serialized = workspace_db
+            .workspace_for_path(&project_path)
+            .expect("shutdown should flush the pending workspace serialization");
+        assert_eq!(serialized.id, workspace_id);
     }
 
     #[gpui::test]
