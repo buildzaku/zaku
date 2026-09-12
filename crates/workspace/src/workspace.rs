@@ -2974,6 +2974,28 @@ mod tests {
         bounds
     }
 
+    async fn restore_pane(
+        workspace: &Entity<Workspace>,
+        serialized_pane: SerializedPane,
+        cx: &mut VisualTestContext,
+    ) -> Entity<Pane> {
+        let (pane, task) = workspace.update_in(cx, |workspace, window, cx| {
+            let pane = workspace.add_pane(window, cx);
+            let weak_pane = pane.downgrade();
+            let project = workspace.project().clone();
+            let workspace = cx.entity().downgrade();
+            let task = window.spawn(cx, async move |cx| {
+                serialized_pane
+                    .deserialize_to(&project, &weak_pane, WorkspaceId::from(1), workspace, cx)
+                    .await
+            });
+            (pane, task)
+        });
+        task.await.unwrap();
+
+        pane
+    }
+
     #[gpui::test]
     async fn test_tracking_active_path(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
@@ -4689,5 +4711,66 @@ mod tests {
             pane.read_with(cx, |pane, _| pane.preview_item().map(|item| item.item_id()));
         assert_eq!(active_item_id.as_ref(), expected_item_ids.get(2));
         assert_eq!(preview_item_id.as_ref(), expected_item_ids.get(4));
+    }
+
+    #[gpui::test]
+    async fn test_restoring_active_and_preview_tabs_when_items_fail_to_deserialize(
+        cx: &mut TestAppContext,
+    ) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+        cx.update(register_serializable_item::<TestItem>);
+
+        temp_fs.insert_tree(path!("project"), Value::default());
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let pane = restore_pane(
+            &workspace,
+            SerializedPane::new(
+                vec![
+                    SerializedItem::new("Unrestorable", 1, false, false),
+                    SerializedItem::new("TestItem", 2, true, false),
+                    SerializedItem::new("TestItem", 3, false, true),
+                ],
+                true,
+            ),
+            cx,
+        )
+        .await;
+
+        pane.read_with(cx, |pane, _| {
+            assert_eq!(pane.items_len(), 2);
+            assert_eq!(pane.active_item_index(), 0);
+            assert_eq!(
+                pane.preview_item().map(|item| item.item_id()),
+                pane.item_for_index(1).map(|item| item.item_id()),
+                "the preview tab should follow the item it was serialized with"
+            );
+        });
+
+        let pane = restore_pane(
+            &workspace,
+            SerializedPane::new(
+                vec![
+                    SerializedItem::new("Unrestorable", 1, true, true),
+                    SerializedItem::new("TestItem", 2, false, false),
+                    SerializedItem::new("TestItem", 3, false, false),
+                ],
+                true,
+            ),
+            cx,
+        )
+        .await;
+
+        pane.read_with(cx, |pane, _| {
+            assert_eq!(pane.items_len(), 2);
+            assert_eq!(pane.active_item_index(), 1);
+            assert!(pane.preview_item().is_none());
+        });
     }
 }
