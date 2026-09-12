@@ -75,3 +75,47 @@ impl Domain for EditorDb {
 }
 
 db::static_connection!(EditorDb, [workspace::WorkspaceDb]);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::TestAppContext;
+
+    use workspace::WorkspaceDb;
+
+    #[gpui::test]
+    async fn test_save_and_load_serialized_editor(cx: &mut TestAppContext) {
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let editor_db = cx.update(|cx| EditorDb::global(cx));
+
+        let serialized_editor = SerializedEditor {
+            absolute_path: PathBuf::from("settings.jsonc"),
+        };
+        editor_db
+            .save_serialized_editor(1234, workspace_id, serialized_editor.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            editor_db
+                .load_serialized_editor(1234, workspace_id)
+                .unwrap(),
+            Some(serialized_editor)
+        );
+
+        let serialized_editor = SerializedEditor {
+            absolute_path: PathBuf::from("renamed-settings.jsonc"),
+        };
+        editor_db
+            .save_serialized_editor(1234, workspace_id, serialized_editor.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            editor_db
+                .load_serialized_editor(1234, workspace_id)
+                .unwrap(),
+            Some(serialized_editor)
+        );
+    }
+}

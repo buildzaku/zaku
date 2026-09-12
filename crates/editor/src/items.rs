@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{Context as _, anyhow};
 use gpui::{
     AnyElement, App, AppContext, Context, Entity, EntityId, SharedString, Task, WeakEntity, Window,
     prelude::*,
@@ -348,7 +348,6 @@ impl SerializableItem for Editor {
         workspace: &mut Workspace,
         item_id: ItemId,
         _closing: bool,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Task<anyhow::Result<()>>> {
         let buffer = self.buffer.read(cx).as_singleton()?;
@@ -360,7 +359,7 @@ impl SerializableItem for Editor {
         let workspace_id = workspace.database_id()?;
         let editor_db = EditorDb::global(cx);
 
-        Some(cx.spawn_in(window, async move |_, _| {
+        Some(cx.background_spawn(async move {
             editor_db
                 .save_serialized_editor(
                     item_id,
@@ -370,6 +369,7 @@ impl SerializableItem for Editor {
                     },
                 )
                 .await
+                .context("failed to save serialized editor")
         }))
     }
 

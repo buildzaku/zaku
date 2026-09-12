@@ -603,7 +603,7 @@ pub struct Repository {
     snapshot: RepositorySnapshot,
     repository_state: future::Shared<Task<Result<RepositoryState, String>>>,
     paths_needing_status_update: Vec<Vec<RepoPath>>,
-    job_sender: mpsc::UnboundedSender<GitJob>,
+    job_tx: mpsc::UnboundedSender<GitJob>,
     worker_task: Task<()>,
 }
 
@@ -629,7 +629,7 @@ impl Repository {
             snapshot,
             repository_state: Task::ready(Err("not yet initialized".into())).shared(),
             paths_needing_status_update: Vec::new(),
-            job_sender: mpsc::unbounded().0,
+            job_tx: mpsc::unbounded().0,
             worker_task: Task::ready(()),
         };
         repo.respawn_worker(cx);
@@ -651,12 +651,11 @@ impl Repository {
             })
             .shared();
 
-        self.job_sender.close_channel();
+        self.job_tx.close_channel();
 
         self.repository_state = state.clone();
-        let (job_sender, worker_task) =
-            Repository::spawn_git_worker(self.repository_state.clone(), cx);
-        self.job_sender = job_sender;
+        let (job_tx, worker_task) = Repository::spawn_git_worker(self.repository_state.clone(), cx);
+        self.job_tx = job_tx;
         self.worker_task = worker_task;
     }
 
@@ -731,7 +730,7 @@ impl Repository {
         F: FnOnce(RepositoryState, &mut AsyncApp) -> Task<()> + 'static,
     {
         if self
-            .job_sender
+            .job_tx
             .unbounded_send(GitJob {
                 key,
                 job: Box::new(job),
