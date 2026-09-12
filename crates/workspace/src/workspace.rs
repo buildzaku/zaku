@@ -26,9 +26,9 @@ pub use persistence::{
 };
 pub use toolbar::{Toolbar, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView};
 
-use anyhow::anyhow;
+use anyhow::{Context as _, anyhow};
 use futures::{
-    StreamExt,
+    Future, StreamExt,
     channel::{
         mpsc::{self, UnboundedReceiver, UnboundedSender},
         oneshot,
@@ -255,6 +255,7 @@ impl Global for GlobalAppState {}
 
 pub fn init(app_state: Arc<AppState>, cx: &mut App) {
     AppState::set_global(app_state.clone(), cx);
+    cx.on_app_quit(flush_windows_serialization_on_quit).detach();
 
     cx.observe_new({
         move |workspace: &mut Workspace, window, cx| {
@@ -887,6 +888,36 @@ pub fn reload(cx: &mut App) {
         anyhow::Ok(())
     })
     .detach_and_log_err(cx);
+}
+
+fn flush_windows_serialization_on_quit(cx: &mut App) -> impl Future<Output = ()> + use<> {
+    let workspace_windows = cx
+        .windows()
+        .into_iter()
+        .filter_map(|window| window.downcast::<Root>())
+        .collect::<Vec<_>>();
+    let mut flush_tasks = Vec::new();
+    for window in workspace_windows {
+        if let Some(task) = window
+            .update(cx, |root, window, cx| {
+                root.workspace().update(cx, |workspace, cx| {
+                    workspace.flush_serialization(window, cx)
+                })
+            })
+            .with_context(|| {
+                format!(
+                    "flushing pending serialization for window {:?}",
+                    window.window_id()
+                )
+            })
+            .log_err()
+        {
+            flush_tasks.push(task);
+        }
+    }
+    async move {
+        futures::future::join_all(flush_tasks).await;
+    }
 }
 
 #[cfg(any(test, feature = "test"))]
@@ -2051,11 +2082,31 @@ impl Workspace {
         self.serialization_task.take();
         self.bounds_save_task_queued.take();
 
+        let serializable_items = self
+            .pane
+            .read(cx)
+            .items()
+            .filter_map(|item| item.to_serializable_item_handle(cx))
+            .collect::<Vec<_>>();
+        let item_tasks = serializable_items
+            .into_iter()
+            .filter_map(|item| {
+                let item_id = item.item_id();
+                let task = item.serialize(self, false, cx)?;
+                Some(async move {
+                    task.await
+                        .with_context(|| format!("flushing serialization of item {item_id:?}"))
+                })
+            })
+            .collect::<Vec<_>>();
         let bounds_task = self.save_window_bounds(window, cx);
         let serialize_task = self.serialize_workspace_internal(window, cx);
-        cx.spawn(async move |_| {
+        cx.background_spawn(async move {
             bounds_task.await;
             serialize_task.await;
+            for result in futures::future::join_all(item_tasks).await {
+                result.log_err();
+            }
         })
     }
 
@@ -2138,7 +2189,7 @@ impl Workspace {
             };
 
             let workspace_db = WorkspaceDb::global(cx);
-            window.spawn(cx, async move |_| {
+            cx.background_spawn(async move {
                 workspace_db.save_workspace(serialized_workspace).await;
             })
         } else {
@@ -2170,9 +2221,9 @@ impl Workspace {
             );
 
             for (_, item) in unique_items {
-                if let Ok(Some(task)) = workspace.update_in(cx, |workspace, window, cx| {
-                    item.serialize(workspace, false, window, cx)
-                }) {
+                if let Ok(Some(task)) =
+                    workspace.update(cx, |workspace, cx| item.serialize(workspace, false, cx))
+                {
                     cx.background_spawn(async move { task.await.log_err() })
                         .detach();
                 }
