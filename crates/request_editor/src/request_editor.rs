@@ -4,8 +4,8 @@ mod persistence;
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
     Anchor, AnyElement, App, Context, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
-    FontWeight, ScrollHandle, SharedString, Subscription, TextStyleRefinement, WeakEntity, Window,
-    prelude::*,
+    FontWeight, ScrollHandle, SharedString, Subscription, Task, TextStyleRefinement, WeakEntity,
+    Window, prelude::*,
 };
 use std::{
     rc::Rc,
@@ -71,6 +71,13 @@ pub fn init(cx: &mut App) {
                     });
                 },
             );
+            workspace.register_action(|workspace, _: &actions::workspace::CancelRequest, _, cx| {
+                if let Some(request_editor) = workspace.active_item_as::<RequestEditor>(cx) {
+                    request_editor.update(cx, |request_editor, cx| {
+                        request_editor.cancel_request(cx);
+                    });
+                }
+            });
         },
     )
     .detach();
@@ -645,12 +652,14 @@ pub struct RequestEditor {
     active_tab: RequestEditorTab,
     active_response_tab: ResponsePanelTab,
     response: Option<Entity<Response>>,
+    request_task: Task<()>,
     http_client: Arc<dyn HttpClient>,
     params_scroll_handle: ScrollHandle,
     headers_scroll_handle: ScrollHandle,
     form_url_encoded_scroll_handle: ScrollHandle,
     input_subscriptions: Vec<Subscription>,
     body_subscription: Option<Subscription>,
+    response_subscription: Option<Subscription>,
     _buffer_subscription: Subscription,
 }
 
@@ -726,12 +735,14 @@ impl RequestEditor {
             active_tab: RequestEditorTab::Parameters,
             active_response_tab: ResponsePanelTab::Body,
             response: None,
+            request_task: Task::ready(()),
             http_client: AppState::global(cx).client.http_client(),
             params_scroll_handle: ScrollHandle::new(),
             headers_scroll_handle: ScrollHandle::new(),
             form_url_encoded_scroll_handle: ScrollHandle::new(),
             input_subscriptions,
             body_subscription,
+            response_subscription: None,
             _buffer_subscription: buffer_subscription,
         };
         this.set_language_for_body(cx);
@@ -1089,7 +1100,29 @@ impl RequestEditor {
         }
     }
 
+    fn is_fetching(&self, cx: &App) -> bool {
+        self.response.as_ref().is_some_and(|response| {
+            matches!(response.read(cx).state(), ResponseState::Fetching { .. })
+        })
+    }
+
+    fn cancel_request(&mut self, cx: &mut Context<Self>) {
+        if !self.is_fetching(cx) {
+            return;
+        }
+
+        self.request_task = Task::ready(());
+        if let Some(response) = &self.response {
+            response.update(cx, |response, cx| response.cancel_response(cx));
+        }
+        cx.notify();
+    }
+
     pub fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.is_fetching(cx) {
+            return;
+        }
+
         let RequestEditorState::Ready(request) = &self.request else {
             return;
         };
@@ -1179,7 +1212,13 @@ impl RequestEditor {
         };
         let response = self
             .response
-            .get_or_insert_with(|| cx.new(|cx| Response::new(window, cx)))
+            .get_or_insert_with(|| {
+                let response = cx.new(|cx| Response::new(window, cx));
+                self.response_subscription = Some(cx.observe(&response, |_, _, cx| {
+                    cx.notify();
+                }));
+                response
+            })
             .clone();
         let active_response_tab = self.active_response_tab;
         let on_active_response_tab_change = on_active_response_tab_change(cx.weak_entity());
@@ -1209,303 +1248,285 @@ impl RequestEditor {
         let http_client = self.http_client.clone();
         let languages = AppState::global(cx).languages.clone();
 
-        window
-            .spawn(cx, {
-                async move |cx| {
-                    let Some(mut request_url) = normalize_url(&request_url) else {
-                        response.update(cx, |response, cx| {
-                            response.set_state(
-                                request_id,
-                                ResponseState::Error {
-                                    bytes_received: 0,
-                                    elapsed_duration: request_started_at.elapsed(),
-                                },
-                                cx,
-                            );
-                            response.set_payload(
-                                request_id,
-                                "Error: invalid URL".to_owned(),
-                                None,
-                                None,
-                                cx,
-                            );
-                        });
-                        return;
-                    };
+        self.request_task = window.spawn(cx, async move |cx| {
+            let Some(mut request_url) = normalize_url(&request_url) else {
+                response.update(cx, |response, cx| {
+                    response.set_state(
+                        request_id,
+                        ResponseState::Error {
+                            bytes_received: 0,
+                            elapsed_duration: request_started_at.elapsed(),
+                        },
+                        cx,
+                    );
+                    response.set_payload(
+                        request_id,
+                        "Error: invalid URL".to_owned(),
+                        None,
+                        None,
+                        cx,
+                    );
+                });
+                return;
+            };
 
-                    if !request_params.is_empty() {
-                        let mut query_pairs = request_url.query_pairs_mut();
-                        for (name, value) in request_params {
-                            query_pairs.append_pair(&name, &value);
-                        }
-                    }
+            if !request_params.is_empty() {
+                let mut query_pairs = request_url.query_pairs_mut();
+                for (name, value) in request_params {
+                    query_pairs.append_pair(&name, &value);
+                }
+            }
 
-                    let mut builder = Builder::new()
-                        .method(request_method)
-                        .uri(request_url.as_str())
-                        .follow_redirects(RedirectPolicy::FollowAll);
+            let mut builder = Builder::new()
+                .method(request_method)
+                .uri(request_url.as_str())
+                .follow_redirects(RedirectPolicy::FollowAll);
 
-                    if !request_headers.is_empty() {
-                        for (name, value) in request_headers {
-                            builder = builder.header(name.as_str(), value.as_str());
-                        }
-                    }
+            if !request_headers.is_empty() {
+                for (name, value) in request_headers {
+                    builder = builder.header(name.as_str(), value.as_str());
+                }
+            }
 
-                    let request_body = request_body.map_or_else(AsyncBody::empty, AsyncBody::from);
-                    let request = match builder.body(request_body) {
-                        Ok(request) => request,
-                        Err(error) => {
-                            response.update(cx, |response, cx| {
-                                response.set_state(
-                                    request_id,
-                                    ResponseState::Error {
-                                        bytes_received: 0,
-                                        elapsed_duration: request_started_at.elapsed(),
-                                    },
-                                    cx,
-                                );
-                                response.set_payload(
-                                    request_id,
-                                    format!("Error: {error}"),
-                                    None,
-                                    None,
-                                    cx,
-                                );
-                            });
-                            return;
-                        }
-                    };
+            let request_body = request_body.map_or_else(AsyncBody::empty, AsyncBody::from);
+            let request = match builder.body(request_body) {
+                Ok(request) => request,
+                Err(error) => {
+                    response.update(cx, |response, cx| {
+                        response.set_state(
+                            request_id,
+                            ResponseState::Error {
+                                bytes_received: 0,
+                                elapsed_duration: request_started_at.elapsed(),
+                            },
+                            cx,
+                        );
+                        response.set_payload(request_id, format!("Error: {error}"), None, None, cx);
+                    });
+                    return;
+                }
+            };
 
-                    let progress_timer = cx
-                        .background_executor()
-                        .timer(Duration::from_millis(50))
-                        .fuse();
-                    futures::pin_mut!(progress_timer);
+            let progress_timer = cx
+                .background_executor()
+                .timer(Duration::from_millis(50))
+                .fuse();
+            futures::pin_mut!(progress_timer);
 
-                    let send_request = http_client.send(request).fuse();
-                    futures::pin_mut!(send_request);
+            let send_request = http_client.send(request).fuse();
+            futures::pin_mut!(send_request);
 
-                    let mut received = loop {
-                        futures::select_biased! {
-                            send_result = send_request => {
-                                match send_result {
-                                    Ok(response) => break response,
-                                    Err(error) => {
-                                        let causes = error
-                                            .chain()
-                                            .skip(1)
-                                            .map(|cause| format!("  - {cause}"))
-                                            .collect::<Vec<_>>();
-                                        let payload = if causes.is_empty() {
-                                            format!("Error: {error}")
-                                        } else {
-                                            format!(
-                                                "Error: {error}\n\nCaused by:\n{}",
-                                                causes.join("\n")
-                                            )
-                                        };
-                                        response.update(cx, |response, cx| {
-                                            response.set_state(
-                                                request_id,
-                                                ResponseState::Error {
-                                                    bytes_received: 0,
-                                                    elapsed_duration: request_started_at.elapsed(),
-                                                },
-                                                cx,
-                                            );
-                                            response.set_payload(
-                                                request_id,
-                                                payload,
-                                                None,
-                                                None,
-                                                cx,
-                                            );
-                                        });
-                                        return;
-                                    }
-                                }
-                            }
-                            () = progress_timer => {
-                                let still_active = response.update(cx, |response, cx| {
+            let mut received = loop {
+                futures::select_biased! {
+                    send_result = send_request => {
+                        match send_result {
+                            Ok(response) => break response,
+                            Err(error) => {
+                                let causes = error
+                                    .chain()
+                                    .skip(1)
+                                    .map(|cause| format!("  - {cause}"))
+                                    .collect::<Vec<_>>();
+                                let payload = if causes.is_empty() {
+                                    format!("Error: {error}")
+                                } else {
+                                    format!(
+                                        "Error: {error}\n\nCaused by:\n{}",
+                                        causes.join("\n")
+                                    )
+                                };
+                                response.update(cx, |response, cx| {
                                     response.set_state(
                                         request_id,
-                                        ResponseState::Fetching {
+                                        ResponseState::Error {
                                             bytes_received: 0,
                                             elapsed_duration: request_started_at.elapsed(),
                                         },
                                         cx,
-                                    )
-                                });
-                                if !still_active {
-                                    return;
-                                }
-
-                                progress_timer.set(
-                                    cx.background_executor()
-                                        .timer(Duration::from_millis(50))
-                                        .fuse(),
-                                );
-                            }
-                        }
-                    };
-
-                    let status_code = received.status();
-                    let response_headers = response_headers(received.headers());
-                    let response_cookies = response_cookies(received.headers());
-                    let still_active = response.update(cx, |response, cx| {
-                        response.set_headers(request_id, response_headers, cx)
-                            && response.set_cookies(request_id, response_cookies, cx)
-                    });
-                    if !still_active {
-                        return;
-                    }
-
-                    let content_type = received
-                        .headers()
-                        .get(http::header::CONTENT_TYPE)
-                        .and_then(|content_type| content_type.to_str().ok())
-                        .map(str::to_owned);
-                    let language_name = content_type.as_deref().and_then(|content_type| {
-                        let media_type = content_type.split(';').next()?.trim();
-                        let media_type_lowercase = media_type.to_ascii_lowercase();
-
-                        if media_type.eq_ignore_ascii_case("application/json")
-                            || media_type.eq_ignore_ascii_case("text/json")
-                            || media_type_lowercase.ends_with("+json")
-                        {
-                            Some("JSON")
-                        } else if media_type.eq_ignore_ascii_case("text/html") {
-                            Some("HTML")
-                        } else if media_type.eq_ignore_ascii_case("application/xml")
-                            || media_type.eq_ignore_ascii_case("text/xml")
-                            || media_type_lowercase.ends_with("+xml")
-                        {
-                            Some("XML")
-                        } else {
-                            None
-                        }
-                    });
-                    let language = language_name.map(|language_name| {
-                        let languages = languages.clone();
-                        cx.background_executor().spawn(async move {
-                            match languages.language_for_name(language_name).await {
-                                Ok(language) => Some(language),
-                                Err(error) => {
-                                    log::error!(
-                                        "Failed to load {language_name} language: {error:?}"
                                     );
-                                    None
-                                }
-                            }
-                        })
-                    });
-                    let mut bytes_received = 0_u64;
-                    let mut payload = Vec::new();
-                    let mut buffer = [0; 8192];
-                    let mut read_error = None;
-
-                    loop {
-                        let read_response_body = received.body_mut().read(&mut buffer).fuse();
-                        futures::pin_mut!(read_response_body);
-
-                        futures::select_biased! {
-                            read_result = read_response_body => {
-                                match read_result {
-                                    Ok(0) => break,
-                                    Ok(chunk) => {
-                                        if let Ok(chunk_len) = u64::try_from(chunk) {
-                                            bytes_received =
-                                                bytes_received.saturating_add(chunk_len);
-                                        } else {
-                                            bytes_received = u64::MAX;
-                                        }
-                                        payload.extend_from_slice(
-                                            buffer
-                                                .get(..chunk)
-                                                .expect("read chunk should fit in buffer"),
-                                        );
-                                    }
-                                    Err(error) => {
-                                        read_error = Some(error);
-                                        break;
-                                    }
-                                }
-                            }
-                            () = progress_timer => {
-                                let still_active = response.update(cx, |response, cx| {
-                                    response.set_state(
+                                    response.set_payload(
                                         request_id,
-                                        ResponseState::Fetching {
-                                            bytes_received,
-                                            elapsed_duration: request_started_at.elapsed(),
-                                        },
+                                        payload,
+                                        None,
+                                        None,
                                         cx,
-                                    )
+                                    );
                                 });
-                                if !still_active {
-                                    return;
-                                }
-
-                                progress_timer.set(
-                                    cx.background_executor()
-                                        .timer(Duration::from_millis(50))
-                                        .fuse(),
-                                );
+                                return;
                             }
                         }
                     }
-
-                    let elapsed_duration = request_started_at.elapsed();
-                    let read_succeeded = read_error.is_none();
-                    let (payload, response_state) = match read_error {
-                        Some(ref error) => (
-                            format!("(failed to read response body: {error})"),
-                            ResponseState::Error {
-                                bytes_received,
-                                elapsed_duration,
-                            },
-                        ),
-                        None => (
-                            String::from_utf8_lossy(&payload).into_owned(),
-                            ResponseState::Completed {
-                                status_code,
-                                bytes_received,
-                                elapsed_duration,
-                            },
-                        ),
-                    };
-                    let pretty_payload =
-                        (read_succeeded && language_name == Some("JSON")).then(|| {
-                            let payload = payload.clone();
-                            cx.background_executor()
-                                .spawn(async move { format_json(&payload).unwrap_or(payload) })
-                        });
-                    let language = if read_succeeded {
-                        match language {
-                            Some(language) => language.await,
-                            None => None,
-                        }
-                    } else {
-                        None
-                    };
-                    let pretty_payload = match pretty_payload {
-                        Some(pretty_payload) => Some(pretty_payload.await),
-                        None => None,
-                    };
-
-                    response.update(cx, |response, cx| {
-                        response.set_state(request_id, response_state, cx)
-                            && response.set_payload(
+                    () = progress_timer => {
+                        let still_active = response.update(cx, |response, cx| {
+                            response.set_state(
                                 request_id,
-                                payload,
-                                pretty_payload,
-                                language,
+                                ResponseState::Fetching {
+                                    bytes_received: 0,
+                                    elapsed_duration: request_started_at.elapsed(),
+                                },
                                 cx,
                             )
-                    });
+                        });
+                        if !still_active {
+                            return;
+                        }
+
+                        progress_timer.set(
+                            cx.background_executor()
+                                .timer(Duration::from_millis(50))
+                                .fuse(),
+                        );
+                    }
                 }
-            })
-            .detach();
+            };
+
+            let status_code = received.status();
+            let response_headers = response_headers(received.headers());
+            let response_cookies = response_cookies(received.headers());
+            let still_active = response.update(cx, |response, cx| {
+                response.set_headers(request_id, response_headers, cx)
+                    && response.set_cookies(request_id, response_cookies, cx)
+            });
+            if !still_active {
+                return;
+            }
+
+            let content_type = received
+                .headers()
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|content_type| content_type.to_str().ok())
+                .map(str::to_owned);
+            let language_name = content_type.as_deref().and_then(|content_type| {
+                let media_type = content_type.split(';').next()?.trim();
+                let media_type_lowercase = media_type.to_ascii_lowercase();
+
+                if media_type.eq_ignore_ascii_case("application/json")
+                    || media_type.eq_ignore_ascii_case("text/json")
+                    || media_type_lowercase.ends_with("+json")
+                {
+                    Some("JSON")
+                } else if media_type.eq_ignore_ascii_case("text/html") {
+                    Some("HTML")
+                } else if media_type.eq_ignore_ascii_case("application/xml")
+                    || media_type.eq_ignore_ascii_case("text/xml")
+                    || media_type_lowercase.ends_with("+xml")
+                {
+                    Some("XML")
+                } else {
+                    None
+                }
+            });
+            let language = language_name.map(|language_name| {
+                let languages = languages.clone();
+                cx.background_executor().spawn(async move {
+                    match languages.language_for_name(language_name).await {
+                        Ok(language) => Some(language),
+                        Err(error) => {
+                            log::error!("Failed to load {language_name} language: {error:?}");
+                            None
+                        }
+                    }
+                })
+            });
+            let mut bytes_received = 0_u64;
+            let mut payload = Vec::new();
+            let mut buffer = [0; 8192];
+            let mut read_error = None;
+
+            loop {
+                let read_response_body = received.body_mut().read(&mut buffer).fuse();
+                futures::pin_mut!(read_response_body);
+
+                futures::select_biased! {
+                    read_result = read_response_body => {
+                        match read_result {
+                            Ok(0) => break,
+                            Ok(chunk) => {
+                                if let Ok(chunk_len) = u64::try_from(chunk) {
+                                    bytes_received =
+                                        bytes_received.saturating_add(chunk_len);
+                                } else {
+                                    bytes_received = u64::MAX;
+                                }
+                                payload.extend_from_slice(
+                                    buffer
+                                        .get(..chunk)
+                                        .expect("read chunk should fit in buffer"),
+                                );
+                            }
+                            Err(error) => {
+                                read_error = Some(error);
+                                break;
+                            }
+                        }
+                    }
+                    () = progress_timer => {
+                        let still_active = response.update(cx, |response, cx| {
+                            response.set_state(
+                                request_id,
+                                ResponseState::Fetching {
+                                    bytes_received,
+                                    elapsed_duration: request_started_at.elapsed(),
+                                },
+                                cx,
+                            )
+                        });
+                        if !still_active {
+                            return;
+                        }
+
+                        progress_timer.set(
+                            cx.background_executor()
+                                .timer(Duration::from_millis(50))
+                                .fuse(),
+                        );
+                    }
+                }
+            }
+
+            let elapsed_duration = request_started_at.elapsed();
+            let read_succeeded = read_error.is_none();
+            let (payload, response_state) = match read_error {
+                Some(ref error) => (
+                    format!("(failed to read response body: {error})"),
+                    ResponseState::Error {
+                        bytes_received,
+                        elapsed_duration,
+                    },
+                ),
+                None => (
+                    String::from_utf8_lossy(&payload).into_owned(),
+                    ResponseState::Completed {
+                        status_code,
+                        bytes_received,
+                        elapsed_duration,
+                    },
+                ),
+            };
+            let pretty_payload = (read_succeeded && language_name == Some("JSON")).then(|| {
+                let payload = payload.clone();
+                cx.background_executor()
+                    .spawn(async move { format_json(&payload).unwrap_or(payload) })
+            });
+            let language = if read_succeeded {
+                match language {
+                    Some(language) => language.await,
+                    None => None,
+                }
+            } else {
+                None
+            };
+            let pretty_payload = match pretty_payload {
+                Some(pretty_payload) => Some(pretty_payload.await),
+                None => None,
+            };
+
+            response.update(cx, |response, cx| {
+                response.set_state(request_id, response_state, cx)
+                    && response.set_payload(request_id, payload, pretty_payload, language, cx)
+            });
+        });
+        cx.notify();
     }
 
     fn render_invalid(&self, error: &str, cx: &mut Context<Self>) -> Div {
@@ -1928,7 +1949,23 @@ impl RequestEditor {
                 menu
             })
         };
+        let is_fetching = self.is_fetching(cx);
         let colors = cx.theme().colors();
+        let button_variant = if is_fetching {
+            ButtonVariant::Custom {
+                background: colors.element_background,
+                foreground: colors.button_secondary_foreground,
+                hover_background: colors.element_background,
+                border: gpui::transparent_black(),
+            }
+        } else {
+            ButtonVariant::Custom {
+                background: colors.text_accent.opacity(0.8),
+                foreground: colors.surface_background,
+                hover_background: colors.text_accent.opacity(0.8),
+                border: gpui::transparent_black(),
+            }
+        };
 
         gpui::div()
             .flex()
@@ -1966,19 +2003,18 @@ impl RequestEditor {
                     )
                     .child(gpui::div().flex_1().child(url))
                     .child(
-                        Button::new("request-send", "Send")
-                            .variant(ButtonVariant::Custom {
-                                background: colors.text_accent.opacity(0.8),
-                                foreground: colors.surface_background,
-                                hover_background: colors.text_accent.opacity(0.8),
-                                border: gpui::transparent_black(),
-                            })
+                        Button::new("request-send", if is_fetching { "Cancel" } else { "Send" })
+                            .variant(button_variant)
                             .size(ButtonSize::Large)
-                            .width(ui::rems_from_px(60.0_f32))
+                            .width(ui::rems_from_px(64.0_f32))
                             .font_weight(FontWeight::MEDIUM)
                             .on_click(cx.listener(move |request_editor, _, window, cx| {
-                                request_editor.unpreview_tab(cx);
-                                request_editor.send_request(window, cx);
+                                if request_editor.is_fetching(cx) {
+                                    request_editor.cancel_request(cx);
+                                } else {
+                                    request_editor.unpreview_tab(cx);
+                                    request_editor.send_request(window, cx);
+                                }
                             })),
                     ),
             )
@@ -2001,6 +2037,7 @@ impl Render for RequestEditor {
             RequestEditorState::Ready(request) => self.render_request(request, window, cx),
             RequestEditorState::Invalid { error, .. } => self.render_invalid(error, cx),
         }
+        .key_context("RequestEditor")
     }
 }
 

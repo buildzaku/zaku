@@ -31,6 +31,8 @@ impl Default for Open {
 gpui::actions!(
     workspace,
     [
+        /// Cancel the current request.
+        CancelRequest,
         /// Close the current project.
         CloseProject,
         /// Close the current window.

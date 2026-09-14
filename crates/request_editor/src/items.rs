@@ -163,6 +163,17 @@ impl Item for RequestEditor {
         ItemBufferKind::Singleton
     }
 
+    fn on_removed(&self, cx: &mut Context<Self>) {
+        let request_editor = cx.weak_entity();
+        cx.defer(move |cx| {
+            if let Some(request_editor) = request_editor.upgrade() {
+                request_editor.update(cx, |request_editor, cx| {
+                    request_editor.cancel_request(cx);
+                });
+            }
+        });
+    }
+
     fn is_dirty(&self, cx: &App) -> bool {
         self.buffer.read(cx).is_dirty()
     }
