@@ -182,6 +182,7 @@ tendril = { version = "0.5" }
 text = { git = "https://github.com/zed-industries/zed", rev = "72c53bf0aa", package = "text" }
 thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 tombi-cache = {
   git = "https://github.com/tombi-toml/tombi",
   rev = "1938bd3e8",
