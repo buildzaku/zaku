@@ -121,6 +121,12 @@
     }
   },
   {
+    "context": "(RequestEditor || ResponsePanel) && !menu",
+    "bindings": {
+      "escape": "workspace::CancelRequest"
+    }
+  },
+  {
     "context": "RequestUrl > Editor",
     "bindings": {
       "enter": "workspace::SendRequest"

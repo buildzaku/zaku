@@ -117,6 +117,13 @@
     }
   },
   {
+    "context": "(RequestEditor || ResponsePanel) && !menu",
+    "use_key_equivalents": true,
+    "bindings": {
+      "escape": "workspace::CancelRequest"
+    }
+  },
+  {
     "context": "RequestUrl > Editor",
     "use_key_equivalents": true,
     "bindings": {
