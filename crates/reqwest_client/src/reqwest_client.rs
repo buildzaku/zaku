@@ -3,6 +3,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use futures::{FutureExt, TryStreamExt};
 use reqwest::redirect;
 use std::{io, mem, pin::Pin, sync::OnceLock, task, time::Duration};
+use tokio_util::task::AbortOnDropHandle;
 
 use http_client::{AsyncBody, HttpClient, Inner, RedirectPolicy, Url, http};
 
@@ -84,11 +85,8 @@ impl HttpClient for ReqwestClient {
 
         let handle = self.handle.clone();
         async move {
-            let mut response = handle
-                .spawn(async { request.send().await })
-                .await?
-                .map_err(|error| anyhow!(error))?;
-
+            let join_handle = AbortOnDropHandle::new(handle.spawn(async { request.send().await }));
+            let mut response = join_handle.await?.map_err(|error| anyhow!(error))?;
             let headers = mem::take(response.headers_mut());
             let mut builder = http::Response::builder()
                 .status(response.status().as_u16())
@@ -213,4 +211,75 @@ fn poll_read_buffer<T: futures::AsyncRead + ?Sized, B: BufMut>(
     }
 
     task::Poll::Ready(Ok(size))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::{io::ErrorKind, net::Ipv4Addr};
+    use tokio::{
+        io::{AsyncBufReadExt as _, AsyncReadExt as _, BufReader},
+        net::TcpListener,
+    };
+
+    use http_client::Request;
+
+    #[tokio::test]
+    async fn test_dropping_send_future_cancels_request() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+
+        let server = async {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut reader = BufReader::new(stream);
+            let mut line = String::new();
+            reader.read_line(&mut line).await.unwrap();
+            assert_eq!(line, "GET / HTTP/1.1\r\n");
+            loop {
+                line.clear();
+                assert_ne!(reader.read_line(&mut line).await.unwrap(), 0);
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            reader
+        };
+
+        let client = ReqwestClient {
+            client: ReqwestClient::builder().no_proxy().build().unwrap(),
+            ..ReqwestClient::new()
+        };
+        let request = Request::get(format!("http://{address}/"))
+            .body(AsyncBody::empty())
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let mut send_request = client.send(request).fuse();
+            let mut reader = futures::select_biased! {
+                result = send_request => match result {
+                    Ok(response) => panic!(
+                        "request completed before cancellation with status {}",
+                        response.status()
+                    ),
+                    Err(error) => panic!("request failed before cancellation: {error}"),
+                },
+                reader = server.fuse() => reader,
+            };
+            drop(send_request);
+
+            let mut buffer = [0; 1];
+            match reader.read(&mut buffer).await {
+                Ok(0) => {}
+                Err(error)
+                    if let ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted =
+                        error.kind() => {}
+                result => panic!(
+                    "dropping the send future should close the pending connection: {result:?}"
+                ),
+            }
+        })
+        .await
+        .expect("request cancellation should complete within five seconds");
+    }
 }
