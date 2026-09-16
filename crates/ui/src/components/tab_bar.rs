@@ -91,7 +91,7 @@ impl ParentElement for TabBar {
 
 impl RenderOnce for TabBar {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
 
         gpui::div()
             .id(self.id)
@@ -100,7 +100,7 @@ impl RenderOnce for TabBar {
             .flex()
             .w_full()
             .h(Tab::container_height(cx))
-            .bg(colors.tab_bar_background)
+            .bg(theme_colors.tab_bar_background)
             .on_any_mouse_down(|_, window, _| {
                 window.prevent_default();
             })
@@ -114,7 +114,7 @@ impl RenderOnce for TabBar {
                         .px(DynamicSpacing::Base06.rems(cx))
                         .border_b_1()
                         .border_r_1()
-                        .border_color(colors.border)
+                        .border_color(theme_colors.border)
                         .children(self.start_children),
                 )
             })
@@ -131,7 +131,7 @@ impl RenderOnce for TabBar {
                             .left_0()
                             .size_full()
                             .border_b_1()
-                            .border_color(colors.border),
+                            .border_color(theme_colors.border),
                     )
                     .child(
                         gpui::div()
@@ -154,7 +154,7 @@ impl RenderOnce for TabBar {
                         .items_center()
                         .gap(DynamicSpacing::Base04.rems(cx))
                         .px(DynamicSpacing::Base06.rems(cx))
-                        .border_color(colors.border)
+                        .border_color(theme_colors.border)
                         .border_b_1()
                         .border_l_1()
                         .children(self.end_children),

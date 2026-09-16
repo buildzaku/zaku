@@ -347,8 +347,8 @@ pub struct Response {
 
 impl Response {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let (pretty_editor, pretty_payload) = Self::new_editor(PLAIN_TEXT.clone(), window, cx);
-        let (raw_editor, raw_payload) = Self::new_editor(PLAIN_TEXT.clone(), window, cx);
+        let (pretty_editor, pretty_payload) = Self::new_editor(window, cx);
+        let (raw_editor, raw_payload) = Self::new_editor(window, cx);
         let response_id = cx.entity_id();
         let summary_text: Entity<TextInteractionState<ResponseSummaryTextId>> =
             cx.new(|cx| TextInteractionState::new(cx));
@@ -385,13 +385,9 @@ impl Response {
         }
     }
 
-    fn new_editor(
-        language: Arc<Language>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (Entity<Editor>, Entity<MultiBuffer>) {
-        let payload = cx.new(move |cx| {
-            let buffer = cx.new(|cx| Buffer::local("", cx).with_language(language, cx));
+    fn new_editor(window: &mut Window, cx: &mut App) -> (Entity<Editor>, Entity<MultiBuffer>) {
+        let payload = cx.new(|cx| {
+            let buffer = cx.new(|cx| Buffer::local("", cx).with_language(PLAIN_TEXT.clone(), cx));
             MultiBuffer::singleton(buffer, cx)
         });
         let editor = cx.new(|cx| {
@@ -526,14 +522,8 @@ impl Response {
             .raw_editor
             .focus_handle(cx)
             .contains_focused(window, cx);
-        let language = self
-            .raw_payload
-            .read(cx)
-            .as_singleton()
-            .and_then(|buffer| buffer.read(cx).language().cloned())
-            .unwrap_or_else(|| PLAIN_TEXT.clone());
-        let (pretty_editor, pretty_payload) = Self::new_editor(language.clone(), window, cx);
-        let (raw_editor, raw_payload) = Self::new_editor(language, window, cx);
+        let (pretty_editor, pretty_payload) = Self::new_editor(window, cx);
+        let (raw_editor, raw_payload) = Self::new_editor(window, cx);
         let request_id = self.request_id.wrapping_add(1);
 
         self.request_id = request_id;
@@ -881,7 +871,7 @@ impl ResponsePanel {
             return self.render_send_request_hint(cx);
         };
 
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
         let editor = {
             let response = response.read(cx);
             match response.state() {
@@ -896,7 +886,7 @@ impl ResponsePanel {
         gpui::div()
             .flex_1()
             .min_h_0()
-            .bg(colors.panel_background)
+            .bg(theme_colors.panel_background)
             .child(editor)
             .into_any_element()
     }
@@ -1199,10 +1189,16 @@ impl ResponsePanel {
                 .summary()
                 .map(|summary| (summary, response.summary_text.clone()))
         });
-        let response = self
-            .response
-            .as_ref()
-            .filter(|_| response_summary.is_some() && active_tab == ResponsePanelTab::Body);
+        let response = self.response.as_ref().filter(|response| {
+            response_summary.is_some()
+                && active_tab == ResponsePanelTab::Body
+                && !response
+                    .read(cx)
+                    .raw_payload
+                    .read(cx)
+                    .snapshot(cx)
+                    .is_empty()
+        });
         let display_mode_dropdown = response.map(|response| {
             let response = response.read(cx);
             let language_name = response
@@ -1253,11 +1249,24 @@ impl ResponsePanel {
                 .anchor(Anchor::TopRight)
                 .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
         });
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
 
         let render_tab =
-            |id: ElementId, active: bool, title: SharedString, set_active_tab: ResponsePanelTab| {
-                let colors = cx.theme().colors();
+            |id: ElementId, active: bool, title: SharedString, tab: ResponsePanelTab| {
+                let theme_colors = cx.theme().colors();
+                let text_color = if active {
+                    Color::Custom(theme_colors.panel_tab_active_foreground)
+                } else {
+                    Color::Custom(theme_colors.panel_tab_inactive_foreground)
+                };
+                let count = self.response.as_ref().map_or(0, |response| {
+                    let response = response.read(cx);
+                    match tab {
+                        ResponsePanelTab::Body => 0,
+                        ResponsePanelTab::Headers => response.headers().len(),
+                        ResponsePanelTab::Cookies => response.cookies().len(),
+                    }
+                });
 
                 gpui::div()
                     .id(id)
@@ -1265,7 +1274,6 @@ impl ResponsePanel {
                     .flex_none()
                     .flex()
                     .items_center()
-                    .justify_center()
                     .h_full()
                     .min_w(DynamicSpacing::Base48.px(cx))
                     .px(DynamicSpacing::Base08.px(cx))
@@ -1277,13 +1285,14 @@ impl ResponsePanel {
                                 response.clear_summary_text_selection(cx);
                             });
                         }
-                        response_panel.set_active_tab(set_active_tab, cx);
+                        response_panel.set_active_tab(tab, cx);
                     }))
                     .child(
                         gpui::div()
                             .relative()
                             .flex()
                             .items_center()
+                            .gap_1()
                             .h_full()
                             .when(active, |this| {
                                 this.child(
@@ -1293,7 +1302,7 @@ impl ResponsePanel {
                                         .right_0()
                                         .bottom_0()
                                         .h(DynamicSpacing::Base01.px(cx))
-                                        .bg(colors.panel_tab_active_foreground),
+                                        .bg(theme_colors.panel_tab_active_foreground),
                                 )
                             })
                             .child(
@@ -1301,13 +1310,26 @@ impl ResponsePanel {
                                     .size(TextSize::Small)
                                     .line_height_style(LineHeightStyle::Compact)
                                     .weight(FontWeight::MEDIUM)
-                                    .color(if active {
-                                        Color::Custom(colors.panel_tab_active_foreground)
-                                    } else {
-                                        Color::Custom(colors.panel_tab_inactive_foreground)
-                                    })
+                                    .color(text_color)
                                     .single_line(),
-                            ),
+                            )
+                            .when(count > 0, |this| {
+                                this.child(
+                                    gpui::div()
+                                        .flex_none()
+                                        .px_1()
+                                        .py_0p5()
+                                        .rounded_sm()
+                                        .bg(theme_colors.element_background)
+                                        .child(
+                                            Text::new(count.to_string())
+                                                .size(TextSize::XSmall)
+                                                .line_height_style(LineHeightStyle::Compact)
+                                                .color(text_color)
+                                                .single_line(),
+                                        ),
+                                )
+                            }),
                     )
             };
 
@@ -1319,8 +1341,8 @@ impl ResponsePanel {
             .w_full()
             .h(DynamicSpacing::Base36.px(cx))
             .border_b_1()
-            .border_color(colors.border)
-            .bg(colors.panel_tab_bar_background)
+            .border_color(theme_colors.border)
+            .bg(theme_colors.panel_tab_bar_background)
             .capture_any_mouse_down(|_, window, _| {
                 window.prevent_default();
             })
@@ -1448,7 +1470,7 @@ impl Render for ResponsePanel {
                 )
                 .into_any_element()
         };
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
 
         gpui::div()
             .track_focus(&focus_handle)
@@ -1456,7 +1478,7 @@ impl Render for ResponsePanel {
             .flex()
             .flex_col()
             .size_full()
-            .bg(colors.panel_background)
+            .bg(theme_colors.panel_background)
             .when_some(tab_bar, |this, tab_bar| this.child(tab_bar))
             .child(tab_content)
     }

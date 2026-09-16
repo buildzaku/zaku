@@ -172,7 +172,7 @@ impl Render for Toolbar {
             return gpui::div();
         }
 
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
         let has_left_items = self.left_items().count() > 0;
         let has_right_items = self.right_items().count() > 0;
 
@@ -186,8 +186,8 @@ impl Render for Toolbar {
             .font_ui(cx)
             .text_ui_sm(cx)
             .border_b_1()
-            .border_color(colors.border_variant)
-            .bg(colors.panel_background)
+            .border_color(theme_colors.border_variant)
+            .bg(theme_colors.panel_background)
             .on_any_mouse_down(|_, window, _| {
                 window.prevent_default();
             })

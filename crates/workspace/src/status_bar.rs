@@ -114,7 +114,7 @@ impl StatusBar {
 
 impl Render for StatusBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
 
         gpui::div()
             .flex()
@@ -125,7 +125,7 @@ impl Render for StatusBar {
             .py(DynamicSpacing::Base04.rems(cx))
             .font_ui(cx)
             .text_ui_sm(cx)
-            .bg(colors.status_bar_background)
+            .bg(theme_colors.status_bar_background)
             .map(|this| match window.window_decorations() {
                 Decorations::Server => this,
                 Decorations::Client { tiling, .. } => this
@@ -152,7 +152,7 @@ impl Render for StatusBar {
                         }
                     })
                     .border_b(gpui::px(1.0))
-                    .border_color(colors.status_bar_background),
+                    .border_color(theme_colors.status_bar_background),
             })
             .child(self.render_left_tools())
             .child(gpui::div().flex_1())
