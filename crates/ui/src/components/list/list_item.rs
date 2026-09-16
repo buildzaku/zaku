@@ -229,14 +229,16 @@ impl ParentElement for ListItem {
 
 impl RenderOnce for ListItem {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let colors = cx.theme().colors();
-        let hover_background = self.hover_background.unwrap_or(colors.ghost_element_hover);
+        let theme_colors = cx.theme().colors();
+        let hover_background = self
+            .hover_background
+            .unwrap_or(theme_colors.ghost_element_hover);
         let active_background = self
             .active_background
-            .unwrap_or(colors.ghost_element_active);
+            .unwrap_or(theme_colors.ghost_element_active);
         let selected_background = self
             .selected_background
-            .unwrap_or(colors.ghost_element_selected);
+            .unwrap_or(theme_colors.ghost_element_selected);
 
         gpui::div()
             .id(self.id)

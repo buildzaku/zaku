@@ -1234,7 +1234,7 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
 
         let bounds = Bounds::new(self.origin + origin, size);
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
-            let colors = cx.theme().colors();
+            let theme_colors = cx.theme().colors();
 
             let capture_phase;
 
@@ -1275,19 +1275,21 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                         const MAXIMUM_OPACITY: f32 = 0.7;
                         let (thumb_base_color, hovered) = match thumb_state {
                             ThumbState::Dragging(dragged_axis, _) if dragged_axis == axis => {
-                                (colors.scrollbar_thumb_active_background, false)
+                                (theme_colors.scrollbar_thumb_active_background, false)
                             }
                             ThumbState::Hover(hovered_axis) if hovered_axis == axis => {
-                                (colors.scrollbar_thumb_hover_background, true)
+                                (theme_colors.scrollbar_thumb_hover_background, true)
                             }
-                            _ => (colors.scrollbar_thumb_background, false),
+                            _ => (theme_colors.scrollbar_thumb_background, false),
                         };
 
                         let blending_color = if hovered || track_background.is_some() {
                             track_background
-                                .map_or(colors.surface_background, |(_, background)| background)
+                                .map_or(theme_colors.surface_background, |(_, background)| {
+                                    background
+                                })
                         } else {
-                            let blend_color = colors.surface_background;
+                            let blend_color = theme_colors.surface_background;
                             blend_color.min(blend_color.alpha(MAXIMUM_OPACITY))
                         };
 

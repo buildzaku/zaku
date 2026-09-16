@@ -33,9 +33,9 @@ use response_panel::{
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
-    DropdownVariant, DynamicSpacing, FixedWidth, IconAsset, IconButton, IconButtonShape,
-    IconPosition, IconSize, LineHeightStyle, ScrollAxes, Scrollbars, Text, TextCommon, TextSize,
-    ToggleState, Tooltip, TrackLayout, WithScrollbar,
+    DropdownVariant, DynamicSpacing, FixedWidth, IconAsset, IconButton, IconPosition, IconSize,
+    Indicator, LineHeightStyle, ScrollAxes, Scrollbars, Text, TextCommon, TextSize, ToggleState,
+    Tooltip, TrackLayout, WithScrollbar,
 };
 use workspace::{AppState, Workspace, WorkspaceEvent, pane::Pane};
 
@@ -473,6 +473,10 @@ impl RequestBody {
         self.payload.read(cx).snapshot(cx).text()
     }
 
+    fn is_empty(&self, cx: &App) -> bool {
+        self.payload.read(cx).snapshot(cx).is_empty()
+    }
+
     fn editor(&self) -> Entity<Editor> {
         self.editor.clone()
     }
@@ -520,9 +524,9 @@ impl RequestKvKind {
 
     fn remove_id(self) -> &'static str {
         match self {
-            RequestKvKind::Param => "param-delete",
-            RequestKvKind::Header => "header-delete",
-            RequestKvKind::FormUrlEncoded => "form-urlencoded-delete",
+            RequestKvKind::Param => "param-remove",
+            RequestKvKind::Header => "header-remove",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-remove",
         }
     }
 
@@ -558,6 +562,11 @@ struct KeyValueRow {
 }
 
 impl KeyValueRow {
+    fn is_empty(&self, cx: &App) -> bool {
+        self.key.read(cx).text(cx).trim().is_empty()
+            && self.value.read(cx).text(cx).trim().is_empty()
+    }
+
     fn set_disabled(&mut self, disabled: bool, cx: &mut App) {
         self.disabled = disabled;
         for editor in [&self.key, &self.value] {
@@ -614,7 +623,7 @@ fn input_box(editor: &Entity<Editor>, disabled: bool, cx: &mut App) -> Div {
         editor.set_text_style_refinement(text_style);
     });
 
-    let colors = cx.theme().colors();
+    let theme_colors = cx.theme().colors();
     let focus_handle = editor.focus_handle(cx).tab_index(0).tab_stop(true);
     gpui::div()
         .flex()
@@ -626,17 +635,17 @@ fn input_box(editor: &Entity<Editor>, disabled: bool, cx: &mut App) -> Div {
         .rounded_md()
         .border_1()
         .border_color(if disabled {
-            colors.border_disabled
+            theme_colors.border_disabled
         } else {
-            colors.border_variant
+            theme_colors.border_variant
         })
-        .bg(colors.editor_background)
+        .bg(theme_colors.editor_background)
         .track_focus(&focus_handle)
         .focus(|this| {
             this.border_color(if disabled {
-                colors.border_disabled
+                theme_colors.border_disabled
             } else {
-                colors.border_focused
+                theme_colors.border_focused
             })
         })
         .child(editor.clone())
@@ -1596,11 +1605,45 @@ impl RequestEditor {
                 .anchor(Anchor::TopRight)
                 .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
         });
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
+        let is_raw_body = matches!(
+            request.http.body_type,
+            Some(
+                RequestBodyType::Text
+                    | RequestBodyType::Json
+                    | RequestBodyType::Html
+                    | RequestBodyType::Xml
+            )
+        );
+        let has_raw_body_content = is_raw_body
+            && request
+                .http
+                .body
+                .as_ref()
+                .is_some_and(|body| !body.is_empty(cx));
 
         let render_tab =
-            |id: ElementId, active: bool, title: SharedString, set_active_tab: RequestEditorTab| {
-                let colors = cx.theme().colors();
+            |id: ElementId, active: bool, title: SharedString, tab: RequestEditorTab| {
+                let theme_colors = cx.theme().colors();
+                let text_color = if active {
+                    Color::Custom(theme_colors.panel_tab_active_foreground)
+                } else {
+                    Color::Custom(theme_colors.panel_tab_inactive_foreground)
+                };
+                let rows = match tab {
+                    RequestEditorTab::Parameters => request.http.params.as_slice(),
+                    RequestEditorTab::Headers => request.http.headers.as_slice(),
+                    RequestEditorTab::Body
+                        if request.http.body_type == Some(RequestBodyType::FormUrlEncoded) =>
+                    {
+                        request.http.form_url_encoded.as_slice()
+                    }
+                    RequestEditorTab::Body => &[],
+                };
+                let count = rows
+                    .iter()
+                    .filter(|row| !row.disabled && !row.is_empty(cx))
+                    .count();
 
                 gpui::div()
                     .id(id)
@@ -1608,15 +1651,14 @@ impl RequestEditor {
                     .flex_none()
                     .flex()
                     .items_center()
-                    .justify_center()
                     .h_full()
                     .min_w(DynamicSpacing::Base48.px(cx))
                     .px(DynamicSpacing::Base08.px(cx))
                     .cursor_pointer()
                     .on_click(cx.listener(move |request_editor, _, _, cx| {
                         cx.stop_propagation();
-                        if request_editor.active_tab != set_active_tab {
-                            request_editor.active_tab = set_active_tab;
+                        if request_editor.active_tab != tab {
+                            request_editor.active_tab = tab;
                             cx.notify();
                         }
                     }))
@@ -1625,6 +1667,7 @@ impl RequestEditor {
                             .relative()
                             .flex()
                             .items_center()
+                            .gap_1()
                             .h_full()
                             .when(active, |this| {
                                 this.child(
@@ -1634,7 +1677,7 @@ impl RequestEditor {
                                         .right_0()
                                         .bottom_0()
                                         .h(DynamicSpacing::Base01.px(cx))
-                                        .bg(colors.panel_tab_active_foreground),
+                                        .bg(theme_colors.panel_tab_active_foreground),
                                 )
                             })
                             .child(
@@ -1642,12 +1685,35 @@ impl RequestEditor {
                                     .size(TextSize::Small)
                                     .line_height_style(LineHeightStyle::Compact)
                                     .weight(FontWeight::MEDIUM)
-                                    .color(if active {
-                                        Color::Custom(colors.panel_tab_active_foreground)
-                                    } else {
-                                        Color::Custom(colors.panel_tab_inactive_foreground)
-                                    })
+                                    .color(text_color)
                                     .single_line(),
+                            )
+                            .when(count > 0, |this| {
+                                this.child(
+                                    gpui::div()
+                                        .flex_none()
+                                        .px_1()
+                                        .py_0p5()
+                                        .rounded_sm()
+                                        .bg(theme_colors.element_background)
+                                        .child(
+                                            Text::new(count.to_string())
+                                                .size(TextSize::XSmall)
+                                                .line_height_style(LineHeightStyle::Compact)
+                                                .color(text_color)
+                                                .single_line(),
+                                        ),
+                                )
+                            })
+                            .when(
+                                tab == RequestEditorTab::Body && has_raw_body_content,
+                                |this| {
+                                    this.child(
+                                        Indicator::dot()
+                                            .color(Color::Muted)
+                                            .size(ui::rems_from_px(4.0_f32)),
+                                    )
+                                },
                             ),
                     )
             };
@@ -1662,8 +1728,8 @@ impl RequestEditor {
             .pl_1()
             .pr_2()
             .border_y_1()
-            .border_color(colors.border)
-            .bg(colors.panel_tab_bar_background)
+            .border_color(theme_colors.border)
+            .bg(theme_colors.panel_tab_bar_background)
             .child(render_tab(
                 ElementId::Name("parameters-tab".into()),
                 active_tab == RequestEditorTab::Parameters,
@@ -1733,11 +1799,20 @@ impl RequestEditor {
                         }
                     },
                 ));
-                let delete_button = IconButton::new((kind.remove_id(), index), IconAsset::Trash)
-                    .shape(IconButtonShape::Square)
-                    .variant(ButtonVariant::Outline)
+                let theme_colors = cx.theme().colors();
+                let remove_button = IconButton::new((kind.remove_id(), index), IconAsset::Close)
+                    .variant(ButtonVariant::Custom {
+                        background: theme_colors.element_background.opacity(0.5),
+                        foreground: theme_colors.button_secondary_foreground,
+                        hover_background: theme_colors.button_secondary_hover_background,
+                        border: gpui::transparent_black(),
+                    })
+                    .size(ButtonSize::None)
+                    .width(gpui::rems(1.0))
+                    .height(gpui::rems(1.0))
+                    .icon_size(IconSize::Small)
                     .icon_color(Color::Muted)
-                    .tooltip(Tooltip::text("Delete"))
+                    .tooltip(Tooltip::text("Remove"))
                     .on_click(cx.listener(move |request_editor, _, window, cx| {
                         let RequestEditorState::Ready(request) = &mut request_editor.request else {
                             return;
@@ -1767,7 +1842,7 @@ impl RequestEditor {
                             .gap_2p5()
                             .child(self::input_box(&row.key, row.disabled, cx).items_center())
                             .child(self::input_box(&row.value, row.disabled, cx))
-                            .child(gpui::div().flex().items_center().child(delete_button)),
+                            .child(gpui::div().flex().items_center().child(remove_button)),
                     )
             })
             .collect::<Vec<_>>();
@@ -1797,7 +1872,7 @@ impl RequestEditor {
             RequestKvKind::Header => &self.headers_scroll_handle,
             RequestKvKind::FormUrlEncoded => &self.form_url_encoded_scroll_handle,
         };
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
 
         gpui::div()
             .flex()
@@ -1828,7 +1903,7 @@ impl RequestEditor {
                     .tracked_scroll_handle(scroll_handle)
                     .with_track_along(
                         ScrollAxes::Vertical,
-                        colors.scrollbar_track_background,
+                        theme_colors.scrollbar_track_background,
                         TrackLayout::Overlay,
                     ),
                 window,
@@ -1880,7 +1955,7 @@ impl RequestEditor {
                     .into_any_element(),
             ),
         };
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
 
         gpui::div()
             .id("body")
@@ -1889,7 +1964,7 @@ impl RequestEditor {
             .w_full()
             .flex_1()
             .min_h_0()
-            .bg(colors.panel_background)
+            .bg(theme_colors.panel_background)
             .children(body)
             .into_any_element()
     }
@@ -1950,19 +2025,19 @@ impl RequestEditor {
             })
         };
         let is_fetching = self.is_fetching(cx);
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
         let button_variant = if is_fetching {
             ButtonVariant::Custom {
-                background: colors.element_background,
-                foreground: colors.button_secondary_foreground,
-                hover_background: colors.element_background,
+                background: theme_colors.element_background,
+                foreground: theme_colors.button_secondary_foreground,
+                hover_background: theme_colors.element_background,
                 border: gpui::transparent_black(),
             }
         } else {
             ButtonVariant::Custom {
-                background: colors.text_accent.opacity(0.8),
-                foreground: colors.surface_background,
-                hover_background: colors.text_accent.opacity(0.8),
+                background: theme_colors.text_accent.opacity(0.8),
+                foreground: theme_colors.surface_background,
+                hover_background: theme_colors.text_accent.opacity(0.8),
                 border: gpui::transparent_black(),
             }
         };
@@ -1974,7 +2049,7 @@ impl RequestEditor {
             .w_full()
             .flex_1()
             .min_h_0()
-            .bg(colors.panel_background)
+            .bg(theme_colors.panel_background)
             .child(
                 gpui::div()
                     .flex()
