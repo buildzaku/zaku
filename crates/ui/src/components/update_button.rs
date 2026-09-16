@@ -148,19 +148,19 @@ impl UpdateButton {
 
 impl RenderOnce for UpdateButton {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let colors = cx.theme().colors();
-        let background = colors
+        let theme_colors = cx.theme().colors();
+        let background = theme_colors
             .status_bar_background
-            .blend(colors.button_background.opacity(0.5));
-        let hover_background = colors
+            .blend(theme_colors.button_background.opacity(0.5));
+        let hover_background = theme_colors
             .status_bar_background
-            .blend(colors.button_hover_background.opacity(0.7));
-        let border_color = colors.text.opacity(0.15);
+            .blend(theme_colors.button_hover_background.opacity(0.7));
+        let border_color = theme_colors.text.opacity(0.15);
         let button_variant = ButtonVariant::Custom {
             background: gpui::transparent_black(),
-            foreground: colors.button_foreground,
+            foreground: theme_colors.button_foreground,
             hover_background: gpui::transparent_black(),
-            border: colors.button_border,
+            border: theme_colors.button_border,
         };
         let button_size = IconSize::Small.square(window, cx);
 

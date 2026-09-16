@@ -111,12 +111,12 @@ impl ParentElement for Tab {
 
 impl RenderOnce for Tab {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let colors = cx.theme().colors();
-        let text_color = colors.text_muted;
+        let theme_colors = cx.theme().colors();
+        let text_color = theme_colors.text_muted;
         let background_color = if self.selected {
-            colors.tab_active_background
+            theme_colors.tab_active_background
         } else {
-            colors.tab_inactive_background
+            theme_colors.tab_inactive_background
         };
 
         let start_slot = self.start_slot.map(|start_slot| {
@@ -146,7 +146,7 @@ impl RenderOnce for Tab {
             .h(Self::container_height(cx))
             .bg(background_color)
             .when_some(self.font, |this, font| this.font(font))
-            .border_color(colors.border)
+            .border_color(theme_colors.border)
             .map(|this| match self.position {
                 TabPosition::First => {
                     if self.selected {
@@ -175,7 +175,7 @@ impl RenderOnce for Tab {
                         .left_0()
                         .right_0()
                         .h_px()
-                        .bg(colors.text_accent),
+                        .bg(theme_colors.text_accent),
                 )
             })
             .child(

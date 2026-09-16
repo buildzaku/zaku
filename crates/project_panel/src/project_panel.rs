@@ -2343,7 +2343,7 @@ impl ProjectPanel {
     }
 
     fn render_root_header(&self, root_name: &str, cx: &mut Context<Self>) -> AnyElement {
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
         let focus_handle = self.focus_handle.clone();
 
         gpui::div()
@@ -2354,7 +2354,7 @@ impl ProjectPanel {
             .h(DynamicSpacing::Base36.px(cx))
             .w_full()
             .px(DynamicSpacing::Base12.px(cx))
-            .bg(colors.panel_background)
+            .bg(theme_colors.panel_background)
             .child(
                 gpui::div().flex_1().min_w_0().child(
                     Text::new(root_name.to_ascii_uppercase())
@@ -2529,7 +2529,7 @@ impl ProjectPanel {
     ) -> Stateful<Div> {
         let is_dir = details.kind.is_dir();
         let selection = SelectedEntry(entry_id);
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
         let show_editor = details.is_editing && !details.is_processing;
         let is_marked = details.is_marked && !show_editor;
         let is_selected = details.is_selected && !show_editor;
@@ -2545,18 +2545,18 @@ impl ProjectPanel {
                 .then(|| git_status_indicator(details.git_status))
                 .flatten();
         let bg_color = if is_marked {
-            colors.element_selected
+            theme_colors.element_selected
         } else if is_selected {
-            colors.element_selection_background
+            theme_colors.element_selection_background
         } else {
-            colors.panel_background
+            theme_colors.panel_background
         };
         let bg_hover_color = if is_marked {
-            colors.element_selected
+            theme_colors.element_selected
         } else if is_selected {
-            colors.element_selection_background
+            theme_colors.element_selection_background
         } else {
-            colors.element_hover
+            theme_colors.element_hover
         };
         let validation_color_and_message = if show_editor {
             let validation_state = self
@@ -2650,11 +2650,10 @@ impl ProjectPanel {
                             .mr(Pixels::ZERO - DynamicSpacing::Base06.px(cx) - gpui::px(1.0))
                             .border_1()
                             .border_color(
-                                validation_color_and_message
-                                    .as_ref()
-                                    .map_or(colors.border_focused.opacity(0.7), |(color, _)| {
-                                        *color
-                                    }),
+                                validation_color_and_message.as_ref().map_or(
+                                    theme_colors.border_focused.opacity(0.7),
+                                    |(color, _)| *color,
+                                ),
                             )
                             .child(self.file_name_editor.clone())
                     } else {

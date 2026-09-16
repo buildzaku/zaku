@@ -100,48 +100,48 @@ impl ButtonVariant {
     pub fn enabled(self, cx: &mut App) -> ButtonStyle {
         match self {
             ButtonVariant::Subtle => {
-                let colors = cx.theme().colors();
+                let theme_colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.button_secondary_background,
+                    background: theme_colors.button_secondary_background,
                     border_color: gpui::transparent_black(),
-                    text_color: colors.button_secondary_foreground,
-                    icon_color: colors.button_secondary_foreground,
+                    text_color: theme_colors.button_secondary_foreground,
+                    icon_color: theme_colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::Solid => {
-                let colors = cx.theme().colors();
+                let theme_colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.button_background,
-                    border_color: colors.button_border,
-                    text_color: colors.button_foreground,
-                    icon_color: colors.button_foreground,
+                    background: theme_colors.button_background,
+                    border_color: theme_colors.button_border,
+                    text_color: theme_colors.button_foreground,
+                    icon_color: theme_colors.button_foreground,
                 }
             }
             ButtonVariant::Outline => {
-                let colors = cx.theme().colors();
+                let theme_colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.button_secondary_background,
-                    border_color: colors.button_secondary_border,
-                    text_color: colors.button_secondary_foreground,
-                    icon_color: colors.button_secondary_foreground,
+                    background: theme_colors.button_secondary_background,
+                    border_color: theme_colors.button_secondary_border,
+                    text_color: theme_colors.button_secondary_foreground,
+                    icon_color: theme_colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::OutlinedGhost => {
-                let colors = cx.theme().colors();
+                let theme_colors = cx.theme().colors();
                 ButtonStyle {
                     background: gpui::transparent_black(),
-                    border_color: colors.button_secondary_border,
-                    text_color: colors.button_secondary_foreground,
-                    icon_color: colors.button_secondary_foreground,
+                    border_color: theme_colors.button_secondary_border,
+                    text_color: theme_colors.button_secondary_foreground,
+                    icon_color: theme_colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::Ghost => {
-                let colors = cx.theme().colors();
+                let theme_colors = cx.theme().colors();
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: gpui::transparent_black(),
-                    text_color: colors.button_secondary_foreground,
-                    icon_color: colors.button_secondary_foreground,
+                    text_color: theme_colors.button_secondary_foreground,
+                    icon_color: theme_colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::Custom {
@@ -162,48 +162,48 @@ impl ButtonVariant {
     pub fn hovered(self, cx: &mut App) -> ButtonStyle {
         match self {
             ButtonVariant::Subtle => {
-                let colors = cx.theme().colors();
+                let theme_colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.button_secondary_hover_background,
+                    background: theme_colors.button_secondary_hover_background,
                     border_color: gpui::transparent_black(),
-                    text_color: colors.button_secondary_foreground,
-                    icon_color: colors.button_secondary_foreground,
+                    text_color: theme_colors.button_secondary_foreground,
+                    icon_color: theme_colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::Solid => {
-                let colors = cx.theme().colors();
+                let theme_colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.button_hover_background,
-                    border_color: colors.button_border,
-                    text_color: colors.button_foreground,
-                    icon_color: colors.button_foreground,
+                    background: theme_colors.button_hover_background,
+                    border_color: theme_colors.button_border,
+                    text_color: theme_colors.button_foreground,
+                    icon_color: theme_colors.button_foreground,
                 }
             }
             ButtonVariant::Outline => {
-                let colors = cx.theme().colors();
+                let theme_colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.button_secondary_hover_background,
-                    border_color: colors.button_secondary_border,
-                    text_color: colors.button_secondary_foreground,
-                    icon_color: colors.button_secondary_foreground,
+                    background: theme_colors.button_secondary_hover_background,
+                    border_color: theme_colors.button_secondary_border,
+                    text_color: theme_colors.button_secondary_foreground,
+                    icon_color: theme_colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::OutlinedGhost => {
-                let colors = cx.theme().colors();
+                let theme_colors = cx.theme().colors();
                 ButtonStyle {
                     background: gpui::transparent_black(),
-                    border_color: colors.button_secondary_border,
-                    text_color: colors.button_secondary_foreground,
-                    icon_color: colors.button_secondary_foreground,
+                    border_color: theme_colors.button_secondary_border,
+                    text_color: theme_colors.button_secondary_foreground,
+                    icon_color: theme_colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::Ghost => {
-                let colors = cx.theme().colors();
+                let theme_colors = cx.theme().colors();
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: gpui::transparent_black(),
-                    text_color: colors.button_secondary_foreground,
-                    icon_color: colors.button_secondary_foreground,
+                    text_color: theme_colors.button_secondary_foreground,
+                    icon_color: theme_colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::Custom {
@@ -336,8 +336,8 @@ impl Button {
         self
     }
 
-    pub fn height(mut self, height: DefiniteLength) -> Self {
-        self.height = Some(height);
+    pub fn height(mut self, height: impl Into<DefiniteLength>) -> Self {
+        self.height = Some(height.into());
         self
     }
 
