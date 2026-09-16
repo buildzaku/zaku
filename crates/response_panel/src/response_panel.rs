@@ -1256,8 +1256,21 @@ impl ResponsePanel {
         let colors = cx.theme().colors();
 
         let render_tab =
-            |id: ElementId, active: bool, title: SharedString, set_active_tab: ResponsePanelTab| {
+            |id: ElementId, active: bool, title: SharedString, tab: ResponsePanelTab| {
                 let colors = cx.theme().colors();
+                let text_color = if active {
+                    Color::Custom(colors.panel_tab_active_foreground)
+                } else {
+                    Color::Custom(colors.panel_tab_inactive_foreground)
+                };
+                let count = self.response.as_ref().map_or(0, |response| {
+                    let response = response.read(cx);
+                    match tab {
+                        ResponsePanelTab::Body => 0,
+                        ResponsePanelTab::Headers => response.headers().len(),
+                        ResponsePanelTab::Cookies => response.cookies().len(),
+                    }
+                });
 
                 gpui::div()
                     .id(id)
@@ -1265,7 +1278,6 @@ impl ResponsePanel {
                     .flex_none()
                     .flex()
                     .items_center()
-                    .justify_center()
                     .h_full()
                     .min_w(DynamicSpacing::Base48.px(cx))
                     .px(DynamicSpacing::Base08.px(cx))
@@ -1277,13 +1289,14 @@ impl ResponsePanel {
                                 response.clear_summary_text_selection(cx);
                             });
                         }
-                        response_panel.set_active_tab(set_active_tab, cx);
+                        response_panel.set_active_tab(tab, cx);
                     }))
                     .child(
                         gpui::div()
                             .relative()
                             .flex()
                             .items_center()
+                            .gap_1()
                             .h_full()
                             .when(active, |this| {
                                 this.child(
@@ -1301,13 +1314,26 @@ impl ResponsePanel {
                                     .size(TextSize::Small)
                                     .line_height_style(LineHeightStyle::Compact)
                                     .weight(FontWeight::MEDIUM)
-                                    .color(if active {
-                                        Color::Custom(colors.panel_tab_active_foreground)
-                                    } else {
-                                        Color::Custom(colors.panel_tab_inactive_foreground)
-                                    })
+                                    .color(text_color)
                                     .single_line(),
-                            ),
+                            )
+                            .when(count > 0, |this| {
+                                this.child(
+                                    gpui::div()
+                                        .flex_none()
+                                        .px_1()
+                                        .py_0p5()
+                                        .rounded_sm()
+                                        .bg(colors.element_background)
+                                        .child(
+                                            Text::new(count.to_string())
+                                                .size(TextSize::XSmall)
+                                                .line_height_style(LineHeightStyle::Compact)
+                                                .color(text_color)
+                                                .single_line(),
+                                        ),
+                                )
+                            }),
                     )
             };
 
