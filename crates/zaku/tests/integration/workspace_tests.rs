@@ -517,7 +517,7 @@ async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
         .body(AsyncBody::from("response"))
         .unwrap();
     assert!(
-        matches!(tx.send(response), Ok(())),
+        tx.send(response).is_ok(),
         "response receiver should be active"
     );
 }
@@ -609,7 +609,7 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
         .body(AsyncBody::from("first response"))
         .unwrap();
     assert!(
-        matches!(first_tx.send(response), Ok(())),
+        first_tx.send(response).is_ok(),
         "response receiver should be active"
     );
 
@@ -626,7 +626,7 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
         .body(AsyncBody::from("second response"))
         .unwrap();
     assert!(
-        matches!(second_tx.send(response), Ok(())),
+        second_tx.send(response).is_ok(),
         "response receiver should be active"
     );
 
@@ -733,7 +733,7 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
         .body(AsyncBody::from("first response"))
         .unwrap();
     assert!(
-        matches!(first_tx.send(response), Ok(())),
+        first_tx.send(response).is_ok(),
         "response receiver should be active"
     );
 
@@ -749,7 +749,7 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
         .body(AsyncBody::from("second response"))
         .unwrap();
     assert!(
-        matches!(second_tx.send(response), Ok(())),
+        second_tx.send(response).is_ok(),
         "response receiver should be active"
     );
 

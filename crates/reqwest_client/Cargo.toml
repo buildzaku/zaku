@@ -21,3 +21,7 @@ futures = { workspace = true }
 http_client = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-util", "macros", "net", "time"] }

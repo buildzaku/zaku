@@ -242,6 +242,10 @@ pub enum ResponseState {
         bytes_received: u64,
         elapsed_duration: Duration,
     },
+    Canceled {
+        bytes_received: u64,
+        elapsed_duration: Duration,
+    },
     Completed {
         status_code: StatusCode,
         bytes_received: u64,
@@ -278,6 +282,16 @@ impl ResponseState {
                 text: "Fetching".into(),
                 color: Color::Muted,
                 selectable: false,
+                elapsed_duration: format_elapsed_duration(*elapsed_duration),
+                bytes_received: format_bytes_received(*bytes_received),
+            }),
+            ResponseState::Canceled {
+                bytes_received,
+                elapsed_duration,
+            } => Some(ResponseSummary {
+                text: "Canceled".into(),
+                color: Color::Muted,
+                selectable: true,
                 elapsed_duration: format_elapsed_duration(*elapsed_duration),
                 bytes_received: format_bytes_received(*bytes_received),
             }),
@@ -546,6 +560,29 @@ impl Response {
         request_id
     }
 
+    pub fn cancel_response(&mut self, cx: &mut Context<Self>) {
+        let ResponseState::Fetching {
+            bytes_received,
+            elapsed_duration,
+        } = self.state
+        else {
+            return;
+        };
+
+        self.request_id = self.request_id.wrapping_add(1);
+        self.set_state(
+            self.request_id,
+            ResponseState::Canceled {
+                bytes_received,
+                elapsed_duration,
+            },
+            cx,
+        );
+        self.set_headers(self.request_id, Vec::new(), cx);
+        self.set_cookies(self.request_id, Vec::new(), cx);
+        self.set_payload(self.request_id, String::new(), None, None, cx);
+    }
+
     pub fn state(&self) -> &ResponseState {
         &self.state
     }
@@ -622,6 +659,7 @@ impl ResponsePanel {
                     match response.state() {
                         ResponseState::Idle => None,
                         ResponseState::Fetching { .. }
+                        | ResponseState::Canceled { .. }
                         | ResponseState::Completed { .. }
                         | ResponseState::Error { .. } => Some(response.editor()),
                     }
@@ -849,6 +887,7 @@ impl ResponsePanel {
             match response.state() {
                 ResponseState::Idle => return self.render_send_request_hint(cx),
                 ResponseState::Fetching { .. }
+                | ResponseState::Canceled { .. }
                 | ResponseState::Completed { .. }
                 | ResponseState::Error { .. } => response.editor(),
             }
@@ -872,7 +911,9 @@ impl ResponsePanel {
             let is_fetching = match response.state() {
                 ResponseState::Idle => return self.render_send_request_hint(cx),
                 ResponseState::Fetching { .. } => true,
-                ResponseState::Completed { .. } | ResponseState::Error { .. } => false,
+                ResponseState::Canceled { .. }
+                | ResponseState::Completed { .. }
+                | ResponseState::Error { .. } => false,
             };
 
             (
@@ -960,7 +1001,9 @@ impl ResponsePanel {
             let is_fetching = match response.state() {
                 ResponseState::Idle => return self.render_send_request_hint(cx),
                 ResponseState::Fetching { .. } => true,
-                ResponseState::Completed { .. } | ResponseState::Error { .. } => false,
+                ResponseState::Canceled { .. }
+                | ResponseState::Completed { .. }
+                | ResponseState::Error { .. } => false,
             };
 
             (
