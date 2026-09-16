@@ -2269,7 +2269,7 @@ fn prepaint_scrollbar(
 
     let track_hitbox = window.insert_hitbox(track_bounds, HitboxBehavior::Normal);
 
-    let colors = cx.theme().colors();
+    let theme_colors = cx.theme().colors();
     let scrollbar_edges = match axis {
         Axis::Horizontal => Edges {
             top: gpui::px(0.0),
@@ -2288,9 +2288,9 @@ fn prepaint_scrollbar(
     let track_quad = gpui::quad(
         track_bounds,
         Corners::default(),
-        colors.scrollbar_track_background,
+        theme_colors.scrollbar_track_background,
         scrollbar_edges,
-        colors.scrollbar_track_border,
+        theme_colors.scrollbar_track_border,
         BorderStyle::Solid,
     );
 
@@ -2321,11 +2321,11 @@ fn prepaint_scrollbar(
         let thumb_hitbox = window.insert_hitbox(thumb_bounds, HitboxBehavior::Normal);
 
         let thumb_color = if is_dragging {
-            colors.scrollbar_thumb_active_background
+            theme_colors.scrollbar_thumb_active_background
         } else if thumb_hitbox.is_hovered(window) {
-            colors.scrollbar_thumb_hover_background
+            theme_colors.scrollbar_thumb_hover_background
         } else {
-            colors.scrollbar_thumb_background
+            theme_colors.scrollbar_thumb_background
         };
 
         let thumb_quad = gpui::quad(
@@ -2333,7 +2333,7 @@ fn prepaint_scrollbar(
             Corners::default(),
             thumb_color,
             scrollbar_edges,
-            colors.scrollbar_thumb_border,
+            theme_colors.scrollbar_thumb_border,
             BorderStyle::Solid,
         );
 

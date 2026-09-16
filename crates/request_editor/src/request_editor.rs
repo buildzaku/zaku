@@ -623,7 +623,7 @@ fn input_box(editor: &Entity<Editor>, disabled: bool, cx: &mut App) -> Div {
         editor.set_text_style_refinement(text_style);
     });
 
-    let colors = cx.theme().colors();
+    let theme_colors = cx.theme().colors();
     let focus_handle = editor.focus_handle(cx).tab_index(0).tab_stop(true);
     gpui::div()
         .flex()
@@ -635,17 +635,17 @@ fn input_box(editor: &Entity<Editor>, disabled: bool, cx: &mut App) -> Div {
         .rounded_md()
         .border_1()
         .border_color(if disabled {
-            colors.border_disabled
+            theme_colors.border_disabled
         } else {
-            colors.border_variant
+            theme_colors.border_variant
         })
-        .bg(colors.editor_background)
+        .bg(theme_colors.editor_background)
         .track_focus(&focus_handle)
         .focus(|this| {
             this.border_color(if disabled {
-                colors.border_disabled
+                theme_colors.border_disabled
             } else {
-                colors.border_focused
+                theme_colors.border_focused
             })
         })
         .child(editor.clone())
@@ -1605,7 +1605,7 @@ impl RequestEditor {
                 .anchor(Anchor::TopRight)
                 .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
         });
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
         let is_raw_body = matches!(
             request.http.body_type,
             Some(
@@ -1624,11 +1624,11 @@ impl RequestEditor {
 
         let render_tab =
             |id: ElementId, active: bool, title: SharedString, tab: RequestEditorTab| {
-                let colors = cx.theme().colors();
+                let theme_colors = cx.theme().colors();
                 let text_color = if active {
-                    Color::Custom(colors.panel_tab_active_foreground)
+                    Color::Custom(theme_colors.panel_tab_active_foreground)
                 } else {
-                    Color::Custom(colors.panel_tab_inactive_foreground)
+                    Color::Custom(theme_colors.panel_tab_inactive_foreground)
                 };
                 let rows = match tab {
                     RequestEditorTab::Parameters => request.http.params.as_slice(),
@@ -1677,7 +1677,7 @@ impl RequestEditor {
                                         .right_0()
                                         .bottom_0()
                                         .h(DynamicSpacing::Base01.px(cx))
-                                        .bg(colors.panel_tab_active_foreground),
+                                        .bg(theme_colors.panel_tab_active_foreground),
                                 )
                             })
                             .child(
@@ -1695,7 +1695,7 @@ impl RequestEditor {
                                         .px_1()
                                         .py_0p5()
                                         .rounded_sm()
-                                        .bg(colors.element_background)
+                                        .bg(theme_colors.element_background)
                                         .child(
                                             Text::new(count.to_string())
                                                 .size(TextSize::XSmall)
@@ -1728,8 +1728,8 @@ impl RequestEditor {
             .pl_1()
             .pr_2()
             .border_y_1()
-            .border_color(colors.border)
-            .bg(colors.panel_tab_bar_background)
+            .border_color(theme_colors.border)
+            .bg(theme_colors.panel_tab_bar_background)
             .child(render_tab(
                 ElementId::Name("parameters-tab".into()),
                 active_tab == RequestEditorTab::Parameters,
@@ -1872,7 +1872,7 @@ impl RequestEditor {
             RequestKvKind::Header => &self.headers_scroll_handle,
             RequestKvKind::FormUrlEncoded => &self.form_url_encoded_scroll_handle,
         };
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
 
         gpui::div()
             .flex()
@@ -1903,7 +1903,7 @@ impl RequestEditor {
                     .tracked_scroll_handle(scroll_handle)
                     .with_track_along(
                         ScrollAxes::Vertical,
-                        colors.scrollbar_track_background,
+                        theme_colors.scrollbar_track_background,
                         TrackLayout::Overlay,
                     ),
                 window,
@@ -1955,7 +1955,7 @@ impl RequestEditor {
                     .into_any_element(),
             ),
         };
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
 
         gpui::div()
             .id("body")
@@ -1964,7 +1964,7 @@ impl RequestEditor {
             .w_full()
             .flex_1()
             .min_h_0()
-            .bg(colors.panel_background)
+            .bg(theme_colors.panel_background)
             .children(body)
             .into_any_element()
     }
@@ -2025,19 +2025,19 @@ impl RequestEditor {
             })
         };
         let is_fetching = self.is_fetching(cx);
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
         let button_variant = if is_fetching {
             ButtonVariant::Custom {
-                background: colors.element_background,
-                foreground: colors.button_secondary_foreground,
-                hover_background: colors.element_background,
+                background: theme_colors.element_background,
+                foreground: theme_colors.button_secondary_foreground,
+                hover_background: theme_colors.element_background,
                 border: gpui::transparent_black(),
             }
         } else {
             ButtonVariant::Custom {
-                background: colors.text_accent.opacity(0.8),
-                foreground: colors.surface_background,
-                hover_background: colors.text_accent.opacity(0.8),
+                background: theme_colors.text_accent.opacity(0.8),
+                foreground: theme_colors.surface_background,
+                hover_background: theme_colors.text_accent.opacity(0.8),
                 border: gpui::transparent_black(),
             }
         };
@@ -2049,7 +2049,7 @@ impl RequestEditor {
             .w_full()
             .flex_1()
             .min_h_0()
-            .bg(colors.panel_background)
+            .bg(theme_colors.panel_background)
             .child(
                 gpui::div()
                     .flex()

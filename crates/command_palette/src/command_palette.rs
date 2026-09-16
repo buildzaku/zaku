@@ -515,16 +515,16 @@ impl PickerDelegate for CommandPaletteDelegate {
     ) -> Option<Self::ListItem> {
         let matching_command = self.matches.get(index)?;
         let command = self.commands.get(matching_command.candidate_id)?;
-        let colors = cx.theme().colors();
+        let theme_colors = cx.theme().colors();
         let hover_background = if selected {
-            colors.element_selection_background
+            theme_colors.element_selection_background
         } else {
-            colors.element_hover
+            theme_colors.element_hover
         };
         let active_background = if selected {
-            colors.element_selection_background
+            theme_colors.element_selection_background
         } else {
-            colors.element_active
+            theme_colors.element_active
         };
 
         Some(
@@ -533,7 +533,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                 .spacing(ListItemSpacing::Sparse)
                 .hover_background(hover_background)
                 .active_background(active_background)
-                .selected_background(colors.element_selection_background)
+                .selected_background(theme_colors.element_selection_background)
                 .toggle_state(selected)
                 .child(
                     gpui::div()
