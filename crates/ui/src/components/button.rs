@@ -505,7 +505,8 @@ impl RenderOnce for Button {
         let text_size = self.text_size.unwrap_or_default();
 
         self.base
-            .id(self.id)
+            .id(self.id.clone())
+            .debug_selector(|| format!("BUTTON-{}", self.id))
             .when_some(self.tooltip, |this, tooltip| {
                 this.tooltip_show_delay(TOOLTIP_SHOW_DELAY)
                     .tooltip(move |window, cx| tooltip(window, cx))

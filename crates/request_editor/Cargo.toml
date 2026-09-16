@@ -48,6 +48,7 @@ indoc = { workspace = true }
 parking_lot = { workspace = true }
 path = { workspace = true, features = ["test"] }
 project = { workspace = true, features = ["test"] }
+response_panel = { workspace = true, features = ["test"] }
 serde_json = { workspace = true }
 settings = { workspace = true, features = ["test"] }
 toml = { workspace = true }
