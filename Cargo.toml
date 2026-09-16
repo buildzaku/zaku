@@ -81,7 +81,7 @@ async-process = { version = "2.5" }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
 clap = { version = "4.6", features = ["derive"] }
-clock = { git = "https://github.com/zed-industries/zed", rev = "72c53bf0aa", package = "clock" }
+clock = { git = "https://github.com/zed-industries/zed", rev = "53fcf4be37", package = "clock" }
 cookie = { version = "0.18" }
 crash-handler = { version = "0.8" }
 derive_more = { version = "2.1", features = ["deref", "deref_mut"] }
@@ -91,18 +91,18 @@ embed-resource = { version = "3.0" }
 futures = { version = "0.3" }
 fuzzy_nucleo = {
   git = "https://github.com/zed-industries/zed",
-  rev = "72c53bf0aa",
+  rev = "53fcf4be37",
   package = "fuzzy_nucleo"
 }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "72c53bf0aa", package = "gpui" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "53fcf4be37", package = "gpui" }
 gpui_platform = {
   git = "https://github.com/zed-industries/zed",
-  rev = "72c53bf0aa",
+  rev = "53fcf4be37",
   package = "gpui_platform"
 }
 gpui_util = {
   git = "https://github.com/zed-industries/zed",
-  rev = "72c53bf0aa",
+  rev = "53fcf4be37",
   package = "gpui_util"
 }
 hex = { version = "0.4" }
@@ -172,14 +172,14 @@ streaming-iterator = { version = "0.1" }
 strum = { version = "0.28", features = ["derive"] }
 sum_tree = {
   git = "https://github.com/zed-industries/zed",
-  rev = "72c53bf0aa",
+  rev = "53fcf4be37",
   package = "sum_tree"
 }
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
 sysinfo = { version = "0.39" }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
-text = { git = "https://github.com/zed-industries/zed", rev = "72c53bf0aa", package = "text" }
+text = { git = "https://github.com/zed-industries/zed", rev = "53fcf4be37", package = "text" }
 thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
