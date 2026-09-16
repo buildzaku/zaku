@@ -33,9 +33,9 @@ use response_panel::{
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
-    DropdownVariant, DynamicSpacing, FixedWidth, IconAsset, IconButton, IconButtonShape,
-    IconPosition, IconSize, Indicator, LineHeightStyle, ScrollAxes, Scrollbars, Text, TextCommon,
-    TextSize, ToggleState, Tooltip, TrackLayout, WithScrollbar,
+    DropdownVariant, DynamicSpacing, FixedWidth, IconAsset, IconButton, IconPosition, IconSize,
+    Indicator, LineHeightStyle, ScrollAxes, Scrollbars, Text, TextCommon, TextSize, ToggleState,
+    Tooltip, TrackLayout, WithScrollbar,
 };
 use workspace::{AppState, Workspace, WorkspaceEvent, pane::Pane};
 
@@ -524,9 +524,9 @@ impl RequestKvKind {
 
     fn remove_id(self) -> &'static str {
         match self {
-            RequestKvKind::Param => "param-delete",
-            RequestKvKind::Header => "header-delete",
-            RequestKvKind::FormUrlEncoded => "form-urlencoded-delete",
+            RequestKvKind::Param => "param-remove",
+            RequestKvKind::Header => "header-remove",
+            RequestKvKind::FormUrlEncoded => "form-urlencoded-remove",
         }
     }
 
@@ -1799,11 +1799,20 @@ impl RequestEditor {
                         }
                     },
                 ));
-                let delete_button = IconButton::new((kind.remove_id(), index), IconAsset::Trash)
-                    .shape(IconButtonShape::Square)
-                    .variant(ButtonVariant::Outline)
+                let theme_colors = cx.theme().colors();
+                let remove_button = IconButton::new((kind.remove_id(), index), IconAsset::Close)
+                    .variant(ButtonVariant::Custom {
+                        background: theme_colors.element_background.opacity(0.5),
+                        foreground: theme_colors.button_secondary_foreground,
+                        hover_background: theme_colors.button_secondary_hover_background,
+                        border: gpui::transparent_black(),
+                    })
+                    .size(ButtonSize::None)
+                    .width(gpui::rems(1.0))
+                    .height(gpui::rems(1.0))
+                    .icon_size(IconSize::Small)
                     .icon_color(Color::Muted)
-                    .tooltip(Tooltip::text("Delete"))
+                    .tooltip(Tooltip::text("Remove"))
                     .on_click(cx.listener(move |request_editor, _, window, cx| {
                         let RequestEditorState::Ready(request) = &mut request_editor.request else {
                             return;
@@ -1833,7 +1842,7 @@ impl RequestEditor {
                             .gap_2p5()
                             .child(self::input_box(&row.key, row.disabled, cx).items_center())
                             .child(self::input_box(&row.value, row.disabled, cx))
-                            .child(gpui::div().flex().items_center().child(delete_button)),
+                            .child(gpui::div().flex().items_center().child(remove_button)),
                     )
             })
             .collect::<Vec<_>>();

@@ -49,7 +49,7 @@ impl IconButton {
         self
     }
 
-    pub fn height(mut self, height: DefiniteLength) -> Self {
+    pub fn height(mut self, height: impl Into<DefiniteLength>) -> Self {
         self.base = self.base.height(height);
         self
     }
@@ -162,7 +162,7 @@ impl RenderOnce for IconButton {
             .map(|this| match self.shape {
                 IconButtonShape::Square => {
                     let size = self.icon_size.square(window, cx);
-                    this.width(size).height(size.into())
+                    this.width(size).height(size)
                 }
                 IconButtonShape::Wide => this,
             })

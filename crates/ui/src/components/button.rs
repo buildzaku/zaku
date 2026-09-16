@@ -336,8 +336,8 @@ impl Button {
         self
     }
 
-    pub fn height(mut self, height: DefiniteLength) -> Self {
-        self.height = Some(height);
+    pub fn height(mut self, height: impl Into<DefiniteLength>) -> Self {
+        self.height = Some(height.into());
         self
     }
 
