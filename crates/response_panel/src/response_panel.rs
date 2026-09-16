@@ -347,8 +347,8 @@ pub struct Response {
 
 impl Response {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let (pretty_editor, pretty_payload) = Self::new_editor(PLAIN_TEXT.clone(), window, cx);
-        let (raw_editor, raw_payload) = Self::new_editor(PLAIN_TEXT.clone(), window, cx);
+        let (pretty_editor, pretty_payload) = Self::new_editor(window, cx);
+        let (raw_editor, raw_payload) = Self::new_editor(window, cx);
         let response_id = cx.entity_id();
         let summary_text: Entity<TextInteractionState<ResponseSummaryTextId>> =
             cx.new(|cx| TextInteractionState::new(cx));
@@ -385,13 +385,9 @@ impl Response {
         }
     }
 
-    fn new_editor(
-        language: Arc<Language>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (Entity<Editor>, Entity<MultiBuffer>) {
-        let payload = cx.new(move |cx| {
-            let buffer = cx.new(|cx| Buffer::local("", cx).with_language(language, cx));
+    fn new_editor(window: &mut Window, cx: &mut App) -> (Entity<Editor>, Entity<MultiBuffer>) {
+        let payload = cx.new(|cx| {
+            let buffer = cx.new(|cx| Buffer::local("", cx).with_language(PLAIN_TEXT.clone(), cx));
             MultiBuffer::singleton(buffer, cx)
         });
         let editor = cx.new(|cx| {
@@ -526,14 +522,8 @@ impl Response {
             .raw_editor
             .focus_handle(cx)
             .contains_focused(window, cx);
-        let language = self
-            .raw_payload
-            .read(cx)
-            .as_singleton()
-            .and_then(|buffer| buffer.read(cx).language().cloned())
-            .unwrap_or_else(|| PLAIN_TEXT.clone());
-        let (pretty_editor, pretty_payload) = Self::new_editor(language.clone(), window, cx);
-        let (raw_editor, raw_payload) = Self::new_editor(language, window, cx);
+        let (pretty_editor, pretty_payload) = Self::new_editor(window, cx);
+        let (raw_editor, raw_payload) = Self::new_editor(window, cx);
         let request_id = self.request_id.wrapping_add(1);
 
         self.request_id = request_id;
@@ -1199,10 +1189,16 @@ impl ResponsePanel {
                 .summary()
                 .map(|summary| (summary, response.summary_text.clone()))
         });
-        let response = self
-            .response
-            .as_ref()
-            .filter(|_| response_summary.is_some() && active_tab == ResponsePanelTab::Body);
+        let response = self.response.as_ref().filter(|response| {
+            response_summary.is_some()
+                && active_tab == ResponsePanelTab::Body
+                && !response
+                    .read(cx)
+                    .raw_payload
+                    .read(cx)
+                    .snapshot(cx)
+                    .is_empty()
+        });
         let display_mode_dropdown = response.map(|response| {
             let response = response.read(cx);
             let language_name = response
