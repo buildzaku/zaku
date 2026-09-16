@@ -584,7 +584,7 @@ mod tests {
 
             gpui::div().w(gpui::px(500.0)).h(gpui::px(64.0)).child(
                 SelectableTextGroup::new(&interaction_state)
-                    .debug_selector(|| "selectable-text-group".into())
+                    .debug_selector(|| "SELECTABLE_TEXT_GROUP".into())
                     .flex()
                     .items_center()
                     .justify_end()
@@ -643,7 +643,7 @@ mod tests {
 
         let items = ["foo", "bar", "baz"];
         let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("selectable-text-group").unwrap();
+        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
         cx.simulate_click(group_bounds.center(), Modifiers::default());
         cx.dispatch_action(actions::text::SelectAll);
 
@@ -656,7 +656,7 @@ mod tests {
 
         let items = ["foo", "bar", "baz"];
         let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("selectable-text-group").unwrap();
+        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
         let inside_group_offset = gpui::px(2.0);
         let start = gpui::point(
             group_bounds.left() + inside_group_offset,
@@ -677,7 +677,7 @@ mod tests {
 
         let items = ["foo", "bar", "baz"];
         let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("selectable-text-group").unwrap();
+        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
         let inside_group_offset = gpui::px(2.0);
         let outside_group_offset = gpui::px(8.0);
         let start = gpui::point(
@@ -699,7 +699,7 @@ mod tests {
 
         let items = ["foo", "bar", "baz"];
         let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("selectable-text-group").unwrap();
+        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
         let inside_group_offset = gpui::px(2.0);
         let outside_group_offset = gpui::px(8.0);
         let start = gpui::point(
@@ -721,7 +721,7 @@ mod tests {
 
         let items = ["foo", "bar", "baz"];
         let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("selectable-text-group").unwrap();
+        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
         let outside_group_offset = gpui::px(8.0);
         let text_boundary_offset = gpui::px(1.0);
         let bar_id = items.iter().position(|item| *item == "bar").unwrap();
@@ -746,7 +746,7 @@ mod tests {
 
         let items = ["foo", "bar", "baz"];
         let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("selectable-text-group").unwrap();
+        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
         let outside_group_offset = gpui::px(8.0);
         let text_boundary_offset = gpui::px(1.0);
         let bar_id = items.iter().position(|item| *item == "bar").unwrap();
@@ -771,7 +771,7 @@ mod tests {
 
         let items = ["foo", "bar", "baz"];
         let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("selectable-text-group").unwrap();
+        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
         let outside_group_offset = gpui::px(8.0);
         let bar_id = items.iter().position(|item| *item == "bar").unwrap();
         let byte_offset = 1;
@@ -794,7 +794,7 @@ mod tests {
 
         let items = ["foo", "bar", "baz"];
         let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("selectable-text-group").unwrap();
+        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
         let outside_group_offset = gpui::px(8.0);
         let bar_id = items.iter().position(|item| *item == "bar").unwrap();
         let byte_offset = 1;

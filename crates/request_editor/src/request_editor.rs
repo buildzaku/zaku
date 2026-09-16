@@ -2003,19 +2003,24 @@ impl RequestEditor {
                     )
                     .child(gpui::div().flex_1().child(url))
                     .child(
-                        Button::new("request-send", if is_fetching { "Cancel" } else { "Send" })
-                            .variant(button_variant)
-                            .size(ButtonSize::Large)
-                            .width(ui::rems_from_px(64.0_f32))
-                            .font_weight(FontWeight::MEDIUM)
-                            .on_click(cx.listener(move |request_editor, _, window, cx| {
+                        Button::new(
+                            "request-send-cancel",
+                            if is_fetching { "Cancel" } else { "Send" },
+                        )
+                        .variant(button_variant)
+                        .size(ButtonSize::Large)
+                        .width(ui::rems_from_px(64.0_f32))
+                        .font_weight(FontWeight::MEDIUM)
+                        .on_click(cx.listener(
+                            move |request_editor, _, window, cx| {
                                 if request_editor.is_fetching(cx) {
                                     request_editor.cancel_request(cx);
                                 } else {
                                     request_editor.unpreview_tab(cx);
                                     request_editor.send_request(window, cx);
                                 }
-                            })),
+                            },
+                        )),
                     ),
             )
             .child(self.render_tab_bar(request, window, cx))
@@ -2045,17 +2050,23 @@ impl Render for RequestEditor {
 mod tests {
     use super::*;
 
-    use futures::channel::{mpsc, oneshot};
-    use gpui::{TestAppContext, VisualTestContext};
+    use futures::{
+        TryStreamExt,
+        channel::{
+            mpsc::{self, TryRecvError},
+            oneshot,
+        },
+    };
+    use gpui::{Modifiers, TestAppContext, VisualTestContext};
     use indoc::indoc;
     use parking_lot::Mutex;
     use serde_json::json;
-    use std::{cell::RefCell, rc::Rc};
+    use std::{cell::RefCell, io, rc::Rc};
 
     use fs::{Fs, TempFs};
     use http_client::{FakeHttpClient, Response, StatusCode};
     use path::rel_path;
-    use settings::SettingsStore;
+    use settings::{KeymapFile, SettingsStore};
     use theme::LoadThemes;
     use util_macros::path;
     use workspace::{AppState, DockPosition, Item, Root};
@@ -2508,6 +2519,473 @@ mod tests {
                 .get("Content-Type")
                 .and_then(|value| value.to_str().ok()),
             Some("application/x-www-form-urlencoded")
+        );
+    }
+
+    #[gpui::test]
+    async fn test_cancel_request_before_headers(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, mut rx) = mpsc::unbounded();
+        let http_client = FakeHttpClient::create(move |_| {
+            let (response_tx, response_rx) = oneshot::channel();
+            tx.unbounded_send(response_tx).unwrap();
+
+            async move { Ok(response_rx.await.unwrap()) }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/me"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, response_panel, cx) = build_workspace(&project, cx);
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        cx.dispatch_action(actions::workspace::SendRequest);
+        let response_tx = rx.try_recv().unwrap();
+        assert!(request_editor.read_with(cx, |editor, cx| editor.is_fetching(cx)));
+
+        cx.dispatch_action(actions::workspace::SendRequest);
+        assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
+        assert!(!response_tx.is_canceled());
+
+        let button_bounds = cx.debug_bounds("BUTTON-request-send-cancel").unwrap();
+        cx.simulate_click(button_bounds.center(), Modifiers::default());
+
+        assert!(
+            response_tx.is_canceled(),
+            "cancel should drop the pending send future"
+        );
+        request_editor.read_with(cx, |editor, cx| {
+            assert!(matches!(
+                editor.response().unwrap().read(cx).state(),
+                ResponseState::Canceled { .. }
+            ));
+        });
+
+        let button_bounds = cx.debug_bounds("BUTTON-request-send-cancel").unwrap();
+        cx.simulate_click(button_bounds.center(), Modifiers::default());
+        let response_tx = rx.try_recv().unwrap();
+        assert!(request_editor.read_with(cx, |editor, cx| editor.is_fetching(cx)));
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("response after cancellation"))
+            .unwrap();
+        assert!(response_tx.send(response).is_ok());
+        cx.run_until_parked();
+
+        request_editor.read_with(cx, |editor, cx| {
+            assert!(matches!(
+                editor.response().unwrap().read(cx).state(),
+                ResponseState::Completed {
+                    status_code: StatusCode::OK,
+                    ..
+                }
+            ));
+        });
+        assert_eq!(
+            response_panel.read_with(cx, |panel, cx| panel.text(cx)),
+            "response after cancellation"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_cancel_request_during_body_download(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, rx) = mpsc::unbounded::<io::Result<Vec<u8>>>();
+        let rx = Mutex::new(Some(rx));
+        let http_client = FakeHttpClient::create(move |_| {
+            let rx = rx.lock().take().unwrap();
+
+            async move {
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "text/plain")
+                    .header("Set-Cookie", "foo=bar")
+                    .body(AsyncBody::from_reader(rx.into_async_read()))
+                    .unwrap())
+            }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/me"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, response_panel, cx) = build_workspace(&project, cx);
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        cx.dispatch_action(actions::workspace::SendRequest);
+        tx.unbounded_send(Ok(b"partial response".to_vec())).unwrap();
+        cx.executor().advance_clock(Duration::from_millis(50));
+        cx.run_until_parked();
+
+        let elapsed_duration = request_editor.read_with(cx, |editor, cx| {
+            let response = editor.response().unwrap();
+            let ResponseState::Fetching {
+                bytes_received,
+                elapsed_duration,
+            } = response.read(cx).state()
+            else {
+                panic!("request should still be downloading the body");
+            };
+            assert_eq!(*bytes_received, 16);
+            *elapsed_duration
+        });
+        response_panel.read_with(cx, |panel, cx| {
+            assert_eq!(panel.headers_list_state(cx).unwrap().item_count(), 2);
+            assert_eq!(panel.cookies_list_state(cx).unwrap().item_count(), 1);
+        });
+
+        cx.dispatch_action(actions::workspace::CancelRequest);
+
+        assert!(
+            tx.is_closed(),
+            "cancel should drop the response body reader"
+        );
+        request_editor.read_with(cx, |editor, cx| {
+            let response = editor.response().unwrap();
+            let ResponseState::Canceled {
+                bytes_received,
+                elapsed_duration: canceled_duration,
+            } = response.read(cx).state()
+            else {
+                panic!("request should remain canceled after dropping the body reader");
+            };
+            assert_eq!(*bytes_received, 16);
+            assert_eq!(*canceled_duration, elapsed_duration);
+        });
+        response_panel.read_with(cx, |panel, cx| {
+            assert_eq!(panel.text(cx), "");
+            assert_eq!(panel.headers_list_state(cx).unwrap().item_count(), 0);
+            assert_eq!(panel.cookies_list_state(cx).unwrap().item_count(), 0);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_cancel_request_on_editor_close(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, mut rx) = mpsc::unbounded();
+        let http_client = FakeHttpClient::create(move |request| {
+            let (response_tx, response_rx) = oneshot::channel();
+            tx.unbounded_send((request.uri().path().to_owned(), response_tx))
+                .unwrap();
+
+            async move { Ok(response_rx.await.unwrap()) }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "first.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/first"
+                    "#},
+                    "second.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/second"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, response_panel, cx) = build_workspace(&project, cx);
+
+        let first_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+        cx.dispatch_action(actions::workspace::SendRequest);
+        let (path, first_tx) = rx.try_recv().unwrap();
+        assert_eq!(path, "/first");
+
+        let second_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+        cx.dispatch_action(actions::workspace::SendRequest);
+        let (path, second_tx) = rx.try_recv().unwrap();
+        assert_eq!(path, "/second");
+
+        cx.dispatch_action(actions::workspace::CancelRequest);
+        assert!(second_tx.is_canceled());
+        assert!(first_editor.read_with(cx, |editor, cx| editor.is_fetching(cx)));
+
+        cx.dispatch_action(actions::workspace::SendRequest);
+        let (path, second_tx) = rx.try_recv().unwrap();
+        assert_eq!(path, "/second");
+        assert!(second_editor.read_with(cx, |editor, cx| editor.is_fetching(cx)));
+
+        second_editor.update_in(cx, |editor, window, cx| {
+            editor.focus_handle(cx).focus(window, cx);
+        });
+        cx.dispatch_action(actions::pane::CloseActiveItem::default());
+
+        assert!(
+            second_tx.is_canceled(),
+            "closing the editor should drop its pending send future"
+        );
+        second_editor.read_with(cx, |editor, cx| {
+            assert!(matches!(
+                editor.response().unwrap().read(cx).state(),
+                ResponseState::Canceled { .. }
+            ));
+        });
+        workspace.read_with(cx, |workspace, cx| {
+            let pane = workspace.pane().read(cx);
+            assert_eq!(pane.items_len(), 1);
+            assert_eq!(
+                pane.active_item().unwrap().item_id(),
+                Entity::entity_id(&first_editor)
+            );
+        });
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("first response"))
+            .unwrap();
+        assert!(first_tx.send(response).is_ok());
+        cx.run_until_parked();
+
+        assert_eq!(
+            response_panel.read_with(cx, |panel, cx| panel.text(cx)),
+            "first response"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_escape_cancels_request(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, mut rx) = mpsc::unbounded();
+        let http_client = FakeHttpClient::create(move |_| {
+            let (response_tx, response_rx) = oneshot::channel();
+            tx.unbounded_send(response_tx).unwrap();
+
+            async move { Ok(response_rx.await.unwrap()) }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/me"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, response_panel, cx) = build_workspace(&project, cx);
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        cx.update(|_, cx| {
+            #[cfg(target_os = "linux")]
+            let key_bindings = KeymapFile::load_asset("keymaps/default_linux.jsonc", cx).unwrap();
+
+            #[cfg(target_os = "macos")]
+            let key_bindings = KeymapFile::load_asset("keymaps/default_macos.jsonc", cx).unwrap();
+
+            #[cfg(target_os = "windows")]
+            let key_bindings = KeymapFile::load_asset("keymaps/default_windows.jsonc", cx).unwrap();
+
+            cx.bind_keys(key_bindings);
+        });
+
+        cx.dispatch_action(actions::workspace::SendRequest);
+        let response_tx = rx.try_recv().unwrap();
+
+        let focus_handle = request_editor.read_with(cx, |editor, cx| {
+            let RequestEditorState::Ready(request) = &editor.request else {
+                panic!("request editor should be ready");
+            };
+            request.http.url.focus_handle(cx)
+        });
+        cx.update(|window, cx| focus_handle.focus(window, cx));
+        let button_bounds = cx.debug_bounds("BUTTON-request-method").unwrap();
+        cx.simulate_click(button_bounds.center(), Modifiers::default());
+        // Popover menus defer focus until the second frame.
+        for _ in 0..2 {
+            cx.update(|window, cx| window.simulate_next_frame(cx));
+        }
+        assert!(cx.debug_bounds("MENU_ITEM-GET").is_some());
+
+        cx.simulate_keystrokes("escape");
+        assert!(cx.debug_bounds("MENU_ITEM-GET").is_none());
+        assert!(
+            !response_tx.is_canceled(),
+            "escape should only dismiss the method dropdown"
+        );
+        assert!(request_editor.read_with(cx, |editor, cx| editor.is_fetching(cx)));
+        cx.update(|window, cx| assert!(focus_handle.contains_focused(window, cx)));
+
+        cx.simulate_keystrokes("escape");
+        assert!(
+            response_tx.is_canceled(),
+            "escape should cancel when the request editor is focused"
+        );
+
+        cx.dispatch_action(actions::workspace::SendRequest);
+        let response_tx = rx.try_recv().unwrap();
+        response_panel.update_in(cx, |panel, window, cx| {
+            panel.focus_handle(cx).focus(window, cx);
+        });
+        cx.update(|window, cx| window.simulate_next_frame(cx));
+        cx.simulate_keystrokes("escape");
+        assert!(
+            response_tx.is_canceled(),
+            "escape should cancel when the response panel is focused"
+        );
+
+        cx.dispatch_action(actions::workspace::SendRequest);
+        let response_tx = rx.try_recv().unwrap();
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("completed response"))
+            .unwrap();
+        assert!(response_tx.send(response).is_ok());
+        cx.run_until_parked();
+
+        cx.simulate_keystrokes("escape");
+        request_editor.read_with(cx, |editor, cx| {
+            assert!(matches!(
+                editor.response().unwrap().read(cx).state(),
+                ResponseState::Completed {
+                    status_code: StatusCode::OK,
+                    ..
+                }
+            ));
+        });
+        assert_eq!(
+            response_panel.read_with(cx, |panel, cx| panel.text(cx)),
+            "completed response"
         );
     }
 
