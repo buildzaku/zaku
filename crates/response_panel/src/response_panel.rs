@@ -17,8 +17,8 @@ use theme::ActiveTheme;
 use ui::{
     Color, ColumnWidthConfig, ContextMenu, DropdownMenu, DropdownVariant, DynamicSpacing,
     IconAsset, IconPosition, Indicator, KeyBinding, LineHeightStyle, ScrollAxes, Scrollbars,
-    SelectableText, SelectableTextGroup, Table, TableCell, TableInteractionState, Text, TextCommon,
-    TextInteractionState, TextSize,
+    SelectableText, SelectableTextGroup, StyledTypography, Table, TableCell, TableInteractionState,
+    Text, TextCommon, TextInteractionState, TextSize,
 };
 use workspace::{Panel, Workspace};
 
@@ -1091,6 +1091,7 @@ impl ResponsePanel {
     fn render_response_summary(
         response_summary: ResponseSummary,
         summary_text: &Entity<TextInteractionState<ResponseSummaryTextId>>,
+        cx: &App,
     ) -> impl IntoElement {
         let status = response_summary.text;
         let status_color = response_summary.color;
@@ -1129,6 +1130,7 @@ impl ResponsePanel {
                     .overflow_hidden()
                     .items_center()
                     .gap_2()
+                    .tabular_figures(cx)
                     .child(
                         gpui::div().flex().justify_center().items_center().child(
                             SelectableText::new(
@@ -1321,6 +1323,7 @@ impl ResponsePanel {
                                         .py_0p5()
                                         .rounded_sm()
                                         .bg(theme_colors.element_background)
+                                        .tabular_figures(cx)
                                         .child(
                                             Text::new(count.to_string())
                                                 .size(TextSize::XSmall)
@@ -1389,6 +1392,7 @@ impl ResponsePanel {
                             .child(Self::render_response_summary(
                                 response_summary,
                                 &summary_text,
+                                cx,
                             )),
                     )
                 },
