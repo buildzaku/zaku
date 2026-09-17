@@ -1,4 +1,5 @@
-use gpui::{App, Pixels, Rems, SharedString, Window, prelude::*};
+use gpui::{App, FontFeatures, Pixels, Rems, SharedString, Window, prelude::*};
+use std::sync::Arc;
 
 use theme::{ActiveTheme, ThemeSettings};
 
@@ -11,6 +12,19 @@ pub trait StyledTypography: Styled + Sized {
     fn font_ui(self, cx: &App) -> Self {
         let settings = ThemeSettings::get_global(cx);
         self.font_family(settings.ui_font.family.clone())
+    }
+
+    fn tabular_figures(mut self, cx: &App) -> Self {
+        let mut font_features = self
+            .text_style()
+            .font_features
+            .as_ref()
+            .unwrap_or_else(|| &ThemeSettings::get_global(cx).ui_font.features)
+            .tag_value_list()
+            .to_vec();
+        font_features.retain(|(tag, _)| tag != "tnum" && tag != "pnum");
+        font_features.extend([("tnum".into(), 1), ("pnum".into(), 0)]);
+        self.font_features(FontFeatures(Arc::new(font_features)))
     }
 
     fn text_ui_size(self, size: TextSize, cx: &App) -> Self {
