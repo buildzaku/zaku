@@ -34,8 +34,8 @@ use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
     DropdownVariant, DynamicSpacing, FixedWidth, IconAsset, IconButton, IconPosition, IconSize,
-    Indicator, LineHeightStyle, ScrollAxes, Scrollbars, Text, TextCommon, TextSize, ToggleState,
-    Tooltip, TrackLayout, WithScrollbar,
+    Indicator, LineHeightStyle, ScrollAxes, Scrollbars, StyledTypography, Text, TextCommon,
+    TextSize, ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
 use workspace::{AppState, Workspace, WorkspaceEvent, pane::Pane};
 
@@ -1696,6 +1696,7 @@ impl RequestEditor {
                                         .py_0p5()
                                         .rounded_sm()
                                         .bg(theme_colors.element_background)
+                                        .tabular_figures(cx)
                                         .child(
                                             Text::new(count.to_string())
                                                 .size(TextSize::XSmall)
