@@ -27,7 +27,7 @@ pub trait ButtonCommon: Clickable + Disableable {
 
 #[derive(IntoElement)]
 pub struct ButtonLike {
-    base: Div,
+    pub(super) base: Div,
     id: ElementId,
     pub(super) variant: ButtonVariant,
     pub(super) disabled: bool,

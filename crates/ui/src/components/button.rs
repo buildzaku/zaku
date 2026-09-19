@@ -287,8 +287,9 @@ pub struct Button {
 
 impl Button {
     pub fn new(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Self {
-        Self {
-            base: ButtonLike::new(id),
+        let id = id.into();
+        let mut this = Self {
+            base: ButtonLike::new(id.clone()),
             text: text.into(),
             text_color: None,
             text_size: None,
@@ -299,7 +300,9 @@ impl Button {
             start_icon: None,
             end_icon: None,
             font_weight: None,
-        }
+        };
+        this.base.base = this.base.base.debug_selector(|| format!("BUTTON-{id}"));
+        this
     }
 
     pub fn color(mut self, text_color: impl Into<Option<Color>>) -> Self {
