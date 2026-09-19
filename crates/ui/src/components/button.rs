@@ -8,8 +8,8 @@ pub use icon_button::*;
 pub use link_button::*;
 
 use gpui::{
-    AnyView, App, ClickEvent, CursorStyle, DefiniteLength, Div, ElementId, FontWeight, Hsla,
-    MouseButton, Rems, SharedString, Window, prelude::*,
+    AnyView, App, ClickEvent, CursorStyle, DefiniteLength, ElementId, FontWeight, Hsla, Rems,
+    SharedString, Window, prelude::*,
 };
 
 use ::svg::IconAsset;
@@ -17,7 +17,7 @@ use theme::ActiveTheme;
 
 use crate::{
     Clickable, Color, Disableable, DynamicSpacing, FixedWidth, Icon, IconSize, StyledTypography,
-    TOOLTIP_SHOW_DELAY, TextSize, Toggleable,
+    TextSize, Toggleable,
 };
 
 #[derive(Debug, Clone)]
@@ -272,19 +272,10 @@ pub enum IconPosition {
 
 #[derive(IntoElement)]
 pub struct Button {
-    id: ElementId,
-    variant: ButtonVariant,
-    selected: bool,
-    selected_background: Option<Hsla>,
+    base: ButtonLike,
     text: SharedString,
     text_color: Option<Color>,
     text_size: Option<TextSize>,
-    base: Div,
-    cursor_style: CursorStyle,
-    width: Option<DefiniteLength>,
-    height: Option<DefiniteLength>,
-    size: ButtonSize,
-    disabled: bool,
     icon: Option<IconAsset>,
     icon_position: Option<IconPosition>,
     icon_size: Option<IconSize>,
@@ -292,27 +283,15 @@ pub struct Button {
     start_icon: Option<Icon>,
     end_icon: Option<Icon>,
     font_weight: Option<FontWeight>,
-    tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
-    on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
-    tab_index: Option<isize>,
 }
 
 impl Button {
     pub fn new(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Self {
         Self {
-            id: id.into(),
-            variant: ButtonVariant::default(),
-            selected: false,
-            selected_background: None,
+            base: ButtonLike::new(id),
             text: text.into(),
             text_color: None,
             text_size: None,
-            base: gpui::div(),
-            cursor_style: CursorStyle::PointingHand,
-            width: None,
-            height: None,
-            size: ButtonSize::default(),
-            disabled: false,
             icon: None,
             icon_position: None,
             icon_size: None,
@@ -320,9 +299,6 @@ impl Button {
             start_icon: None,
             end_icon: None,
             font_weight: None,
-            tooltip: None,
-            on_click: None,
-            tab_index: None,
         }
     }
 
@@ -337,7 +313,7 @@ impl Button {
     }
 
     pub fn height(mut self, height: impl Into<DefiniteLength>) -> Self {
-        self.height = Some(height.into());
+        self.base = self.base.height(height);
         self
     }
 
@@ -377,94 +353,84 @@ impl Button {
     }
 
     pub fn tab_index(mut self, tab_index: isize) -> Self {
-        self.tab_index = Some(tab_index);
+        self.base = self.base.tab_index(tab_index);
         self
     }
 }
 
 impl Disableable for Button {
     fn disabled(mut self, disabled: bool) -> Self {
-        self.disabled = disabled;
+        self.base = self.base.disabled(disabled);
         self
     }
 }
 
 impl Toggleable for Button {
     fn toggle_state(mut self, selected: bool) -> Self {
-        self.selected = selected;
+        self.base = self.base.toggle_state(selected);
         self
     }
 }
 
 impl SelectableButton for Button {
     fn selected_background(mut self, background: Hsla) -> Self {
-        self.selected_background = Some(background);
+        self.base = self.base.selected_background(background);
         self
     }
 }
 
 impl Clickable for Button {
     fn on_click(mut self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.base = self.base.on_click(handler);
         self
     }
 
     fn cursor_style(mut self, cursor_style: CursorStyle) -> Self {
-        self.cursor_style = cursor_style;
+        self.base = self.base.cursor_style(cursor_style);
         self
     }
 }
 
 impl FixedWidth for Button {
     fn width(mut self, width: impl Into<DefiniteLength>) -> Self {
-        self.width = Some(width.into());
+        self.base = self.base.width(width);
         self
     }
 
     fn full_width(mut self) -> Self {
-        self.width = Some(gpui::relative(1.0));
+        self.base = self.base.full_width();
         self
     }
 }
 
 impl ButtonCommon for Button {
     fn id(&self) -> &ElementId {
-        &self.id
+        self.base.id()
     }
 
     fn tooltip(mut self, tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static) -> Self {
-        self.tooltip = Some(Box::new(tooltip));
+        self.base = self.base.tooltip(tooltip);
         self
     }
 
     fn variant(mut self, variant: ButtonVariant) -> Self {
-        self.variant = variant;
+        self.base = self.base.variant(variant);
         self
     }
 
     fn size(mut self, size: ButtonSize) -> Self {
-        self.size = size;
+        self.base = self.base.size(size);
         self
     }
 }
 
 impl RenderOnce for Button {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let variant = self.variant;
-        let style = variant.enabled(cx);
-        let hovered_style = variant.hovered(cx);
-        let selected = self.selected && !self.disabled;
-        let background = if selected {
-            self.selected_background.unwrap_or(style.background)
-        } else {
-            style.background
-        };
-        let is_outlined = matches!(
-            self.variant,
-            ButtonVariant::Outline | ButtonVariant::OutlinedGhost
-        );
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let style = self.base.variant.enabled(cx);
+        let selected = self.base.selected && !self.base.disabled;
+        let size = self.base.size;
         let text_accent = cx.theme().colors().text_accent;
-        let icon_size = self.icon_size.unwrap_or(match self.size {
+        let icon_size = self.icon_size.unwrap_or(match size {
             ButtonSize::Large => IconSize::Medium,
             ButtonSize::Medium | ButtonSize::Default => IconSize::Small,
             ButtonSize::Compact | ButtonSize::None => IconSize::XSmall,
@@ -504,57 +470,27 @@ impl RenderOnce for Button {
 
         let text_size = self.text_size.unwrap_or_default();
 
-        self.base
-            .id(self.id.clone())
-            .debug_selector(|| format!("BUTTON-{}", self.id))
-            .when_some(self.tooltip, |this, tooltip| {
-                this.tooltip_show_delay(TOOLTIP_SHOW_DELAY)
-                    .tooltip(move |window, cx| tooltip(window, cx))
-            })
-            .when_some(self.tab_index, |this, tab_index| this.tab_index(tab_index))
-            .flex()
-            .justify_center()
-            .items_center()
-            .gap(DynamicSpacing::Base04.rems(cx))
-            .h(self.height.unwrap_or(self.size.rems().into()))
-            .when_some(self.width, |this, width| this.w(width).justify_center())
-            .text_ui_size(text_size, cx)
-            .map(|this| match self.size {
-                ButtonSize::Large | ButtonSize::Medium => this.px(DynamicSpacing::Base12.rems(cx)),
-                ButtonSize::Default | ButtonSize::Compact => {
-                    this.px(DynamicSpacing::Base08.rems(cx))
-                }
-                ButtonSize::None => this.px_px(),
-            })
-            .rounded_md()
-            .border_color(style.border_color)
-            .bg(background)
-            .text_color(text_color)
-            .when_some(self.font_weight, |this, weight| this.font_weight(weight))
-            .when(self.disabled, |this| {
-                this.cursor(CursorStyle::Arrow).opacity(0.4)
-            })
-            .when(!self.disabled, |this| {
-                this.cursor(self.cursor_style)
-                    .hover(|style| style.bg(hovered_style.background))
-            })
-            .when_some(
-                self.on_click.filter(|_| !self.disabled),
-                |this, on_click| {
-                    this.on_mouse_down(MouseButton::Left, |_, window, _cx| {
-                        window.prevent_default();
-                    })
-                    .on_click(move |event, window, cx| {
-                        cx.stop_propagation();
-                        on_click(event, window, cx);
-                    })
-                },
-            )
-            .when(is_outlined, |this| {
-                this.border_1().border_color(style.border_color)
-            })
-            .when_some(start_icon, |this, icon| this.child(icon))
-            .child(self.text)
-            .when_some(end_icon, |this, icon| this.child(icon))
+        self.base.child(
+            gpui::div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .gap(DynamicSpacing::Base04.rems(cx))
+                .text_ui_size(text_size, cx)
+                .map(|this| match size {
+                    ButtonSize::Large | ButtonSize::Medium => {
+                        this.px(DynamicSpacing::Base12.rems(cx) - DynamicSpacing::Base08.rems(cx))
+                    }
+                    ButtonSize::Default | ButtonSize::Compact => {
+                        this.px(DynamicSpacing::Base08.rems(cx) - DynamicSpacing::Base04.rems(cx))
+                    }
+                    ButtonSize::None => this,
+                })
+                .text_color(text_color)
+                .when_some(self.font_weight, |this, weight| this.font_weight(weight))
+                .when_some(start_icon, |this, icon| this.child(icon))
+                .child(self.text)
+                .when_some(end_icon, |this, icon| this.child(icon)),
+        )
     }
 }
