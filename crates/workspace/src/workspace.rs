@@ -18,7 +18,7 @@ pub use item::{
 };
 pub use modal_layer::*;
 pub use persistence::{
-    SerializedWindowBounds, WorkspaceDb, delete_unloaded_items,
+    RecentWorkspace, SerializedWindowBounds, WorkspaceDb, delete_unloaded_items,
     model::{
         DockData, DockStructure, ItemId, SerializedItem, SerializedPane, SerializedWorkspace,
         SessionWorkspace,
@@ -591,6 +591,7 @@ pub fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowO
             appears_transparent: true,
             traffic_light_position,
         }),
+        app_owns_titlebar_drag: true,
         display_id: display.map(|display| display.id()),
         window_background: WindowBackgroundAppearance::Opaque,
         window_decorations,

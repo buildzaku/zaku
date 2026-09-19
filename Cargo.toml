@@ -28,6 +28,7 @@ members = [
   "crates/platform_title_bar",
   "crates/project",
   "crates/project_panel",
+  "crates/recent_projects",
   "crates/refineable",
   "crates/refineable_derive",
   "crates/request_buffer",
@@ -272,6 +273,7 @@ picker = { path = "crates/picker" }
 platform_title_bar = { path = "crates/platform_title_bar" }
 project = { path = "crates/project" }
 project_panel = { path = "crates/project_panel" }
+recent_projects = { path = "crates/recent_projects" }
 refineable = { path = "crates/refineable" }
 refineable_derive = { path = "crates/refineable_derive" }
 request_buffer = { path = "crates/request_buffer" }

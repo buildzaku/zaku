@@ -6,7 +6,7 @@ use std::ops::Range;
 
 use theme::{ActiveTheme, ThemeSettings};
 
-use crate::{Color, LineHeightStyle, TextSize};
+use crate::{Color, LineHeightStyle, TextSize, utils};
 
 use super::{TextCommon, TextStyle};
 
@@ -93,7 +93,12 @@ impl TextCommon for HighlightedText {
     }
 
     fn single_line(mut self) -> Self {
-        self.text = SharedString::from(self.text.replace('\n', "\u{23ce}"));
+        if let Some(replaced) = utils::replace_control_characters_remapping_offsets(
+            &self.text,
+            &mut self.highlight_indices,
+        ) {
+            self.text = SharedString::from(replaced);
+        }
         self.style.single_line = true;
         self
     }
