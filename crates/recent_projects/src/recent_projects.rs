@@ -9,8 +9,9 @@ use fs::Fs;
 use path::PathExt;
 use picker::{Picker, PickerDelegate};
 use ui::{
-    ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, Clickable, DynamicSpacing, HighlightedText,
-    KeyBinding, ListItem, ListItemSpacing, ListSubHeader, Text, TextCommon, Toggleable, Tooltip,
+    ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, DynamicSpacing,
+    HighlightedText, IconAsset, IconButton, IconSize, KeyBinding, ListItem, ListItemSpacing,
+    ListSubHeader, Text, TextCommon, Toggleable, Tooltip, VisibleOnHover,
 };
 use workspace::{
     OpenMode, RecentWorkspace, Workspace, WorkspaceDb, notifications::DetachAndPromptErr,
@@ -194,19 +195,24 @@ impl PickerDelegate for RecentProjectsDelegate {
         Task::ready(())
     }
 
-    fn confirm(&mut self, _: bool, window: &mut Window, cx: &mut Context<Picker<Self>>) {
+    fn confirm(&mut self, secondary: bool, window: &mut Window, cx: &mut Context<Picker<Self>>) {
         let Some(selected_match) = self.matches.get(self.selected_index) else {
             return;
         };
         let Some(recent_workspace) = self.workspaces.get(selected_match.candidate_id) else {
             return;
         };
+        let open_mode = if secondary {
+            OpenMode::NewWindow
+        } else {
+            OpenMode::Activate
+        };
         if let Some(workspace) = self.workspace.upgrade() {
             workspace.update(cx, |workspace, cx| {
                 workspace
                     .open_workspace_for_path(
                         recent_workspace.location.clone(),
-                        OpenMode::Activate,
+                        open_mode,
                         window,
                         cx,
                     )
@@ -231,7 +237,7 @@ impl PickerDelegate for RecentProjectsDelegate {
         index: usize,
         selected: bool,
         _: &mut Window,
-        _: &mut Context<Picker<Self>>,
+        cx: &mut Context<Picker<Self>>,
     ) -> Option<Self::ListItem> {
         let hit = self.matches.get(index)?;
         let workspace = self.workspaces.get(hit.candidate_id)?;
@@ -250,6 +256,7 @@ impl PickerDelegate for RecentProjectsDelegate {
             .take_while(|position| *position < path_string.len())
             .map(|position| position - name_start_byte)
             .collect();
+        let theme_colors = cx.theme().colors();
 
         Some(
             ListItem::new(index)
@@ -277,6 +284,28 @@ impl PickerDelegate for RecentProjectsDelegate {
                                 cx,
                             )
                         }),
+                )
+                .end_slot(
+                    IconButton::new("open-in-new-window", IconAsset::ArrowUpRight)
+                        .icon_size(IconSize::Small)
+                        .variant(ButtonVariant::Custom {
+                            background: gpui::transparent_black(),
+                            foreground: theme_colors.button_secondary_foreground,
+                            hover_background: theme_colors.text.opacity(0.15),
+                            border: gpui::transparent_black(),
+                        })
+                        .when(!selected, |this| this.visible_on_hover("list-item"))
+                        .tooltip(|_, cx| {
+                            Tooltip::for_action(
+                                "Open Project in New Window",
+                                &actions::menu::SecondaryConfirm,
+                                cx,
+                            )
+                        })
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.delegate.set_selected_index(index, window, cx);
+                            this.delegate.confirm(true, window, cx);
+                        })),
                 )
                 .into_any_element(),
         )
