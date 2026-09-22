@@ -6350,6 +6350,7 @@ dependencies = [
 name = "recent_projects"
 version = "26.1.0-dev"
 dependencies = [
+ "actions",
  "anyhow",
  "fs",
  "fuzzy_nucleo",

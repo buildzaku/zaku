@@ -15,6 +15,7 @@ path = "src/recent_projects.rs"
 workspace = true
 
 [dependencies]
+actions = { workspace = true }
 anyhow = { workspace = true }
 fs = { workspace = true }
 fuzzy_nucleo = { workspace = true }
