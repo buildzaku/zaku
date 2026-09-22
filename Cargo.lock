@@ -94,12 +94,12 @@ dependencies = [
 
 [[package]]
 name = "actions"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "gpui",
  "schemars",
  "serde",
- "util 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
 ]
 
 [[package]]
@@ -254,7 +254,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "app_version"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -345,7 +345,7 @@ dependencies = [
 
 [[package]]
 name = "assets"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "gpui",
@@ -1112,7 +1112,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "client"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "app_version",
@@ -1120,13 +1120,13 @@ dependencies = [
  "futures",
  "gpui",
  "hex",
- "http_client 26.0.0-beta.3",
+ "http_client 26.0.0-beta.4",
  "jiff",
  "log",
  "metadata",
  "objc2-foundation 0.3.2",
  "parking_lot",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "regex",
  "semver",
  "serde_json",
@@ -1134,7 +1134,7 @@ dependencies = [
  "sha2 0.11.0",
  "telemetry",
  "telemetry_events",
- "util 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
  "windows 0.62.2",
 ]
 
@@ -1240,7 +1240,7 @@ dependencies = [
 
 [[package]]
 name = "collections"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "gpui_util",
  "indexmap",
@@ -1281,7 +1281,7 @@ dependencies = [
 
 [[package]]
 name = "command_palette"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "anyhow",
@@ -1300,9 +1300,9 @@ dependencies = [
 
 [[package]]
 name = "command_palette_hooks"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
- "collections 26.0.0-beta.3",
+ "collections 26.0.0-beta.4",
  "derive_more",
  "gpui",
 ]
@@ -1621,7 +1621,7 @@ dependencies = [
 
 [[package]]
 name = "crash_diagnostics"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "async-process",
  "crash-handler",
@@ -1723,14 +1723,14 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "db"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "fs",
  "gpui",
  "inventory",
  "log",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "smol",
  "sql",
  "sql_macros",
@@ -1962,7 +1962,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "editor"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "anyhow",
@@ -1977,7 +1977,7 @@ dependencies = [
  "log",
  "multi_buffer",
  "num-traits",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "pretty_assertions",
  "project",
  "serde",
@@ -1988,8 +1988,8 @@ dependencies = [
  "text",
  "theme",
  "ui",
- "util 26.0.0-beta.3",
- "util_macros 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
+ "util_macros 26.0.0-beta.4",
  "workspace",
 ]
 
@@ -2389,7 +2389,7 @@ dependencies = [
 
 [[package]]
 name = "fs"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2402,12 +2402,12 @@ dependencies = [
  "log",
  "notify",
  "parking_lot",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "serde",
  "serde_json",
  "smol",
  "tempfile",
- "util 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
  "windows 0.62.2",
 ]
 
@@ -2642,19 +2642,19 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "git"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "fs",
  "futures",
  "gpui",
  "log",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "serde",
  "serde_json",
  "sum_tree",
- "util 26.0.0-beta.3",
- "util_macros 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
+ "util_macros 26.0.0-beta.4",
 ]
 
 [[package]]
@@ -3068,7 +3068,7 @@ dependencies = [
 
 [[package]]
 name = "grammars"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "language_core",
@@ -3078,7 +3078,7 @@ dependencies = [
  "tree-sitter-html",
  "tree-sitter-json",
  "tree-sitter-xml",
- "util 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
 ]
 
 [[package]]
@@ -3282,7 +3282,7 @@ dependencies = [
 
 [[package]]
 name = "http_client"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "bytes",
@@ -3621,7 +3621,7 @@ dependencies = [
 
 [[package]]
 name = "input"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "gpui",
  "theme",
@@ -3922,7 +3922,7 @@ dependencies = [
 
 [[package]]
 name = "language"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "clock",
@@ -3933,7 +3933,7 @@ dependencies = [
  "language_core",
  "log",
  "parking_lot",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "regex",
  "settings",
  "streaming-iterator",
@@ -3945,12 +3945,12 @@ dependencies = [
  "tree-sitter-html",
  "tree-sitter-json",
  "tree-sitter-xml",
- "util 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
 ]
 
 [[package]]
 name = "language_core"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "gpui",
@@ -3961,12 +3961,12 @@ dependencies = [
  "serde",
  "toml 1.1.2+spec-1.1.0",
  "tree-sitter",
- "util 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
 ]
 
 [[package]]
 name = "languages"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "grammars",
  "language",
@@ -4123,7 +4123,7 @@ dependencies = [
 
 [[package]]
 name = "logger"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "fs",
@@ -4297,7 +4297,7 @@ dependencies = [
 
 [[package]]
 name = "metadata"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "app_version",
  "gpui",
@@ -4322,7 +4322,7 @@ dependencies = [
 
 [[package]]
 name = "migrator"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "indoc",
@@ -4457,7 +4457,7 @@ dependencies = [
 
 [[package]]
 name = "multi_buffer"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "gpui",
  "indoc",
@@ -5460,7 +5460,7 @@ dependencies = [
 
 [[package]]
 name = "path"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "dirs",
@@ -5609,7 +5609,7 @@ dependencies = [
 
 [[package]]
 name = "picker"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "anyhow",
@@ -5678,7 +5678,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "platform_title_bar"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "gpui",
@@ -5904,10 +5904,10 @@ dependencies = [
 
 [[package]]
 name = "project"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
- "collections 26.0.0-beta.3",
+ "collections 26.0.0-beta.4",
  "fs",
  "futures",
  "git",
@@ -5915,21 +5915,21 @@ dependencies = [
  "indoc",
  "language",
  "log",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "request_buffer",
  "serde_json",
  "sum_tree",
  "text",
  "tokio",
- "util 26.0.0-beta.3",
- "util_macros 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
+ "util_macros 26.0.0-beta.4",
  "which",
  "worktree",
 ]
 
 [[package]]
 name = "project_panel"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "anyhow",
@@ -5939,7 +5939,7 @@ dependencies = [
  "gpui",
  "indoc",
  "log",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "project",
  "request_editor",
  "serde_json",
@@ -5948,8 +5948,8 @@ dependencies = [
  "telemetry",
  "theme",
  "ui",
- "util 26.0.0-beta.3",
- "util_macros 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
+ "util_macros 26.0.0-beta.4",
  "workspace",
 ]
 
@@ -6396,14 +6396,14 @@ dependencies = [
 
 [[package]]
 name = "refineable"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "refineable_derive",
 ]
 
 [[package]]
 name = "refineable_derive"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6447,18 +6447,18 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "request_buffer"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "gpui",
  "language",
- "util 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
  "worktree",
 ]
 
 [[package]]
 name = "request_editor"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "anyhow",
@@ -6468,14 +6468,14 @@ dependencies = [
  "fs",
  "futures",
  "gpui",
- "http_client 26.0.0-beta.3",
+ "http_client 26.0.0-beta.4",
  "indoc",
  "input",
  "language",
  "log",
  "multi_buffer",
  "parking_lot",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "project",
  "response_panel",
  "serde_json",
@@ -6484,8 +6484,8 @@ dependencies = [
  "toml 1.1.2+spec-1.1.0",
  "ui",
  "url",
- "util 26.0.0-beta.3",
- "util_macros 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
+ "util_macros 26.0.0-beta.4",
  "workspace",
  "worktree",
 ]
@@ -6534,12 +6534,12 @@ dependencies = [
 
 [[package]]
 name = "reqwest_client"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "bytes",
  "futures",
- "http_client 26.0.0-beta.3",
+ "http_client 26.0.0-beta.4",
  "reqwest",
  "tokio",
  "tokio-util",
@@ -6547,7 +6547,7 @@ dependencies = [
 
 [[package]]
 name = "resources"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "embed-resource",
  "indoc",
@@ -6556,12 +6556,12 @@ dependencies = [
 
 [[package]]
 name = "response_panel"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "editor",
  "gpui",
- "http_client 26.0.0-beta.3",
+ "http_client 26.0.0-beta.4",
  "language",
  "log",
  "multi_buffer",
@@ -7133,18 +7133,18 @@ dependencies = [
 
 [[package]]
 name = "session"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "db",
  "gpui",
  "serde_json",
- "util 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
  "uuid",
 ]
 
 [[package]]
 name = "settings"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "fs",
@@ -7157,7 +7157,7 @@ dependencies = [
  "log",
  "logger",
  "migrator",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "pretty_assertions",
  "rust-embed",
  "serde",
@@ -7165,13 +7165,13 @@ dependencies = [
  "settings_content",
  "settings_jsonc",
  "settings_macros",
- "util 26.0.0-beta.3",
- "util_macros 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
+ "util_macros 26.0.0-beta.4",
 ]
 
 [[package]]
 name = "settings_content"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "indexmap",
@@ -7185,7 +7185,7 @@ dependencies = [
 
 [[package]]
 name = "settings_jsonc"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "jsonc-parser",
@@ -7196,7 +7196,7 @@ dependencies = [
 
 [[package]]
 name = "settings_macros"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "quote",
  "syn 2.0.118",
@@ -7434,7 +7434,7 @@ dependencies = [
 
 [[package]]
 name = "sql"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "futures",
@@ -7444,7 +7444,7 @@ dependencies = [
  "log",
  "num-traits",
  "parking_lot",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "sha2 0.11.0",
  "smol",
  "tempfile",
@@ -7454,7 +7454,7 @@ dependencies = [
 
 [[package]]
 name = "sql_macros"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "sql",
  "sqlformat",
@@ -7623,7 +7623,7 @@ dependencies = [
 
 [[package]]
 name = "svg"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "serde",
  "strum",
@@ -7700,7 +7700,7 @@ dependencies = [
 
 [[package]]
 name = "syntax_theme"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "gpui",
 ]
@@ -7766,7 +7766,7 @@ dependencies = [
 
 [[package]]
 name = "system_specs"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "gpui",
@@ -7820,7 +7820,7 @@ dependencies = [
 
 [[package]]
 name = "telemetry"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "futures",
  "log",
@@ -7830,7 +7830,7 @@ dependencies = [
 
 [[package]]
 name = "telemetry_events"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -7900,14 +7900,14 @@ dependencies = [
 
 [[package]]
 name = "theme"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "gpui",
  "jsonc-parser",
  "palette",
  "parking_lot",
- "refineable 26.0.0-beta.3",
+ "refineable 26.0.0-beta.4",
  "schemars",
  "serde",
  "settings",
@@ -7917,7 +7917,7 @@ dependencies = [
 
 [[package]]
 name = "theme_settings"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "gpui",
  "log",
@@ -8083,7 +8083,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "title_bar"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "gpui",
@@ -8091,7 +8091,7 @@ dependencies = [
  "project",
  "smallvec",
  "ui",
- "util 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
  "workspace",
 ]
 
@@ -8864,7 +8864,7 @@ dependencies = [
 
 [[package]]
 name = "ui"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "gpui",
@@ -8878,12 +8878,12 @@ dependencies = [
  "svg",
  "theme",
  "ui_macros",
- "util 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
 ]
 
 [[package]]
 name = "ui_macros"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "quote",
  "syn 2.0.118",
@@ -8987,7 +8987,7 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "updater"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "anyhow",
@@ -8997,7 +8997,7 @@ dependencies = [
  "futures",
  "gpui",
  "hex",
- "http_client 26.0.0-beta.3",
+ "http_client 26.0.0-beta.4",
  "log",
  "metadata",
  "parking_lot",
@@ -9009,19 +9009,19 @@ dependencies = [
  "telemetry",
  "tempfile",
  "ui",
- "util 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
  "which",
  "workspace",
 ]
 
 [[package]]
 name = "updater_windows"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "log",
  "logger",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "resources",
  "scopeguard",
  "tempfile",
@@ -9131,7 +9131,7 @@ dependencies = [
 
 [[package]]
 name = "util"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "indoc",
  "log",
@@ -9152,7 +9152,7 @@ dependencies = [
 
 [[package]]
 name = "util_macros"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "quote",
  "syn 2.0.118",
@@ -10231,7 +10231,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "workspace"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "anyhow",
@@ -10240,7 +10240,7 @@ dependencies = [
  "fs",
  "futures",
  "gpui",
- "http_client 26.0.0-beta.3",
+ "http_client 26.0.0-beta.4",
  "indoc",
  "input",
  "itertools 0.14.0",
@@ -10249,7 +10249,7 @@ dependencies = [
  "log",
  "metadata",
  "parking_lot",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "project",
  "serde",
  "serde_json",
@@ -10260,19 +10260,19 @@ dependencies = [
  "theme",
  "theme_settings",
  "ui",
- "util 26.0.0-beta.3",
- "util_macros 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
+ "util_macros 26.0.0-beta.4",
  "uuid",
  "worktree",
 ]
 
 [[package]]
 name = "worktree"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "anyhow",
  "async-lock",
- "collections 26.0.0-beta.3",
+ "collections 26.0.0-beta.4",
  "fs",
  "futures",
  "git",
@@ -10282,7 +10282,7 @@ dependencies = [
  "language",
  "log",
  "parking_lot",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "pretty_assertions",
  "serde",
  "serde_json",
@@ -10298,8 +10298,8 @@ dependencies = [
  "tombi-schema-store",
  "toml 1.1.2+spec-1.1.0",
  "toml_edit 0.25.12+spec-1.1.0",
- "util 26.0.0-beta.3",
- "util_macros 26.0.0-beta.3",
+ "util 26.0.0-beta.4",
+ "util_macros 26.0.0-beta.4",
  "worktree",
 ]
 
@@ -10467,7 +10467,7 @@ dependencies = [
 
 [[package]]
 name = "zaku"
-version = "26.0.0-beta.3"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "anyhow",
@@ -10483,7 +10483,7 @@ dependencies = [
  "futures",
  "gpui",
  "gpui_platform",
- "http_client 26.0.0-beta.3",
+ "http_client 26.0.0-beta.4",
  "indoc",
  "language",
  "languages",
@@ -10494,7 +10494,7 @@ dependencies = [
  "mimalloc",
  "multi_buffer",
  "parking_lot",
- "path 26.0.0-beta.3",
+ "path 26.0.0-beta.4",
  "platform_title_bar",
  "project",
  "project_panel",
