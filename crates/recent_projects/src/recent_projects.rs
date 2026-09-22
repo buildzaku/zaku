@@ -273,7 +273,7 @@ impl PickerDelegate for RecentProjectsDelegate {
                             Tooltip::with_meta(
                                 "Open Project in This Window",
                                 None,
-                                path_string.clone(),
+                                ui::utils::replace_control_characters(&path_string).into_owned(),
                                 cx,
                             )
                         }),

@@ -6,6 +6,7 @@ mod selection;
 pub use highlighted_text::HighlightedText;
 pub use interaction::TextInteractionState;
 pub use selectable::{SelectableText, SelectableTextGroup};
+pub(crate) use selection::RenderedText;
 pub use selection::{TextSelectionPoint, TextSelectionState, paint_text_selection};
 
 use gpui::{

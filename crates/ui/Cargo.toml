@@ -31,4 +31,5 @@ util = { workspace = true }
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
+pretty_assertions = { workspace = true }
 settings = { workspace = true, features = ["test"] }

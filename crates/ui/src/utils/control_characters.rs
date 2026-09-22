@@ -5,7 +5,7 @@ const CONTROL_PICTURES_START: u32 = 0x2400;
 const DELETE_SYMBOL: char = '␡';
 
 // C1 controls have no Control Pictures equivalent, so they are left unchanged.
-fn printable_substitute(character: char) -> Option<char> {
+pub(crate) fn printable_substitute(character: char) -> Option<char> {
     match character {
         '\n' => Some(LINE_FEED_SYMBOL),
         '\x7f' => Some(DELETE_SYMBOL),

@@ -1,8 +1,7 @@
 use gpui::{
-    App, Bounds, ClipboardItem, Context, DismissEvent, Entity, FocusHandle, Focusable, Pixels,
-    Point, SharedString, Subscription, TextLayout, Window,
+    App, ClipboardItem, Context, DismissEvent, Entity, FocusHandle, Focusable, Pixels, Point,
+    SharedString, Subscription, Window,
 };
-use std::ops::Range;
 
 use crate::ContextMenu;
 
@@ -10,7 +9,7 @@ use super::selection::{TextSelectionPoint, TextSelectionState};
 
 pub struct TextInteractionState<T: Copy + Ord + 'static> {
     focus_handle: FocusHandle,
-    text_selection: TextSelectionState<T>,
+    pub(super) text_selection: TextSelectionState<T>,
     context_menu: Option<(Entity<ContextMenu>, Point<Pixels>, Subscription)>,
 }
 
@@ -36,34 +35,6 @@ impl<T: Copy + Ord + 'static> TextInteractionState<T> {
         self.context_menu
             .as_ref()
             .map(|(menu, position, _)| (menu.clone(), *position))
-    }
-
-    pub(super) fn clear_text_layouts(&mut self) {
-        self.text_selection.clear_layouts();
-    }
-
-    pub(super) fn set_text_selection_bounds(&mut self, bounds: Bounds<Pixels>) {
-        self.text_selection.set_selection_bounds(bounds);
-    }
-
-    pub(super) fn register_text_layout(
-        &mut self,
-        id: T,
-        line_index: usize,
-        text: SharedString,
-        text_layout: &TextLayout,
-    ) {
-        self.text_selection
-            .register_layout(id, line_index, text, text_layout);
-    }
-
-    pub(super) fn selected_range_for_text(&self, id: T, text: &str) -> Option<Range<usize>> {
-        self.text_selection.selected_range_for_id(id, text)
-    }
-
-    #[cfg(test)]
-    pub(super) fn position_for_text_offset(&self, id: T, offset: usize) -> Option<Point<Pixels>> {
-        self.text_selection.position_for_id_offset(id, offset)
     }
 
     pub(super) fn begin_text_selection_at_position(

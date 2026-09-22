@@ -109,15 +109,18 @@ impl TitleBar {
             .menu(move |window, cx| Some(RecentProjects::popover(workspace.clone()?, window, cx)))
             .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
             .trigger_with_tooltip(
-                Button::new("project-name-trigger", display_name)
-                    .text_size(TextSize::Small)
-                    .tab_index(0)
-                    .color(if is_project_selected {
-                        Color::Default
-                    } else {
-                        Color::Muted
-                    })
-                    .selected_background(selected_background),
+                Button::new(
+                    "project-name-trigger",
+                    ui::utils::replace_control_characters(&display_name).into_owned(),
+                )
+                .text_size(TextSize::Small)
+                .tab_index(0)
+                .color(if is_project_selected {
+                    Color::Default
+                } else {
+                    Color::Muted
+                })
+                .selected_background(selected_background),
                 Tooltip::text("Recent Projects"),
             )
             .anchor(Anchor::TopLeft)

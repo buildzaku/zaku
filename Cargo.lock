@@ -8885,6 +8885,7 @@ dependencies = [
  "gpui",
  "itertools 0.14.0",
  "log",
+ "pretty_assertions",
  "schemars",
  "serde",
  "settings",
