@@ -6355,6 +6355,7 @@ dependencies = [
  "fs",
  "fuzzy_nucleo",
  "gpui",
+ "log",
  "path 26.1.0-dev",
  "picker",
  "ui",

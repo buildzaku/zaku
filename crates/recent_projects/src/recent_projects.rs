@@ -7,14 +7,14 @@ use std::sync::Arc;
 
 use fs::Fs;
 use path::PathExt;
-use picker::{Picker, PickerDelegate};
+use picker::{Picker, PickerDelegate, ScrollBehavior};
 use ui::{
     ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, DynamicSpacing,
     HighlightedText, IconAsset, IconButton, IconSize, KeyBinding, ListItem, ListItemSpacing,
     ListSubHeader, Text, TextCommon, Toggleable, Tooltip, VisibleOnHover,
 };
 use workspace::{
-    OpenMode, RecentWorkspace, Workspace, WorkspaceDb, notifications::DetachAndPromptErr,
+    OpenMode, RecentWorkspace, Root, Workspace, WorkspaceDb, notifications::DetachAndPromptErr,
 };
 
 pub struct RecentProjects {
@@ -82,6 +82,18 @@ impl RecentProjects {
             list
         })
     }
+
+    fn handle_remove_selected(
+        &mut self,
+        _: &actions::recent_projects::RemoveSelected,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.picker.update(cx, |picker, cx| {
+            let index = picker.delegate.selected_index;
+            picker.delegate.delete_recent_project(index, window, cx);
+        });
+    }
 }
 
 impl EventEmitter<DismissEvent> for RecentProjects {}
@@ -93,11 +105,12 @@ impl Focusable for RecentProjects {
 }
 
 impl Render for RecentProjects {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         gpui::div()
             .flex()
             .flex_col()
             .key_context("RecentProjects")
+            .on_action(cx.listener(Self::handle_remove_selected))
             .child(self.picker.clone())
     }
 }
@@ -121,6 +134,94 @@ impl RecentProjectsDelegate {
 
     pub fn set_workspaces(&mut self, workspaces: Vec<RecentWorkspace>) {
         self.workspaces = workspaces;
+    }
+
+    fn update_picker_after_recent_project_deletion(
+        picker: &mut Picker<Self>,
+        deleted_index: usize,
+        workspaces: Vec<RecentWorkspace>,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) {
+        let prefer_previous = picker.is_scrolled_to_end() == Some(true);
+        picker.delegate.set_workspaces(workspaces);
+        picker.update_matches_with_options(
+            picker.query(cx),
+            ScrollBehavior::PreserveOffset,
+            window,
+            cx,
+        );
+        let match_count = picker.delegate.match_count();
+        if match_count > 0 {
+            let replacement_index = if prefer_previous {
+                deleted_index.saturating_sub(1)
+            } else {
+                deleted_index
+            };
+            picker.set_selected_index(
+                replacement_index.min(match_count - 1),
+                None,
+                false,
+                window,
+                cx,
+            );
+        }
+    }
+
+    fn delete_recent_project(
+        &self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) {
+        let Some(selected_match) = self.matches.get(index) else {
+            return;
+        };
+        let Some(recent_workspace) = self.workspaces.get(selected_match.candidate_id) else {
+            return;
+        };
+        let workspace_id = recent_workspace.workspace_id;
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let fs = workspace.read(cx).app_state().fs.clone();
+        let db = WorkspaceDb::global(cx);
+        let workspace_windows = cx
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<Root>())
+            .collect::<Vec<_>>();
+
+        cx.spawn_in(window, async move |this, cx| {
+            db.delete_workspace_by_id(workspace_id).await?;
+            for window in workspace_windows {
+                if let Err(error) = window.update(cx, |root, window, cx| {
+                    let pane = root.workspace().read(cx).pane().clone();
+                    pane.update(cx, |pane, cx| {
+                        pane.reload_recent_workspaces(window, cx);
+                    });
+                }) {
+                    log::debug!("Failed to reload recent workspaces: {error}");
+                }
+            }
+
+            let workspaces = db.recent_project_workspaces(fs.as_ref()).await?;
+            let Some(picker) = this.upgrade() else {
+                return anyhow::Ok(());
+            };
+            picker.update_in(cx, move |picker, window, cx| {
+                Self::update_picker_after_recent_project_deletion(
+                    picker, index, workspaces, window, cx,
+                );
+            })?;
+            anyhow::Ok(())
+        })
+        .detach_and_prompt_err(
+            "Failed to update recent projects",
+            window,
+            cx,
+            |_, _, _| None,
+        );
     }
 }
 
@@ -257,6 +358,48 @@ impl PickerDelegate for RecentProjectsDelegate {
             .map(|position| position - name_start_byte)
             .collect();
         let theme_colors = cx.theme().colors();
+        let button_variant = ButtonVariant::Custom {
+            background: gpui::transparent_black(),
+            foreground: theme_colors.button_secondary_foreground,
+            hover_background: theme_colors.text.opacity(0.15),
+            border: gpui::transparent_black(),
+        };
+        let secondary_actions = gpui::div()
+            .flex()
+            .items_center()
+            .gap_0p5()
+            .when(!selected, |this| this.visible_on_hover("list-item"))
+            .child(
+                IconButton::new("open-in-new-window", IconAsset::ArrowUpRight)
+                    .icon_size(IconSize::Small)
+                    .variant(button_variant)
+                    .tooltip(|_, cx| {
+                        Tooltip::for_action(
+                            "Open Project in New Window",
+                            &actions::menu::SecondaryConfirm,
+                            cx,
+                        )
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.delegate.set_selected_index(index, window, cx);
+                        this.delegate.confirm(true, window, cx);
+                    })),
+            )
+            .child(
+                IconButton::new("remove-project", IconAsset::Close)
+                    .icon_size(IconSize::Small)
+                    .variant(button_variant)
+                    .tooltip(|_, cx| {
+                        Tooltip::for_action(
+                            "Remove from Recent Projects",
+                            &actions::recent_projects::RemoveSelected,
+                            cx,
+                        )
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.delegate.delete_recent_project(index, window, cx);
+                    })),
+            );
 
         Some(
             ListItem::new(index)
@@ -285,28 +428,7 @@ impl PickerDelegate for RecentProjectsDelegate {
                             )
                         }),
                 )
-                .end_slot(
-                    IconButton::new("open-in-new-window", IconAsset::ArrowUpRight)
-                        .icon_size(IconSize::Small)
-                        .variant(ButtonVariant::Custom {
-                            background: gpui::transparent_black(),
-                            foreground: theme_colors.button_secondary_foreground,
-                            hover_background: theme_colors.text.opacity(0.15),
-                            border: gpui::transparent_black(),
-                        })
-                        .when(!selected, |this| this.visible_on_hover("list-item"))
-                        .tooltip(|_, cx| {
-                            Tooltip::for_action(
-                                "Open Project in New Window",
-                                &actions::menu::SecondaryConfirm,
-                                cx,
-                            )
-                        })
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.delegate.set_selected_index(index, window, cx);
-                            this.delegate.confirm(true, window, cx);
-                        })),
-                )
+                .end_slot(secondary_actions)
                 .into_any_element(),
         )
     }

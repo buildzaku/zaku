@@ -211,5 +211,12 @@
       "up": "menu::SelectPrevious",
       "down": "menu::SelectNext"
     }
+  },
+  {
+    "context": "RecentProjects || (RecentProjects > Picker > Editor)",
+    "use_key_equivalents": true,
+    "bindings": {
+      "shift-backspace": "recent_projects::RemoveSelected"
+    }
   }
 ]

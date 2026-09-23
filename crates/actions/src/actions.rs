@@ -4,6 +4,7 @@ pub mod menu;
 pub mod pane;
 pub mod project_panel;
 pub mod projects;
+pub mod recent_projects;
 pub mod response_panel;
 pub mod text;
 pub mod theme;

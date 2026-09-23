@@ -20,6 +20,7 @@ anyhow = { workspace = true }
 fs = { workspace = true }
 fuzzy_nucleo = { workspace = true }
 gpui = { workspace = true }
+log = { workspace = true }
 path = { workspace = true }
 picker = { workspace = true }
 ui = { workspace = true }
