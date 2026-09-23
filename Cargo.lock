@@ -10516,6 +10516,7 @@ dependencies = [
  "platform_title_bar",
  "project",
  "project_panel",
+ "recent_projects",
  "request_editor",
  "reqwest",
  "reqwest_client",

@@ -121,7 +121,7 @@ impl TitleBar {
                     Color::Muted
                 })
                 .selected_background(selected_background),
-                Tooltip::text("Recent Projects"),
+                |_, cx| Tooltip::for_action("Recent Projects", &actions::projects::OpenRecent, cx),
             )
             .anchor(Anchor::TopLeft)
     }

@@ -1217,6 +1217,7 @@ pub struct Workspace {
     status_bar: Entity<StatusBar>,
     pub(crate) modal_layer: Entity<ModalLayer>,
     titlebar_item: Option<AnyView>,
+    titlebar_focus_handle: FocusHandle,
     notifications: Notifications,
     suppressed_notifications: HashSet<NotificationId>,
     bounds: Bounds<Pixels>,
@@ -2444,6 +2445,7 @@ impl Workspace {
             status_bar,
             modal_layer,
             titlebar_item: None,
+            titlebar_focus_handle: cx.focus_handle(),
             notifications: Notifications::default(),
             suppressed_notifications: HashSet::default(),
             bounds: Bounds::default(),
@@ -2825,7 +2827,15 @@ impl Render for Workspace {
                     }
                 }),
             )
-            .children(self.titlebar_item.clone())
+            .when_some(self.titlebar_item.clone(), |this, item| {
+                this.child(
+                    gpui::div()
+                        .id("titlebar-region")
+                        .track_focus(&self.titlebar_focus_handle)
+                        .w_full()
+                        .child(item),
+                )
+            })
             .child(
                 gpui::div()
                     .id("workspace")

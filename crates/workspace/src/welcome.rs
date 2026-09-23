@@ -124,7 +124,6 @@ impl RenderOnce for SectionButton {
                                     .child(Text::new(self.text).single_line().truncate())
                                     .children(self.secondary_text.map(|text| {
                                         Text::new(text)
-                                            .font_buffer(cx)
                                             .color(Color::Muted)
                                             .alpha(0.7)
                                             .size(TextSize::XSmall)

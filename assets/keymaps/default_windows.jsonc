@@ -22,6 +22,7 @@
       "ctrl-shift-n": "workspace::NewWindow",
       "ctrl-shift-p": "command_palette::Toggle",
       "ctrl-k ctrl-o": "workspace::Open",
+      "ctrl-r": "projects::OpenRecent",
       "ctrl-alt-,": "zaku::OpenSettingsFile",
       "ctrl-q": "zaku::Quit"
     }

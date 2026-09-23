@@ -27,6 +27,8 @@
       "cmd-shift-n": "workspace::NewWindow",
       "cmd-shift-p": "command_palette::Toggle",
       "cmd-o": "workspace::Open",
+      "alt-cmd-o": "projects::OpenRecent",
+      "ctrl-r": "projects::OpenRecent",
       "cmd-alt-,": "zaku::OpenSettingsFile",
       "cmd-q": "zaku::Quit"
     }

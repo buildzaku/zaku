@@ -9,13 +9,38 @@ use fs::Fs;
 use path::PathExt;
 use picker::{Picker, PickerDelegate, ScrollBehavior};
 use ui::{
-    ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, DynamicSpacing,
-    HighlightedText, IconAsset, IconButton, IconSize, KeyBinding, ListItem, ListItemSpacing,
-    ListSubHeader, Text, TextCommon, Toggleable, Tooltip, VisibleOnHover,
+    ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, Color,
+    DynamicSpacing, HighlightedText, IconAsset, IconButton, IconSize, KeyBinding, ListItem,
+    ListItemSpacing, ListSubHeader, Text, TextCommon, TextSize, Toggleable, Tooltip,
+    VisibleOnHover,
 };
 use workspace::{
-    OpenMode, RecentWorkspace, Root, Workspace, WorkspaceDb, notifications::DetachAndPromptErr,
+    ModalView, OpenMode, RecentWorkspace, Root, Workspace, WorkspaceDb,
+    notifications::DetachAndPromptErr,
 };
+
+pub fn init(cx: &mut App) {
+    cx.on_action(|_: &actions::projects::OpenRecent, cx| {
+        workspace::with_active_or_new_workspace(cx, |workspace, window, cx| {
+            let Some(recent_projects) = workspace.active_modal::<RecentProjects>(cx) else {
+                RecentProjects::open(workspace, window, cx);
+                return;
+            };
+
+            recent_projects.update(cx, |recent_projects, cx| {
+                recent_projects
+                    .picker
+                    .update(cx, |picker, cx| picker.cycle_selection(window, cx));
+            });
+        });
+    });
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProjectPickerStyle {
+    Modal,
+    Popover,
+}
 
 pub struct RecentProjects {
     pub picker: Entity<Picker<RecentProjectsDelegate>>,
@@ -26,23 +51,27 @@ impl RecentProjects {
     fn new(
         delegate: RecentProjectsDelegate,
         fs: Option<Arc<dyn Fs>>,
+        rem_width: f32,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let style = delegate.style;
         let picker = cx.new(|cx| {
             Picker::list(delegate, window, cx)
                 .list_measure_all()
-                .initial_width(gpui::rems(20.0))
+                .initial_width(gpui::rems(rem_width))
                 .minimum_results_width(gpui::rems(20.0))
                 .height(gpui::rems(24.0))
                 .no_vertical_padding()
         });
 
-        let picker_focus = picker.focus_handle(cx);
-        let dismiss_subscriptions = vec![
-            cx.subscribe(&picker, |_, _, _: &DismissEvent, cx| cx.emit(DismissEvent)),
-            cx.on_focus_out(&picker_focus, window, |_, _, _, cx| cx.emit(DismissEvent)),
-        ];
+        let mut dismiss_subscriptions =
+            vec![cx.subscribe(&picker, |_, _, _: &DismissEvent, cx| cx.emit(DismissEvent))];
+        if style == ProjectPickerStyle::Popover {
+            let picker_focus = picker.focus_handle(cx);
+            dismiss_subscriptions
+                .push(cx.on_focus_out(&picker_focus, window, |_, _, _, cx| cx.emit(DismissEvent)));
+        }
 
         let db = WorkspaceDb::global(cx);
         cx.spawn_in(window, async move |this, cx| {
@@ -66,6 +95,16 @@ impl RecentProjects {
         }
     }
 
+    pub fn open(workspace: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) {
+        let workspace_handle = workspace.weak_handle();
+        let fs = Some(workspace.app_state().fs.clone());
+
+        workspace.toggle_modal(window, cx, |window, cx| {
+            let delegate = RecentProjectsDelegate::new(workspace_handle, ProjectPickerStyle::Modal);
+            Self::new(delegate, fs, 42.0, window, cx)
+        });
+    }
+
     pub fn popover(
         workspace: WeakEntity<Workspace>,
         window: &mut Window,
@@ -76,8 +115,8 @@ impl RecentProjects {
             .map(|workspace| workspace.read(cx).app_state().fs.clone());
 
         cx.new(|cx| {
-            let delegate = RecentProjectsDelegate::new(workspace);
-            let list = Self::new(delegate, fs, window, cx);
+            let delegate = RecentProjectsDelegate::new(workspace, ProjectPickerStyle::Popover);
+            let list = Self::new(delegate, fs, 20.0, window, cx);
             list.picker.focus_handle(cx).focus(window, cx);
             list
         })
@@ -95,6 +134,8 @@ impl RecentProjects {
         });
     }
 }
+
+impl ModalView for RecentProjects {}
 
 impl EventEmitter<DismissEvent> for RecentProjects {}
 
@@ -120,15 +161,17 @@ pub struct RecentProjectsDelegate {
     workspaces: Vec<RecentWorkspace>,
     matches: Vec<StringMatch>,
     selected_index: usize,
+    style: ProjectPickerStyle,
 }
 
 impl RecentProjectsDelegate {
-    fn new(workspace: WeakEntity<Workspace>) -> Self {
+    fn new(workspace: WeakEntity<Workspace>, style: ProjectPickerStyle) -> Self {
         Self {
             workspace,
             workspaces: Vec::new(),
             matches: Vec::new(),
             selected_index: 0,
+            style,
         }
     }
 
@@ -255,15 +298,17 @@ impl PickerDelegate for RecentProjectsDelegate {
         cx: &mut Context<Picker<Self>>,
     ) -> Task<()> {
         let query = query.trim_start();
-        let current_workspace_id = self
-            .workspace
-            .upgrade()
-            .and_then(|workspace| workspace.read(cx).database_id());
         let recent_candidates = self
             .workspaces
             .iter()
             .enumerate()
-            .filter(|(_, workspace)| Some(workspace.workspace_id) != current_workspace_id)
+            .filter(|(_, workspace)| {
+                let current_workspace_id = self
+                    .workspace
+                    .upgrade()
+                    .and_then(|workspace| workspace.read(cx).database_id());
+                Some(workspace.workspace_id) != current_workspace_id
+            })
             .map(|(id, workspace)| {
                 StringMatchCandidate::new(
                     id,
@@ -414,11 +459,40 @@ impl PickerDelegate for RecentProjectsDelegate {
                         .w_full()
                         .min_w_0()
                         .flex_grow_1()
+                        .gap_2()
                         .child(
                             HighlightedText::new(name, positions)
                                 .single_line()
                                 .truncate(),
                         )
+                        .when(self.style == ProjectPickerStyle::Modal, |this| {
+                            this.children(
+                                workspace
+                                    .location
+                                    .parent()
+                                    .filter(|location| !location.as_os_str().is_empty())
+                                    .map(|location| {
+                                        let location =
+                                            location.compact().to_string_lossy().into_owned();
+                                        let positions = if path_string.starts_with(&location) {
+                                            hit.positions
+                                                .iter()
+                                                .copied()
+                                                .take_while(|position| *position < location.len())
+                                                .collect()
+                                        } else {
+                                            Vec::new()
+                                        };
+
+                                        HighlightedText::new(location, positions)
+                                            .color(Color::Muted)
+                                            .alpha(0.7)
+                                            .size(TextSize::XSmall)
+                                            .single_line()
+                                            .truncate_start()
+                                    }),
+                            )
+                        })
                         .tooltip(move |_, cx| {
                             Tooltip::with_meta(
                                 "Open Project in This Window",

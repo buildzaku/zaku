@@ -37,6 +37,11 @@ impl HighlightedText {
         }
     }
 
+    pub fn truncate_start(mut self) -> Self {
+        self.style.truncate_start = true;
+        self
+    }
+
     fn style(&mut self) -> &mut StyleRefinement {
         self.base.style()
     }
