@@ -48,12 +48,12 @@ impl Session {
 pub struct AppSession {
     session: Session,
     _serialization_task: Task<()>,
-    _subscriptions: Vec<Subscription>,
+    _quit_subscription: Subscription,
 }
 
 impl AppSession {
     pub fn new(session: Session, cx: &Context<Self>) -> Self {
-        let subscriptions = vec![cx.on_app_quit(|_, cx| Self::before_quit(cx))];
+        let quit_subscription = cx.on_app_quit(|_, cx| Self::before_quit(cx));
 
         #[cfg(not(any(test, feature = "test")))]
         let serialization_task = {
@@ -81,7 +81,7 @@ impl AppSession {
         Self {
             session,
             _serialization_task: serialization_task,
-            _subscriptions: subscriptions,
+            _quit_subscription: quit_subscription,
         }
     }
 

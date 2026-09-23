@@ -18,7 +18,7 @@ pub use item::{
 };
 pub use modal_layer::*;
 pub use persistence::{
-    SerializedWindowBounds, WorkspaceDb, delete_unloaded_items,
+    RecentWorkspace, SerializedWindowBounds, WorkspaceDb, delete_unloaded_items,
     model::{
         DockData, DockStructure, ItemId, SerializedItem, SerializedPane, SerializedWorkspace,
         SessionWorkspace,
@@ -591,6 +591,7 @@ pub fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowO
             appears_transparent: true,
             traffic_light_position,
         }),
+        app_owns_titlebar_drag: true,
         display_id: display.map(|display| display.id()),
         window_background: WindowBackgroundAppearance::Opaque,
         window_decorations,
@@ -1216,6 +1217,7 @@ pub struct Workspace {
     status_bar: Entity<StatusBar>,
     pub(crate) modal_layer: Entity<ModalLayer>,
     titlebar_item: Option<AnyView>,
+    titlebar_focus_handle: FocusHandle,
     notifications: Notifications,
     suppressed_notifications: HashSet<NotificationId>,
     bounds: Bounds<Pixels>,
@@ -2443,6 +2445,7 @@ impl Workspace {
             status_bar,
             modal_layer,
             titlebar_item: None,
+            titlebar_focus_handle: cx.focus_handle(),
             notifications: Notifications::default(),
             suppressed_notifications: HashSet::default(),
             bounds: Bounds::default(),
@@ -2824,7 +2827,15 @@ impl Render for Workspace {
                     }
                 }),
             )
-            .children(self.titlebar_item.clone())
+            .when_some(self.titlebar_item.clone(), |this, item| {
+                this.child(
+                    gpui::div()
+                        .id("titlebar-region")
+                        .track_focus(&self.titlebar_focus_handle)
+                        .w_full()
+                        .child(item),
+                )
+            })
             .child(
                 gpui::div()
                     .id("workspace")

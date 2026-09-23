@@ -1107,7 +1107,7 @@ impl Pane {
         self.should_display_welcome_page
     }
 
-    pub(crate) fn reload_recent_workspaces(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn reload_recent_workspaces(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(welcome_page) = self.welcome_page.as_ref() {
             welcome_page.update(cx, |welcome_page, cx| {
                 welcome_page.reload_recent_workspaces(window, cx);

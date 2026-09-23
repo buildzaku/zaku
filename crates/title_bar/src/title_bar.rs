@@ -3,7 +3,7 @@ mod application_menu;
 pub use platform_title_bar::{self, PlatformTitleBar};
 
 use gpui::{
-    AnyElement, App, Context, ElementId, Entity, MouseButton, SharedString, Subscription,
+    Anchor, AnyElement, App, Context, ElementId, Entity, MouseButton, SharedString, Subscription,
     WeakEntity, Window, WindowButton, prelude::*,
 };
 use smallvec::SmallVec;
@@ -14,9 +14,10 @@ use project::{
     git_store::{GitStoreEvent, RepositoryEvent},
     repo_identity_path,
 };
+use recent_projects::RecentProjects;
 use ui::{
-    ActiveTheme, Color, DynamicSpacing, Icon, IconAsset, IconSize, PlatformStyle, Svg, SvgAsset,
-    Text, TextCommon, TextSize,
+    ActiveTheme, Button, Color, DynamicSpacing, Icon, IconAsset, IconSize, PlatformStyle,
+    PopoverMenu, SelectableButton, Svg, SvgAsset, Text, TextCommon, TextSize, Tooltip,
 };
 use workspace::Workspace;
 
@@ -93,19 +94,36 @@ impl TitleBar {
         &self,
         name: Option<SharedString>,
         _: &mut Window,
-        _: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let workspace = self.workspace.clone();
+        let is_project_selected = name.is_some();
         let display_name = if let Some(name) = name {
             util::truncate_and_trailoff(&name, MAX_PROJECT_NAME_LENGTH)
         } else {
-            String::new()
+            "Open Recent Project".to_string()
         };
+        let selected_background = cx.theme().colors().ghost_element_hover;
 
-        Text::new(display_name)
-            .size(TextSize::Small)
-            .color(Color::Muted)
-            .single_line()
-            .truncate()
+        PopoverMenu::new("recent-projects-popover")
+            .menu(move |window, cx| Some(RecentProjects::popover(workspace.clone()?, window, cx)))
+            .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
+            .trigger_with_tooltip(
+                Button::new(
+                    "project-name-trigger",
+                    ui::utils::replace_control_characters(&display_name).into_owned(),
+                )
+                .text_size(TextSize::Small)
+                .tab_index(0)
+                .color(if is_project_selected {
+                    Color::Default
+                } else {
+                    Color::Muted
+                })
+                .selected_background(selected_background),
+                |_, cx| Tooltip::for_action("Recent Projects", &actions::projects::OpenRecent, cx),
+            )
+            .anchor(Anchor::TopLeft)
     }
 
     fn render_branch(
@@ -228,11 +246,17 @@ impl Render for TitleBar {
             .overflow_x_hidden()
             .flex_1()
             .pl_1()
-            .gap_2p5()
-            .when_some(project_name, |this, project_name| {
-                this.child(self.render_project_name(Some(project_name), window, cx))
-            })
-            .when_some(branch, |this, branch| this.child(branch))
+            .child(
+                gpui::div()
+                    .flex()
+                    .items_center()
+                    .gap_2p5()
+                    .when(self.workspace.is_some(), |this| {
+                        this.child(self.render_project_name(project_name, window, cx))
+                    })
+                    .when_some(branch, |this, branch| this.child(branch))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
+            )
             .into_any_element();
 
         let zaku = gpui::div()

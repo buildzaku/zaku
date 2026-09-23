@@ -3,5 +3,7 @@ gpui::actions!(
     [
         /// Clear recent projects.
         ClearRecent,
+        /// Open the recent projects picker.
+        OpenRecent,
     ]
 );

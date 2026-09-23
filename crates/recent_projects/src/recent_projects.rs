@@ -1,0 +1,560 @@
+use fuzzy_nucleo::{Case, LengthPenalty, StringMatch, StringMatchCandidate};
+use gpui::{
+    Action, AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
+    SharedString, Subscription, Task, TaskExt, WeakEntity, Window, prelude::*,
+};
+use std::sync::Arc;
+
+use fs::Fs;
+use path::PathExt;
+use picker::{Picker, PickerDelegate, ScrollBehavior};
+use ui::{
+    ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, Color,
+    DynamicSpacing, HighlightedText, IconAsset, IconButton, IconSize, KeyBinding, ListItem,
+    ListItemSpacing, ListSubHeader, Text, TextCommon, TextSize, Toggleable, Tooltip,
+    VisibleOnHover,
+};
+use workspace::{
+    ModalView, OpenMode, RecentWorkspace, Root, Workspace, WorkspaceDb,
+    notifications::DetachAndPromptErr,
+};
+
+pub fn init(cx: &mut App) {
+    cx.on_action(|_: &actions::projects::OpenRecent, cx| {
+        workspace::with_active_or_new_workspace(cx, |workspace, window, cx| {
+            let Some(recent_projects) = workspace.active_modal::<RecentProjects>(cx) else {
+                RecentProjects::open(workspace, window, cx);
+                return;
+            };
+
+            recent_projects.update(cx, |recent_projects, cx| {
+                recent_projects
+                    .picker
+                    .update(cx, |picker, cx| picker.cycle_selection(window, cx));
+            });
+        });
+    });
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProjectPickerStyle {
+    Modal,
+    Popover,
+}
+
+pub struct RecentProjects {
+    pub picker: Entity<Picker<RecentProjectsDelegate>>,
+    _dismiss_subscriptions: Vec<Subscription>,
+}
+
+impl RecentProjects {
+    fn new(
+        delegate: RecentProjectsDelegate,
+        fs: Option<Arc<dyn Fs>>,
+        rem_width: f32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let style = delegate.style;
+        let picker = cx.new(|cx| {
+            Picker::list(delegate, window, cx)
+                .list_measure_all()
+                .initial_width(gpui::rems(rem_width))
+                .minimum_results_width(gpui::rems(20.0))
+                .height(gpui::rems(24.0))
+                .no_vertical_padding()
+        });
+
+        let mut dismiss_subscriptions =
+            vec![cx.subscribe(&picker, |_, _, _: &DismissEvent, cx| cx.emit(DismissEvent))];
+        if style == ProjectPickerStyle::Popover {
+            let picker_focus = picker.focus_handle(cx);
+            dismiss_subscriptions
+                .push(cx.on_focus_out(&picker_focus, window, |_, _, _, cx| cx.emit(DismissEvent)));
+        }
+
+        let db = WorkspaceDb::global(cx);
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(fs) = fs else {
+                return anyhow::Ok(());
+            };
+            let workspaces = db.recent_project_workspaces(fs.as_ref()).await?;
+            this.update_in(cx, move |this, window, cx| {
+                this.picker.update(cx, move |picker, cx| {
+                    picker.delegate.set_workspaces(workspaces);
+                    picker.update_matches(picker.query(cx), window, cx);
+                });
+            })?;
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+
+        Self {
+            picker,
+            _dismiss_subscriptions: dismiss_subscriptions,
+        }
+    }
+
+    pub fn open(workspace: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) {
+        let workspace_handle = workspace.weak_handle();
+        let fs = Some(workspace.app_state().fs.clone());
+
+        workspace.toggle_modal(window, cx, |window, cx| {
+            let delegate = RecentProjectsDelegate::new(workspace_handle, ProjectPickerStyle::Modal);
+            Self::new(delegate, fs, 42.0, window, cx)
+        });
+    }
+
+    pub fn popover(
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<Self> {
+        let fs = workspace
+            .upgrade()
+            .map(|workspace| workspace.read(cx).app_state().fs.clone());
+
+        cx.new(|cx| {
+            let delegate = RecentProjectsDelegate::new(workspace, ProjectPickerStyle::Popover);
+            let list = Self::new(delegate, fs, 20.0, window, cx);
+            list.picker.focus_handle(cx).focus(window, cx);
+            list
+        })
+    }
+
+    fn handle_remove_selected(
+        &mut self,
+        _: &actions::recent_projects::RemoveSelected,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.picker.update(cx, |picker, cx| {
+            let index = picker.delegate.selected_index;
+            picker.delegate.delete_recent_project(index, window, cx);
+        });
+    }
+}
+
+impl ModalView for RecentProjects {}
+
+impl EventEmitter<DismissEvent> for RecentProjects {}
+
+impl Focusable for RecentProjects {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.picker.focus_handle(cx)
+    }
+}
+
+impl Render for RecentProjects {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::div()
+            .flex()
+            .flex_col()
+            .key_context("RecentProjects")
+            .on_action(cx.listener(Self::handle_remove_selected))
+            .child(self.picker.clone())
+    }
+}
+
+pub struct RecentProjectsDelegate {
+    workspace: WeakEntity<Workspace>,
+    workspaces: Vec<RecentWorkspace>,
+    matches: Vec<StringMatch>,
+    selected_index: usize,
+    style: ProjectPickerStyle,
+}
+
+impl RecentProjectsDelegate {
+    fn new(workspace: WeakEntity<Workspace>, style: ProjectPickerStyle) -> Self {
+        Self {
+            workspace,
+            workspaces: Vec::new(),
+            matches: Vec::new(),
+            selected_index: 0,
+            style,
+        }
+    }
+
+    pub fn set_workspaces(&mut self, workspaces: Vec<RecentWorkspace>) {
+        self.workspaces = workspaces;
+    }
+
+    fn update_picker_after_recent_project_deletion(
+        picker: &mut Picker<Self>,
+        deleted_index: usize,
+        workspaces: Vec<RecentWorkspace>,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) {
+        let prefer_previous = picker.is_scrolled_to_end() == Some(true);
+        picker.delegate.set_workspaces(workspaces);
+        picker.update_matches_with_options(
+            picker.query(cx),
+            ScrollBehavior::PreserveOffset,
+            window,
+            cx,
+        );
+        let match_count = picker.delegate.match_count();
+        if match_count > 0 {
+            let replacement_index = if prefer_previous {
+                deleted_index.saturating_sub(1)
+            } else {
+                deleted_index
+            };
+            picker.set_selected_index(
+                replacement_index.min(match_count - 1),
+                None,
+                false,
+                window,
+                cx,
+            );
+        }
+    }
+
+    fn delete_recent_project(
+        &self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) {
+        let Some(selected_match) = self.matches.get(index) else {
+            return;
+        };
+        let Some(recent_workspace) = self.workspaces.get(selected_match.candidate_id) else {
+            return;
+        };
+        let workspace_id = recent_workspace.workspace_id;
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let fs = workspace.read(cx).app_state().fs.clone();
+        let db = WorkspaceDb::global(cx);
+        let workspace_windows = cx
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<Root>())
+            .collect::<Vec<_>>();
+
+        cx.spawn_in(window, async move |this, cx| {
+            db.delete_workspace_by_id(workspace_id).await?;
+            for window in workspace_windows {
+                if let Err(error) = window.update(cx, |root, window, cx| {
+                    let pane = root.workspace().read(cx).pane().clone();
+                    pane.update(cx, |pane, cx| {
+                        pane.reload_recent_workspaces(window, cx);
+                    });
+                }) {
+                    log::debug!("Failed to reload recent workspaces: {error}");
+                }
+            }
+
+            let workspaces = db.recent_project_workspaces(fs.as_ref()).await?;
+            let Some(picker) = this.upgrade() else {
+                return anyhow::Ok(());
+            };
+            picker.update_in(cx, move |picker, window, cx| {
+                Self::update_picker_after_recent_project_deletion(
+                    picker, index, workspaces, window, cx,
+                );
+            })?;
+            anyhow::Ok(())
+        })
+        .detach_and_prompt_err(
+            "Failed to update recent projects",
+            window,
+            cx,
+            |_, _, _| None,
+        );
+    }
+}
+
+impl PickerDelegate for RecentProjectsDelegate {
+    type ListItem = AnyElement;
+
+    fn name() -> &'static str {
+        "recent projects"
+    }
+
+    fn placeholder_text(&self, _: &mut Window, _: &mut App) -> Arc<str> {
+        "Search projects…".into()
+    }
+
+    fn match_count(&self) -> usize {
+        self.matches.len()
+    }
+
+    fn selected_index(&self) -> usize {
+        self.selected_index
+    }
+
+    fn set_selected_index(&mut self, index: usize, _: &mut Window, _: &mut Context<Picker<Self>>) {
+        self.selected_index = index;
+    }
+
+    fn update_matches(
+        &mut self,
+        query: String,
+        _: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) -> Task<()> {
+        let query = query.trim_start();
+        let recent_candidates = self
+            .workspaces
+            .iter()
+            .enumerate()
+            .filter(|(_, workspace)| {
+                let current_workspace_id = self
+                    .workspace
+                    .upgrade()
+                    .and_then(|workspace| workspace.read(cx).database_id());
+                Some(workspace.workspace_id) != current_workspace_id
+            })
+            .map(|(id, workspace)| {
+                StringMatchCandidate::new(
+                    id,
+                    workspace.location.compact().to_string_lossy().into_owned(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        self.matches = if query.is_empty() {
+            recent_candidates
+                .into_iter()
+                .map(|candidate| StringMatch {
+                    candidate_id: candidate.id,
+                    score: 0.0,
+                    positions: Vec::new(),
+                    string: SharedString::default(),
+                })
+                .collect()
+        } else {
+            fuzzy_nucleo::match_strings(
+                &recent_candidates,
+                query,
+                Case::smart_if_uppercase_in(query),
+                LengthPenalty::On,
+                100,
+            )
+        };
+
+        self.selected_index = 0;
+        Task::ready(())
+    }
+
+    fn confirm(&mut self, secondary: bool, window: &mut Window, cx: &mut Context<Picker<Self>>) {
+        let Some(selected_match) = self.matches.get(self.selected_index) else {
+            return;
+        };
+        let Some(recent_workspace) = self.workspaces.get(selected_match.candidate_id) else {
+            return;
+        };
+        let open_mode = if secondary {
+            OpenMode::NewWindow
+        } else {
+            OpenMode::Activate
+        };
+        if let Some(workspace) = self.workspace.upgrade() {
+            workspace.update(cx, |workspace, cx| {
+                workspace
+                    .open_workspace_for_path(
+                        recent_workspace.location.clone(),
+                        open_mode,
+                        window,
+                        cx,
+                    )
+                    .detach_and_prompt_err("Failed to open project", window, cx, |_, _, _| None);
+            });
+        }
+        cx.emit(DismissEvent);
+    }
+
+    fn dismissed(&mut self, _: &mut Window, _: &mut Context<Picker<Self>>) {}
+
+    fn no_matches_text(&self, _: &mut Window, _: &mut App) -> Option<SharedString> {
+        Some(if self.workspaces.is_empty() {
+            "Recently opened projects will show up here".into()
+        } else {
+            "No matches".into()
+        })
+    }
+
+    fn render_match(
+        &self,
+        index: usize,
+        selected: bool,
+        _: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) -> Option<Self::ListItem> {
+        let hit = self.matches.get(index)?;
+        let workspace = self.workspaces.get(hit.candidate_id)?;
+        let path = workspace.location.compact();
+        let path_string = path.to_string_lossy().into_owned();
+        let name = path.file_name().map_or_else(
+            || path_string.clone(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        let name_start_byte = path_string.len() - name.len();
+        let positions = hit
+            .positions
+            .iter()
+            .copied()
+            .skip_while(|position| *position < name_start_byte)
+            .take_while(|position| *position < path_string.len())
+            .map(|position| position - name_start_byte)
+            .collect();
+        let theme_colors = cx.theme().colors();
+        let button_variant = ButtonVariant::Custom {
+            background: gpui::transparent_black(),
+            foreground: theme_colors.button_secondary_foreground,
+            hover_background: theme_colors.text.opacity(0.15),
+            border: gpui::transparent_black(),
+        };
+        let secondary_actions = gpui::div()
+            .flex()
+            .items_center()
+            .gap_0p5()
+            .when(!selected, |this| this.visible_on_hover("list-item"))
+            .child(
+                IconButton::new("open-in-new-window", IconAsset::ArrowUpRight)
+                    .icon_size(IconSize::Small)
+                    .variant(button_variant)
+                    .tooltip(|_, cx| {
+                        Tooltip::for_action(
+                            "Open Project in New Window",
+                            &actions::menu::SecondaryConfirm,
+                            cx,
+                        )
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.delegate.set_selected_index(index, window, cx);
+                        this.delegate.confirm(true, window, cx);
+                    })),
+            )
+            .child(
+                IconButton::new("remove-project", IconAsset::Close)
+                    .icon_size(IconSize::Small)
+                    .variant(button_variant)
+                    .tooltip(|_, cx| {
+                        Tooltip::for_action(
+                            "Remove from Recent Projects",
+                            &actions::recent_projects::RemoveSelected,
+                            cx,
+                        )
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.delegate.delete_recent_project(index, window, cx);
+                    })),
+            );
+
+        Some(
+            ListItem::new(index)
+                .inset(true)
+                .toggle_state(selected)
+                .spacing(ListItemSpacing::Sparse)
+                .child(
+                    gpui::div()
+                        .id("project-info-container")
+                        .flex()
+                        .items_center()
+                        .w_full()
+                        .min_w_0()
+                        .flex_grow_1()
+                        .gap_2()
+                        .child(
+                            HighlightedText::new(name, positions)
+                                .single_line()
+                                .truncate(),
+                        )
+                        .when(self.style == ProjectPickerStyle::Modal, |this| {
+                            this.children(
+                                workspace
+                                    .location
+                                    .parent()
+                                    .filter(|location| !location.as_os_str().is_empty())
+                                    .map(|location| {
+                                        let location =
+                                            location.compact().to_string_lossy().into_owned();
+                                        let positions = if path_string.starts_with(&location) {
+                                            hit.positions
+                                                .iter()
+                                                .copied()
+                                                .take_while(|position| *position < location.len())
+                                                .collect()
+                                        } else {
+                                            Vec::new()
+                                        };
+
+                                        HighlightedText::new(location, positions)
+                                            .color(Color::Muted)
+                                            .alpha(0.7)
+                                            .size(TextSize::XSmall)
+                                            .single_line()
+                                            .truncate_start()
+                                    }),
+                            )
+                        })
+                        .tooltip(move |_, cx| {
+                            Tooltip::with_meta(
+                                "Open Project in This Window",
+                                None,
+                                ui::utils::replace_control_characters(&path_string).into_owned(),
+                                cx,
+                            )
+                        }),
+                )
+                .end_slot(secondary_actions)
+                .into_any_element(),
+        )
+    }
+
+    fn render_header(&self, _: &mut Window, cx: &mut Context<Picker<Self>>) -> Option<AnyElement> {
+        let theme_colors = cx.theme().colors();
+
+        Some(
+            gpui::div()
+                .flex_none()
+                .pt(DynamicSpacing::Base04.rems(cx) * 2.0)
+                .bg(theme_colors.elevated_surface_background)
+                .child(ListSubHeader::new("Recent Projects").inset(true))
+                .into_any_element(),
+        )
+    }
+
+    fn render_footer(&self, _: &mut Window, cx: &mut Context<Picker<Self>>) -> Option<AnyElement> {
+        let theme_colors = cx.theme().colors();
+
+        Some(
+            gpui::div()
+                .flex()
+                .items_center()
+                .justify_end()
+                .w_full()
+                .flex_none()
+                .p_1p5()
+                .border_t_1()
+                .border_color(theme_colors.border_variant)
+                .child(
+                    ButtonLike::new("open-folder")
+                        .size(ButtonSize::Medium)
+                        .child(
+                            gpui::div()
+                                .flex()
+                                .items_center()
+                                .gap(DynamicSpacing::Base08.rems(cx))
+                                .child(Text::new("Open Folder"))
+                                .child(
+                                    KeyBinding::for_action(&actions::workspace::Open::DEFAULT, cx)
+                                        .size(ui::rems_from_px(12.0_f32)),
+                                ),
+                        )
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(
+                                actions::workspace::Open::DEFAULT.boxed_clone(),
+                                cx,
+                            );
+                        }),
+                )
+                .into_any_element(),
+        )
+    }
+}

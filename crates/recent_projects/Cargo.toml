@@ -1,5 +1,5 @@
 [package]
-name = "title_bar"
+name = "recent_projects"
 version.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -8,19 +8,20 @@ rust-version.workspace = true
 publish.workspace = true
 
 [lib]
-name = "title_bar"
-path = "src/title_bar.rs"
+name = "recent_projects"
+path = "src/recent_projects.rs"
 
 [lints]
 workspace = true
 
 [dependencies]
 actions = { workspace = true }
+anyhow = { workspace = true }
+fs = { workspace = true }
+fuzzy_nucleo = { workspace = true }
 gpui = { workspace = true }
-platform_title_bar = { workspace = true }
-project = { workspace = true }
-recent_projects = { workspace = true }
-smallvec = { workspace = true }
+log = { workspace = true }
+path = { workspace = true }
+picker = { workspace = true }
 ui = { workspace = true }
-util = { workspace = true }
 workspace = { workspace = true }

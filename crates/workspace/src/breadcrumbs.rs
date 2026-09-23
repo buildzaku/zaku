@@ -56,10 +56,11 @@ impl Render for Breadcrumbs {
         }
 
         let segment_elements = segments.into_iter().map(|segment| {
-            Text::new(segment.replace('\n', " "))
+            Text::new(segment)
                 .color(Color::Muted)
                 .size(TextSize::Editor)
                 .font_buffer(cx)
+                .single_line()
                 .into_any_element()
         });
 

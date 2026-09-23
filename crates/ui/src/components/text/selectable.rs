@@ -4,15 +4,16 @@ use gpui::{
     LayoutId, MouseButton, MouseMoveEvent, MouseUpEvent, Pixels, RenderOnce, SharedString,
     StyleRefinement, Styled, StyledText, WeakEntity, Window, prelude::*,
 };
-use std::{ops::Range, rc::Rc};
+use std::rc::Rc;
 
 use theme::{ActiveTheme, ThemeSettings};
 
 use crate::{Color, LineHeightStyle, TextSize};
 
 use super::{
-    TextCommon, TextStyle, insert_text_hitboxes, interaction::TextInteractionState,
-    selection::paint_text_selection,
+    TextCommon, TextStyle, insert_text_hitboxes,
+    interaction::TextInteractionState,
+    selection::{RenderedText, paint_text_selection},
 };
 
 #[derive(IntoElement)]
@@ -111,7 +112,6 @@ impl<T: Copy + Ord + 'static> TextCommon for SelectableText<T> {
     }
 
     fn single_line(mut self) -> Self {
-        self.text = SharedString::from(self.text.replace('\n', "\u{23ce}"));
         self.style.single_line = true;
         self
     }
@@ -149,15 +149,18 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableText<T> {
         } else {
             None
         };
-        let selected_range = interaction_state
-            .as_ref()
-            .and_then(|state| state.read(cx).selected_range_for_text(id, text.as_ref()));
+        let text = RenderedText::new(text);
+        let text = if style.single_line {
+            text.single_line()
+        } else {
+            text
+        };
+        let styled_text = StyledText::new(text.rendered.clone());
         let element = SelectableTextElement {
             interaction_state: interaction_state.as_ref().map(Entity::downgrade),
             id,
-            text: text.clone(),
-            styled_text: StyledText::new(text),
-            selected_range,
+            text,
+            styled_text,
             selectable,
         };
         style.apply(base, cx).child(element)
@@ -167,9 +170,8 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableText<T> {
 struct SelectableTextElement<T: Copy + Ord + 'static> {
     interaction_state: Option<WeakEntity<TextInteractionState<T>>>,
     id: T,
-    text: SharedString,
+    text: RenderedText,
     styled_text: StyledText,
-    selected_range: Option<Range<usize>>,
     selectable: bool,
 }
 
@@ -230,15 +232,26 @@ impl<T: Copy + Ord + 'static> Element for SelectableTextElement<T> {
                 window.set_cursor_style(CursorStyle::IBeam, hitbox);
             }
 
-            if let Some(interaction_state) = self.interaction_state.as_ref()
-                && let Err(error) = interaction_state.update(cx, |state, _| {
-                    state.register_text_layout(self.id, 0, self.text.clone(), text_layout);
-                })
-            {
-                log::trace!("Failed to register selectable text layout: {error:?}");
-            }
+            let selected_range =
+                self.interaction_state.as_ref().and_then(
+                    |interaction_state| match interaction_state.update(cx, |state, _| {
+                        state.text_selection.register_layout(
+                            self.id,
+                            0,
+                            self.text.clone(),
+                            text_layout,
+                        );
+                        state.text_selection.selected_rendered_range_for_id(self.id)
+                    }) {
+                        Ok(range) => range,
+                        Err(error) => {
+                            log::trace!("Failed to register selectable text layout: {error:?}");
+                            None
+                        }
+                    },
+                );
 
-            if let Some(selected_range) = self.selected_range.clone() {
+            if let Some(selected_range) = selected_range {
                 paint_text_selection(
                     selected_range,
                     text_layout,
@@ -354,7 +367,7 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableTextGroup<T> {
         };
         if let Some(interaction_state) = interaction_state.as_ref() {
             interaction_state.update(cx, |state, _| {
-                state.clear_text_layouts();
+                state.text_selection.clear_layouts();
                 if !selectable {
                     state.clear_text_selection();
                 }
@@ -440,7 +453,7 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableTextGroup<T> {
 
                             move |bounds, (), window, cx| {
                                 interaction_state.update(cx, |state, _| {
-                                    state.set_text_selection_bounds(bounds);
+                                    state.text_selection.set_selection_bounds(bounds);
                                 });
 
                                 window.on_mouse_event({
@@ -507,11 +520,13 @@ mod tests {
     use super::*;
 
     use gpui::{Context, Modifiers, Point, Render, TestAppContext, VisualTestContext};
+    use std::ops::{Deref, DerefMut, Range};
 
     use settings::SettingsStore;
     use theme::LoadThemes;
+    use util::test;
 
-    use crate::Indicator;
+    use crate::{Indicator, TextSelectionPoint, components::text::selection::TextSelection};
 
     fn init_test(cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -521,53 +536,140 @@ mod tests {
         });
     }
 
-    struct TestSelectableTextGroup {
-        interaction_state: Entity<TextInteractionState<usize>>,
-        items: Vec<SharedString>,
-        copy_separator: SharedString,
+    struct SelectableTextTestContext {
+        cx: VisualTestContext,
+        view: Entity<TestSelectableTextGroup>,
     }
 
-    impl TestSelectableTextGroup {
-        fn new<I, S>(items: I, cx: &mut Context<Self>) -> Self
-        where
-            I: IntoIterator<Item = S>,
-            S: Into<SharedString>,
-        {
-            Self {
-                interaction_state: cx.new(|cx| TextInteractionState::new(cx)),
-                items: items.into_iter().map(Into::into).collect(),
-                copy_separator: "\t".into(),
-            }
+    impl SelectableTextTestContext {
+        fn new(cx: &mut TestAppContext) -> Self {
+            let window = cx.add_window(|_, cx| TestSelectableTextGroup::new(cx));
+            let mut cx = VisualTestContext::from_window(window.into(), cx);
+            let view = window.root(&mut cx).unwrap();
+            Self { cx, view }
         }
 
-        fn selected_text(&self, window: &mut Window, cx: &mut App) -> Option<String> {
-            let selection_order = (0..self.items.len()).collect::<Vec<_>>();
-            let text_for_selection =
-                |item_id, _: &mut Window, _: &mut App| self.items.get(item_id).cloned();
+        fn set_single_line(&mut self, single_line: bool) {
+            self.view.update(&mut self.cx, |view, cx| {
+                view.single_line = single_line;
+                cx.notify();
+            });
+        }
 
-            self.interaction_state.update(cx, |state, cx| {
-                state.selected_text(
-                    &selection_order,
-                    self.copy_separator.as_ref(),
-                    &text_for_selection,
-                    window,
-                    cx,
-                )
+        #[track_caller]
+        fn set_state(&mut self, marked_items: impl IntoIterator<Item: AsRef<str>>) {
+            let (items, selection) = marked_text_state(marked_items);
+            self.view.update(&mut self.cx, |view, cx| {
+                view.items = items;
+                view.interaction_state.update(cx, |state, _| {
+                    state.clear_text_selection();
+                    if let Some(selection) = selection {
+                        state
+                            .text_selection
+                            .select_all(selection.start, selection.end);
+                    }
+                });
+                cx.notify();
+            });
+        }
+
+        fn selection(&self) -> Option<TextSelection<usize>> {
+            self.view.read_with(&self.cx, |view, cx| {
+                view.interaction_state
+                    .read(cx)
+                    .text_selection
+                    .selection
+                    .clone()
+            })
+        }
+
+        fn selected_text(&mut self) -> Option<String> {
+            self.view.update_in(&mut self.cx, |view, window, cx| {
+                let selection_order = (0..view.items.len()).collect::<Vec<_>>();
+                let text_for_selection =
+                    |item_id, _: &mut Window, _: &mut App| view.items.get(item_id).cloned();
+                view.interaction_state.update(cx, |state, cx| {
+                    state.selected_text(
+                        &selection_order,
+                        view.copy_separator.as_ref(),
+                        &text_for_selection,
+                        window,
+                        cx,
+                    )
+                })
             })
         }
 
         #[track_caller]
-        fn position_for_text_offset(
-            &self,
-            id: usize,
-            byte_offset: usize,
-            cx: &mut Context<Self>,
-        ) -> Point<Pixels> {
-            self.interaction_state
-                .read_with(cx, |state, _| {
-                    state.position_for_text_offset(id, byte_offset)
-                })
-                .unwrap()
+        fn group_bounds(&mut self) -> Bounds<Pixels> {
+            self.cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap()
+        }
+
+        #[track_caller]
+        fn pixel_position_for(&self, point: TextSelectionPoint<usize>) -> Point<Pixels> {
+            self.view.read_with(&self.cx, |view, cx| {
+                view.interaction_state
+                    .read(cx)
+                    .text_selection
+                    .position_for_id_offset(point.id, point.offset)
+                    .unwrap()
+            })
+        }
+
+        #[track_caller]
+        fn assert_state(&self, marked_items: impl IntoIterator<Item: AsRef<str>>) {
+            let (expected_items, expected_selection) = marked_text_state(marked_items);
+            let selection = self.selection();
+            self.view.read_with(&self.cx, |view, _| {
+                pretty_assertions::assert_eq!(view.items, expected_items);
+                let normalize_point = |mut point: TextSelectionPoint<usize>| {
+                    let source = view
+                        .items
+                        .get(point.id)
+                        .expect("selection point should reference an existing item");
+                    if point.offset == usize::MAX {
+                        point.offset = source.len();
+                    }
+                    assert!(source.is_char_boundary(point.offset));
+                    point
+                };
+                let selection = selection.map(|selection| {
+                    normalize_point(selection.tail())..normalize_point(selection.head())
+                });
+                pretty_assertions::assert_eq!(selection, expected_selection);
+            });
+        }
+    }
+
+    impl Deref for SelectableTextTestContext {
+        type Target = VisualTestContext;
+
+        fn deref(&self) -> &Self::Target {
+            &self.cx
+        }
+    }
+
+    impl DerefMut for SelectableTextTestContext {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.cx
+        }
+    }
+
+    struct TestSelectableTextGroup {
+        interaction_state: Entity<TextInteractionState<usize>>,
+        items: Vec<SharedString>,
+        copy_separator: SharedString,
+        single_line: bool,
+    }
+
+    impl TestSelectableTextGroup {
+        fn new(cx: &mut Context<Self>) -> Self {
+            Self {
+                interaction_state: cx.new(|cx| TextInteractionState::new(cx)),
+                items: Vec::new(),
+                copy_separator: "\t".into(),
+                single_line: false,
+            }
         }
     }
 
@@ -575,6 +677,7 @@ mod tests {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             let interaction_state = self.interaction_state.clone();
             let copy_separator = self.copy_separator.clone();
+            let single_line = self.single_line;
             let item_texts = self
                 .items
                 .iter()
@@ -604,6 +707,7 @@ mod tests {
 
                             move |(id, text)| {
                                 let text = SelectableText::new(&interaction_state, id, text)
+                                    .when(single_line, |this| this.single_line())
                                     .into_any_element();
 
                                 if id == 0 {
@@ -618,45 +722,74 @@ mod tests {
         }
     }
 
+    #[track_caller]
+    fn marked_text_state(
+        marked_items: impl IntoIterator<Item: AsRef<str>>,
+    ) -> (Vec<SharedString>, Option<Range<TextSelectionPoint<usize>>>) {
+        let marked_items = marked_items
+            .into_iter()
+            .map(|item| item.as_ref().replace('•', " "))
+            .collect::<Vec<_>>();
+        // Keep an item's end distinct from the next item's start, including empty items.
+        let marked_text = marked_items.join("\n");
+        pretty_assertions::assert_eq!(
+            marked_text.matches('«').count(),
+            marked_text.matches('»').count(),
+        );
+        let (_, mut selections) = test::marked_text_ranges(&marked_text, true);
+        assert!(selections.len() <= 1, "expected at most one selection");
+        let items = marked_items
+            .iter()
+            .map(|item| item.replace(['«', '»', 'ˇ'], "").into())
+            .collect::<Vec<SharedString>>();
+        let selection = selections.pop().map(|selection| {
+            let point_for_offset = |offset| {
+                let mut start = 0;
+                items
+                    .iter()
+                    .enumerate()
+                    .find_map(|(id, item)| {
+                        let end = start + item.len();
+                        let point = (start..=end)
+                            .contains(&offset)
+                            .then(|| TextSelectionPoint::new(id, offset - start));
+                        start = end + 1;
+                        point
+                    })
+                    .expect("selection endpoint should be inside an item")
+            };
+            point_for_offset(selection.start)..point_for_offset(selection.end)
+        });
+        (items, selection)
+    }
+
     fn simulate_drag(cx: &mut VisualTestContext, start: Point<Pixels>, end: Point<Pixels>) {
         cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
         cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
         cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
     }
 
-    #[track_caller]
-    fn assert_selection(
-        expected: Option<&str>,
-        view: &Entity<TestSelectableTextGroup>,
-        cx: &mut VisualTestContext,
-    ) {
-        assert_eq!(
-            view.update_in(cx, |view, window, cx| view.selected_text(window, cx))
-                .as_deref(),
-            expected,
-        );
-    }
-
     #[gpui::test]
     fn test_selectable_text_group_select_all(cx: &mut TestAppContext) {
         init_test(cx);
+        let mut cx = SelectableTextTestContext::new(cx);
+        cx.set_state(["foo", "bar", "baz"]);
 
-        let items = ["foo", "bar", "baz"];
-        let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
+        let group_bounds = cx.group_bounds();
         cx.simulate_click(group_bounds.center(), Modifiers::default());
         cx.dispatch_action(actions::text::SelectAll);
 
-        assert_selection(Some("foo\tbar\tbaz"), &view, cx);
+        cx.assert_state(["«foo", "bar", "bazˇ»"]);
+        pretty_assertions::assert_eq!(cx.selected_text().as_deref(), Some("foo\tbar\tbaz"));
     }
 
     #[gpui::test]
     fn test_selectable_text_group_drag_selects_from_padding(cx: &mut TestAppContext) {
         init_test(cx);
+        let mut cx = SelectableTextTestContext::new(cx);
+        cx.set_state(["foo", "bar", "baz"]);
 
-        let items = ["foo", "bar", "baz"];
-        let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
+        let group_bounds = cx.group_bounds();
         let inside_group_offset = gpui::px(2.0);
         let start = gpui::point(
             group_bounds.left() + inside_group_offset,
@@ -666,20 +799,21 @@ mod tests {
             group_bounds.right() - inside_group_offset,
             group_bounds.center().y,
         );
-        simulate_drag(cx, start, end);
+        simulate_drag(&mut cx, start, end);
 
-        assert_selection(Some("foo\tbar\tbaz"), &view, cx);
+        cx.assert_state(["«foo", "bar", "bazˇ»"]);
+        pretty_assertions::assert_eq!(cx.selected_text().as_deref(), Some("foo\tbar\tbaz"));
     }
 
     #[gpui::test]
     fn test_selectable_text_group_drag_below_selects_from_padding(cx: &mut TestAppContext) {
         init_test(cx);
+        let mut cx = SelectableTextTestContext::new(cx);
+        cx.set_state(["foo", "bar", "baz"]);
 
-        let items = ["foo", "bar", "baz"];
-        let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
+        let group_bounds = cx.group_bounds();
         let inside_group_offset = gpui::px(2.0);
-        let outside_group_offset = gpui::px(8.0);
+        let outside_group_offset = gpui::px(5.0);
         let start = gpui::point(
             group_bounds.left() + inside_group_offset,
             group_bounds.center().y,
@@ -688,20 +822,21 @@ mod tests {
             group_bounds.center().x,
             group_bounds.bottom() + outside_group_offset,
         );
-        simulate_drag(cx, start, end);
+        simulate_drag(&mut cx, start, end);
 
-        assert_selection(Some("foo\tbar\tbaz"), &view, cx);
+        cx.assert_state(["«foo", "bar", "bazˇ»"]);
+        pretty_assertions::assert_eq!(cx.selected_text().as_deref(), Some("foo\tbar\tbaz"));
     }
 
     #[gpui::test]
     fn test_selectable_text_group_drag_above_selects_from_padding(cx: &mut TestAppContext) {
         init_test(cx);
+        let mut cx = SelectableTextTestContext::new(cx);
+        cx.set_state(["foo", "bar", "baz"]);
 
-        let items = ["foo", "bar", "baz"];
-        let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
+        let group_bounds = cx.group_bounds();
         let inside_group_offset = gpui::px(2.0);
-        let outside_group_offset = gpui::px(8.0);
+        let outside_group_offset = gpui::px(5.0);
         let start = gpui::point(
             group_bounds.right() - inside_group_offset,
             group_bounds.center().y,
@@ -710,104 +845,149 @@ mod tests {
             group_bounds.center().x,
             group_bounds.top() - outside_group_offset,
         );
-        simulate_drag(cx, start, end);
+        simulate_drag(&mut cx, start, end);
 
-        assert_selection(Some("foo\tbar\tbaz"), &view, cx);
+        cx.assert_state(["«ˇfoo", "bar", "baz»"]);
+        pretty_assertions::assert_eq!(cx.selected_text().as_deref(), Some("foo\tbar\tbaz"));
     }
 
     #[gpui::test]
     fn test_selectable_text_group_drag_below_selects_from_text_start(cx: &mut TestAppContext) {
         init_test(cx);
+        let mut cx = SelectableTextTestContext::new(cx);
+        cx.set_state(["foo", "ˇbar", "baz"]);
 
-        let items = ["foo", "bar", "baz"];
-        let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
-        let outside_group_offset = gpui::px(8.0);
-        let text_boundary_offset = gpui::px(1.0);
-        let bar_id = items.iter().position(|item| *item == "bar").unwrap();
-        let byte_offset = 0;
-        let mut start = view.update(cx, |view, cx| {
-            view.position_for_text_offset(bar_id, byte_offset, cx)
-        });
-        start.x += text_boundary_offset;
-        start.y = group_bounds.center().y;
+        let group_bounds = cx.group_bounds();
+        let outside_group_offset = gpui::px(5.0);
+        let selection = cx.selection().unwrap();
+        let start = gpui::point(
+            cx.pixel_position_for(selection.head()).x + gpui::px(1.0),
+            group_bounds.center().y,
+        );
         let end = gpui::point(
             group_bounds.center().x,
             group_bounds.bottom() + outside_group_offset,
         );
-        simulate_drag(cx, start, end);
+        simulate_drag(&mut cx, start, end);
 
-        assert_selection(Some("bar\tbaz"), &view, cx);
+        cx.assert_state(["foo", "«bar", "bazˇ»"]);
+        pretty_assertions::assert_eq!(cx.selected_text().as_deref(), Some("bar\tbaz"));
     }
 
     #[gpui::test]
     fn test_selectable_text_group_drag_above_selects_from_text_start(cx: &mut TestAppContext) {
         init_test(cx);
+        let mut cx = SelectableTextTestContext::new(cx);
+        cx.set_state(["foo", "ˇbar", "baz"]);
 
-        let items = ["foo", "bar", "baz"];
-        let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
-        let outside_group_offset = gpui::px(8.0);
-        let text_boundary_offset = gpui::px(1.0);
-        let bar_id = items.iter().position(|item| *item == "bar").unwrap();
-        let byte_offset = 0;
-        let mut start = view.update(cx, |view, cx| {
-            view.position_for_text_offset(bar_id, byte_offset, cx)
-        });
-        start.x += text_boundary_offset;
-        start.y = group_bounds.center().y;
+        let group_bounds = cx.group_bounds();
+        let outside_group_offset = gpui::px(5.0);
+        let selection = cx.selection().unwrap();
+        let start = gpui::point(
+            cx.pixel_position_for(selection.head()).x + gpui::px(1.0),
+            group_bounds.center().y,
+        );
         let end = gpui::point(
             group_bounds.center().x,
             group_bounds.top() - outside_group_offset,
         );
-        simulate_drag(cx, start, end);
+        simulate_drag(&mut cx, start, end);
 
-        assert_selection(Some("foo"), &view, cx);
+        cx.assert_state(["«ˇfoo", "»bar", "baz"]);
+        pretty_assertions::assert_eq!(cx.selected_text().as_deref(), Some("foo"));
     }
 
     #[gpui::test]
     fn test_selectable_text_group_drag_below_selects_from_text_offset(cx: &mut TestAppContext) {
         init_test(cx);
+        let mut cx = SelectableTextTestContext::new(cx);
+        cx.set_state(["foo", "bˇar", "baz"]);
 
-        let items = ["foo", "bar", "baz"];
-        let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
-        let outside_group_offset = gpui::px(8.0);
-        let bar_id = items.iter().position(|item| *item == "bar").unwrap();
-        let byte_offset = 1;
-        let mut start = view.update(cx, |view, cx| {
-            view.position_for_text_offset(bar_id, byte_offset, cx)
-        });
-        start.y = group_bounds.center().y;
+        let group_bounds = cx.group_bounds();
+        let outside_group_offset = gpui::px(5.0);
+        let selection = cx.selection().unwrap();
+        let start = gpui::point(
+            cx.pixel_position_for(selection.head()).x,
+            group_bounds.center().y,
+        );
         let end = gpui::point(
             group_bounds.center().x,
             group_bounds.bottom() + outside_group_offset,
         );
-        simulate_drag(cx, start, end);
+        simulate_drag(&mut cx, start, end);
 
-        assert_selection(Some("ar\tbaz"), &view, cx);
+        cx.assert_state(["foo", "b«ar", "bazˇ»"]);
+        pretty_assertions::assert_eq!(cx.selected_text().as_deref(), Some("ar\tbaz"));
     }
 
     #[gpui::test]
     fn test_selectable_text_group_drag_above_selects_from_text_offset(cx: &mut TestAppContext) {
         init_test(cx);
+        let mut cx = SelectableTextTestContext::new(cx);
+        cx.set_state(["foo", "bˇar", "baz"]);
 
-        let items = ["foo", "bar", "baz"];
-        let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
-        let group_bounds = cx.debug_bounds("SELECTABLE_TEXT_GROUP").unwrap();
-        let outside_group_offset = gpui::px(8.0);
-        let bar_id = items.iter().position(|item| *item == "bar").unwrap();
-        let byte_offset = 1;
-        let mut start = view.update(cx, |view, cx| {
-            view.position_for_text_offset(bar_id, byte_offset, cx)
-        });
-        start.y = group_bounds.center().y;
+        let group_bounds = cx.group_bounds();
+        let outside_group_offset = gpui::px(5.0);
+        let selection = cx.selection().unwrap();
+        let start = gpui::point(
+            cx.pixel_position_for(selection.head()).x,
+            group_bounds.center().y,
+        );
         let end = gpui::point(
             group_bounds.center().x,
             group_bounds.top() - outside_group_offset,
         );
-        simulate_drag(cx, start, end);
+        simulate_drag(&mut cx, start, end);
 
-        assert_selection(Some("foo\tb"), &view, cx);
+        cx.assert_state(["«ˇfoo", "b»ar", "baz"]);
+        pretty_assertions::assert_eq!(cx.selected_text().as_deref(), Some("foo\tb"));
+    }
+
+    #[gpui::test]
+    fn test_single_line_select_all_preserves_control_characters(cx: &mut TestAppContext) {
+        init_test(cx);
+        let mut cx = SelectableTextTestContext::new(cx);
+        cx.set_single_line(true);
+        cx.set_state(["föö\nö\t bár🚀", "\r\0\x7f", "a\u{0085}b"]);
+
+        let group_bounds = cx.group_bounds();
+        cx.simulate_click(group_bounds.center(), Modifiers::default());
+        cx.dispatch_action(actions::text::SelectAll);
+
+        cx.assert_state(["«föö\nö\t bár🚀", "\r\0\x7f", "a\u{0085}bˇ»"]);
+        pretty_assertions::assert_eq!(
+            cx.selected_text().as_deref(),
+            Some("föö\nö\t bár🚀\t\r\0\x7f\ta\u{0085}b"),
+        );
+    }
+
+    #[gpui::test]
+    fn test_single_line_partial_selection_preserves_control_characters(cx: &mut TestAppContext) {
+        init_test(cx);
+        let mut cx = SelectableTextTestContext::new(cx);
+        cx.set_single_line(true);
+        cx.set_state(["fööˇ\nö\t bár🚀"]);
+
+        let group_bounds = cx.group_bounds();
+        let selection = cx.selection().unwrap();
+        let start = gpui::point(
+            cx.pixel_position_for(selection.head()).x,
+            group_bounds.center().y,
+        );
+        let end = gpui::point(
+            cx.pixel_position_for(TextSelectionPoint::new(0, "föö\nö\t".len()))
+                .x,
+            group_bounds.center().y,
+        );
+
+        simulate_drag(&mut cx, start, end);
+
+        cx.assert_state(["föö«\nö\tˇ» bár🚀"]);
+        pretty_assertions::assert_eq!(cx.selected_text().as_deref(), Some("\nö\t"));
+
+        simulate_drag(&mut cx, end, start);
+
+        cx.assert_state(["föö«ˇ\nö\t» bár🚀"]);
+        pretty_assertions::assert_eq!(cx.selected_text().as_deref(), Some("\nö\t"));
     }
 }

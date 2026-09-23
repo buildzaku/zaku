@@ -60,6 +60,7 @@ multi_buffer = { workspace = true }
 path = { workspace = true }
 platform_title_bar = { workspace = true }
 project_panel = { workspace = true }
+recent_projects = { workspace = true }
 request_editor = { workspace = true }
 reqwest = { workspace = true }
 reqwest_client = { workspace = true }

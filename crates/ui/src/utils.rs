@@ -1,5 +1,7 @@
+mod control_characters;
 mod with_rem_size;
 
+pub use control_characters::*;
 pub use with_rem_size::*;
 
 #[cfg(target_os = "macos")]

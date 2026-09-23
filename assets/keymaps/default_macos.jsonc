@@ -27,6 +27,8 @@
       "cmd-shift-n": "workspace::NewWindow",
       "cmd-shift-p": "command_palette::Toggle",
       "cmd-o": "workspace::Open",
+      "alt-cmd-o": "projects::OpenRecent",
+      "ctrl-r": "projects::OpenRecent",
       "cmd-alt-,": "zaku::OpenSettingsFile",
       "cmd-q": "zaku::Quit"
     }
@@ -210,6 +212,13 @@
       "escape": "menu::Cancel",
       "up": "menu::SelectPrevious",
       "down": "menu::SelectNext"
+    }
+  },
+  {
+    "context": "RecentProjects || (RecentProjects > Picker > Editor)",
+    "use_key_equivalents": true,
+    "bindings": {
+      "shift-backspace": "recent_projects::RemoveSelected"
     }
   }
 ]

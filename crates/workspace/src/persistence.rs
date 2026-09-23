@@ -233,6 +233,13 @@ impl From<WindowBoundsJson> for WindowBounds {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecentWorkspace {
+    pub workspace_id: WorkspaceId,
+    pub location: PathBuf,
+    pub timestamp: Timestamp,
+}
+
 pub struct WorkspaceDb(ThreadSafeConnection);
 
 impl WorkspaceDb {
@@ -338,6 +345,34 @@ impl WorkspaceDb {
         {
             log::error!("Failed to save workspace: {error}");
         }
+    }
+
+    pub async fn recent_project_workspaces(
+        &self,
+        fs: &dyn Fs,
+    ) -> anyhow::Result<Vec<RecentWorkspace>> {
+        let mut workspaces = Vec::new();
+
+        for (workspace_id, location, timestamp) in self.recent_workspaces()? {
+            match fs.metadata(&location).await {
+                Ok(Some(metadata)) if metadata.is_dir => {
+                    workspaces.push(RecentWorkspace {
+                        workspace_id,
+                        location,
+                        timestamp,
+                    });
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    log::warn!(
+                        "Failed to read metadata for recent project {}: {error}",
+                        location.display(),
+                    );
+                }
+            }
+        }
+
+        Ok(workspaces)
     }
 
     pub async fn recent_workspaces_on_disk(

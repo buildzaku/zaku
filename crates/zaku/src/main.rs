@@ -197,6 +197,7 @@ fn main() {
         title_bar::init(cx);
         zaku::init(cx);
         command_palette::init(cx);
+        recent_projects::init(cx);
         let menus = zaku::app_menu(cx);
         cx.set_menus(menus);
         telemetry.flush_events().detach();

@@ -2359,6 +2359,7 @@ impl ProjectPanel {
                 gpui::div().flex_1().min_w_0().child(
                     Text::new(root_name.to_ascii_uppercase())
                         .size(TextSize::Small)
+                        .single_line()
                         .truncate(),
                 ),
             )
