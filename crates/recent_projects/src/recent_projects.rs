@@ -3,6 +3,8 @@ use gpui::{
     Action, AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
     SharedString, Subscription, Task, TaskExt, WeakEntity, Window, prelude::*,
 };
+#[cfg(any(test, feature = "test"))]
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use fs::Fs;
@@ -177,6 +179,15 @@ impl RecentProjectsDelegate {
 
     pub fn set_workspaces(&mut self, workspaces: Vec<RecentWorkspace>) {
         self.workspaces = workspaces;
+    }
+
+    #[cfg(any(test, feature = "test"))]
+    pub fn matched_locations(&self) -> Vec<PathBuf> {
+        self.matches
+            .iter()
+            .filter_map(|hit| self.workspaces.get(hit.candidate_id))
+            .map(|workspace| workspace.location.clone())
+            .collect()
     }
 
     fn update_picker_after_recent_project_deletion(

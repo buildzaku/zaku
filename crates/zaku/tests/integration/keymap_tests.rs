@@ -29,6 +29,7 @@ fn action_namespace(action_name: &str) -> &str {
         .map_or("", |(namespace, _)| namespace)
 }
 
+#[cfg(test)]
 #[track_caller]
 fn assert_key_bindings_for(
     window: AnyWindowHandle,
@@ -38,12 +39,12 @@ fn assert_key_bindings_for(
 ) {
     let available_actions = cx
         .update(|cx| window.update(cx, |_, window, cx| window.available_actions(cx)))
-        .expect("available actions should be readable");
+        .unwrap();
 
     for (key, action) in actions {
         let bindings = cx
             .update(|cx| window.update(cx, |_, window, _| window.bindings_for_action(action)))
-            .expect("key bindings should be readable");
+            .unwrap();
 
         assert!(
             available_actions
@@ -66,6 +67,7 @@ fn assert_key_bindings_for(
     }
 }
 
+#[cfg(test)]
 fn has_key_binding(
     window: AnyWindowHandle,
     cx: &TestAppContext,
@@ -74,7 +76,7 @@ fn has_key_binding(
 ) -> bool {
     let bindings = cx
         .update(|cx| window.update(cx, |_, window, _| window.bindings_for_action(action)))
-        .expect("key bindings should be readable");
+        .unwrap();
 
     bindings.iter().any(|binding| {
         binding
