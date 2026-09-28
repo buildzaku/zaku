@@ -93,7 +93,7 @@ impl TitleBar {
     fn render_project_name(
         &self,
         name: Option<SharedString>,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let workspace = self.workspace.clone();
@@ -114,6 +114,7 @@ impl TitleBar {
                     ui::utils::replace_control_characters(&display_name).into_owned(),
                 )
                 .text_size(TextSize::Small)
+                .height(IconSize::Small.square(window, cx))
                 .tab_index(0)
                 .color(if is_project_selected {
                     Color::Default
