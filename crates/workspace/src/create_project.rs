@@ -386,18 +386,20 @@ impl Render for CreateProjectModal {
                             ),
                     )
                     .child(
-                        Checkbox::new(
-                            "create-project-initialize-git-repository",
-                            ToggleState::from(self.initialize_git_repository),
-                        )
-                        .text("Initialize Git repository")
-                        .disabled(self.is_creating)
-                        .on_click(cx.listener(
-                            |modal, toggle_state: &ToggleState, _, cx| {
-                                modal.initialize_git_repository = toggle_state.selected();
-                                cx.notify();
-                            },
-                        )),
+                        gpui::div().flex().child(
+                            Checkbox::new(
+                                "create-project-initialize-git-repository",
+                                ToggleState::from(self.initialize_git_repository),
+                            )
+                            .text("Initialize Git repository")
+                            .disabled(self.is_creating)
+                            .on_click(cx.listener(
+                                |modal, toggle_state: &ToggleState, _, cx| {
+                                    modal.initialize_git_repository = toggle_state.selected();
+                                    cx.notify();
+                                },
+                            )),
+                        ),
                     )
                     .when_some(self.error.clone(), |this, error| {
                         this.child(Text::new(error).size(TextSize::Small).color(Color::Error))
