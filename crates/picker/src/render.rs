@@ -87,6 +87,11 @@ impl<D: PickerDelegate> Picker<D> {
                         .when(self.show_scrollbar, |this| {
                             let base_scrollbar_config = Scrollbars::new(ScrollAxes::Vertical);
                             this.map(|this| match &self.element_container {
+                                ElementContainer::List(state) => this.custom_scrollbars(
+                                    base_scrollbar_config.tracked_scroll_handle(state),
+                                    window,
+                                    cx,
+                                ),
                                 ElementContainer::UniformList(scroll_handle) => this
                                     .custom_scrollbars(
                                         base_scrollbar_config.tracked_scroll_handle(scroll_handle),

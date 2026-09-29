@@ -54,8 +54,7 @@ struct ActiveModal {
     modal: Box<dyn ModalViewHandle>,
     previous_focus_handle: Option<FocusHandle>,
     focus_handle: FocusHandle,
-    _dismiss_subscription: Subscription,
-    _focus_out_subscription: Subscription,
+    _dismiss_subscriptions: Vec<Subscription>,
 }
 
 pub(crate) struct ModalOpenedEvent;
@@ -95,26 +94,26 @@ impl ModalLayer {
         V: ModalView,
     {
         let focus_handle = cx.focus_handle();
-        let dismiss_subscription = cx.subscribe_in(
-            &new_modal,
-            window,
-            |this, _, _: &DismissEvent, window, cx| {
-                this.hide_modal(window, cx);
-            },
-        );
-        let focus_out_subscription =
-            cx.on_focus_out(&focus_handle, window, |this, _event, window, cx| {
+        let dismiss_subscriptions = vec![
+            cx.subscribe_in(
+                &new_modal,
+                window,
+                |this, _, _: &DismissEvent, window, cx| {
+                    this.hide_modal(window, cx);
+                },
+            ),
+            cx.on_focus_out(&focus_handle, window, |this, _, window, cx| {
                 if this.dismiss_on_focus_lost {
                     this.hide_modal(window, cx);
                 }
-            });
+            }),
+        ];
 
         self.active_modal = Some(ActiveModal {
             modal: Box::new(new_modal.clone()),
             previous_focus_handle: window.focused(cx),
             focus_handle,
-            _dismiss_subscription: dismiss_subscription,
-            _focus_out_subscription: focus_out_subscription,
+            _dismiss_subscriptions: dismiss_subscriptions,
         });
         cx.defer_in(window, move |_, window, cx| {
             window.focus(&new_modal.focus_handle(cx), cx);

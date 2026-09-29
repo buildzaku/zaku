@@ -50,6 +50,7 @@ pub fn app_menu(cx: &mut App) -> Vec<Menu> {
                 MenuItem::action("New Window", actions::workspace::NewWindow),
                 MenuItem::separator(),
                 MenuItem::action("Open…", actions::workspace::Open::default()),
+                MenuItem::action("Open Recent…", actions::projects::OpenRecent),
                 MenuItem::separator(),
                 MenuItem::action("Close Project", actions::workspace::CloseProject),
                 MenuItem::action("Close Window", actions::workspace::CloseWindow),

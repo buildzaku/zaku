@@ -87,12 +87,14 @@ impl Item for RequestEditor {
         };
         let was_deleted = self.buffer.read(cx).file().disk_state.is_deleted();
         let title = Text::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
+            .single_line()
             .color(text_color)
             .when(params.preview, |this| this.italic())
             .when(was_deleted, |this| this.strikethrough());
         let description = params.detail.and_then(|detail| {
             let path = self.path_for_request(detail, false, cx)?;
-            let description = path.trim();
+            let description = ui::utils::replace_control_characters(&path);
+            let description = description.trim();
 
             if description.is_empty() {
                 return None;
@@ -134,6 +136,7 @@ impl Item for RequestEditor {
             .when_some(description, |this, description| {
                 this.child(
                     Text::new(description)
+                        .single_line()
                         .size(TextSize::XSmall)
                         .line_height_style(LineHeightStyle::Compact)
                         .color(Color::Muted)
@@ -148,7 +151,11 @@ impl Item for RequestEditor {
         self.project
             .read(cx)
             .absolute_path(&project_path, cx)
-            .map(|path| path.compact().to_string_lossy().into_owned().into())
+            .map(|path| {
+                ui::utils::replace_control_characters(&path.compact().to_string_lossy())
+                    .into_owned()
+                    .into()
+            })
     }
 
     fn for_each_project_item(
