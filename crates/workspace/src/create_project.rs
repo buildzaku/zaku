@@ -6,6 +6,7 @@ use gpui::{
 };
 use std::path::{Component, Path, PathBuf};
 
+use db::kv::KeyValueStore;
 use input::{ErasedEditorEvent, InputField};
 use settings::{GitSettings, Settings};
 use theme::ActiveTheme;
@@ -13,10 +14,12 @@ use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Checkbox, Clickable, Color, Disableable,
     Headline, HeadlineSize, StyledExt, Text, TextCommon, TextSize, ToggleState,
 };
+use util::ResultExt;
 
 use crate::{
     DismissDecision, GitInitErrorToast, ModalView, OpenMode, Toast, Workspace,
     notifications::{DetachAndPromptErr, NotificationId},
+    persistence,
 };
 
 pub(crate) struct CreateProjectModal {
@@ -63,7 +66,10 @@ impl CreateProjectModal {
             workspace,
             project_name,
             location: path::home_dir().clone(),
-            initialize_git_repository: true,
+            initialize_git_repository: persistence::read_initialize_git_repository(
+                &KeyValueStore::global(cx),
+            )
+            .unwrap_or(true),
             is_creating: false,
             error: None,
             _project_name_subscription: project_name_subscription,
@@ -169,6 +175,15 @@ impl CreateProjectModal {
         let fallback_branch_name = self
             .initialize_git_repository
             .then(|| GitSettings::get_global(cx).fallback_branch_name.clone());
+
+        let kv_store = KeyValueStore::global(cx);
+        let initialize_git_repository = self.initialize_git_repository;
+        cx.background_spawn(async move {
+            persistence::write_initialize_git_repository(&kv_store, initialize_git_repository)
+                .await
+                .log_err();
+        })
+        .detach();
 
         self.is_creating = true;
         self.error = None;

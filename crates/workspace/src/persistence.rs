@@ -140,6 +140,28 @@ pub(crate) async fn write_default_dock_state(
     Ok(())
 }
 
+const INITIALIZE_GIT_REPOSITORY_KEY: &str = "initialize_git_repository";
+
+pub(crate) fn read_initialize_git_repository(kv_store: &KeyValueStore) -> Option<bool> {
+    let json_str = kv_store
+        .read_kv(INITIALIZE_GIT_REPOSITORY_KEY)
+        .log_err()
+        .flatten()?;
+
+    serde_json::from_str::<bool>(&json_str).ok()
+}
+
+pub(crate) async fn write_initialize_git_repository(
+    kv_store: &KeyValueStore,
+    initialize_git_repository: bool,
+) -> anyhow::Result<()> {
+    let json_str = serde_json::to_string(&initialize_git_repository)?;
+    kv_store
+        .write_kv(INITIALIZE_GIT_REPOSITORY_KEY.to_string(), json_str)
+        .await?;
+    Ok(())
+}
+
 #[derive(Serialize, Deserialize)]
 pub enum WindowBoundsJson {
     Windowed {
