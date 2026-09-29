@@ -1,4 +1,4 @@
-use anyhow::Context as AnyhowContext;
+use anyhow::Context as _;
 use gpui::{
     Action, AnyView, App, Axis, Context, Empty, Entity, EntityId, FocusHandle, Focusable,
     IntoElement, KeyContext, MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Render,
