@@ -1,5 +1,7 @@
+mod control_characters;
 mod with_rem_size;
 
+pub use control_characters::*;
 pub use with_rem_size::*;
 
 #[cfg(target_os = "macos")]
@@ -24,7 +26,7 @@ pub fn title_bar_height(rem_size: Pixels) -> Pixels {
 pub fn traffic_light_inset(title_bar_height: Pixels, cx: &App) -> (Pixels, Pixels) {
     let min_x_inset = gpui::px(9.5);
     let x_inset = crate::DynamicSpacing::Base08.px(cx).max(min_x_inset);
-    let y_inset = (title_bar_height - gpui::px(12.5)) / 2.0;
+    let y_inset = (title_bar_height - gpui::px(14.0)) / 2.0;
 
     (x_inset, y_inset)
 }

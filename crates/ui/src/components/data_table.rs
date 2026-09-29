@@ -21,6 +21,7 @@ use super::{
         TableResizeBehavior, bind_redistributable_columns, render_column_resize_divider,
         render_redistributable_columns_resize_handles,
     },
+    text::RenderedText,
 };
 
 use crate::{
@@ -952,7 +953,7 @@ impl Element for TableTextElement {
                 state.text_selection.register_layout(
                     self.id,
                     self.id.row_index,
-                    self.text.clone(),
+                    RenderedText::new(self.text.clone()),
                     text_layout,
                 );
             })

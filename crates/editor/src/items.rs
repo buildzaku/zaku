@@ -75,6 +75,7 @@ impl Item for Editor {
     fn tab_content(&self, params: TabContentParams, _: &Window, cx: &App) -> AnyElement {
         let title = self.buffer.read(cx).title(cx).into_owned();
         let title = Text::new(truncate_and_trailoff(&title, MAX_TAB_TITLE_LEN))
+            .single_line()
             .color(entry_text_color(params.selected))
             .when(params.preview, |this| this.italic())
             .when(self.buffer.read(cx).has_deleted_file(cx), |this| {
@@ -82,7 +83,8 @@ impl Item for Editor {
             });
         let description = params.detail.and_then(|detail| {
             let path = path_for_buffer(&self.buffer, detail, false, cx)?;
-            let description = path.trim();
+            let description = ui::utils::replace_control_characters(&path);
+            let description = description.trim();
             if description.is_empty() {
                 return None;
             }
@@ -99,6 +101,7 @@ impl Item for Editor {
             .when_some(description, |this, description| {
                 this.child(
                     Text::new(description)
+                        .single_line()
                         .size(TextSize::XSmall)
                         .line_height_style(LineHeightStyle::Compact)
                         .color(Color::Muted)
@@ -115,18 +118,19 @@ impl Item for Editor {
             .and_then(|buffer| buffer.read(cx).file())
             .and_then(|file| project::File::from_dyn(Some(file)))
         {
+            let path = file.worktree.read(cx).absolutize(&file.path).compact();
             Some(
-                file.worktree
-                    .read(cx)
-                    .absolutize(&file.path)
-                    .compact()
-                    .to_string_lossy()
+                ui::utils::replace_control_characters(&path.to_string_lossy())
                     .into_owned()
                     .into(),
             )
         } else {
             let title = multi_buffer.title(cx);
-            (!title.is_empty()).then(|| title.to_string().into())
+            (!title.is_empty()).then(|| {
+                ui::utils::replace_control_characters(&title)
+                    .into_owned()
+                    .into()
+            })
         }
     }
 

@@ -4,13 +4,14 @@ mod shape;
 
 use gpui::{
     AnyElement, App, ClickEvent, Context, DismissEvent, Div, EventEmitter, FocusHandle, Focusable,
-    IntoElement, ListSizingBehavior, MouseButton, MouseUpEvent, Rems, ScrollStrategy, SharedString,
-    Task, UniformListScrollHandle, Window, prelude::*,
+    IntoElement, ListAlignment, ListSizingBehavior, ListState, MouseButton, MouseUpEvent, Rems,
+    ScrollStrategy, SharedString, Task, UniformListScrollHandle, Window, prelude::*,
 };
 use std::{ops::Range, sync::Arc, time::Duration};
 
 use input::{ErasedEditor, ErasedEditorEvent};
 use theme::ActiveTheme;
+use ui::DynamicSpacing;
 use workspace::ModalView;
 
 use crate::{
@@ -19,6 +20,7 @@ use crate::{
 };
 
 enum ElementContainer {
+    List(ListState),
     UniformList(UniformListScrollHandle),
 }
 
@@ -195,6 +197,7 @@ pub trait PickerDelegate: Sized + 'static {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum ContainerKind {
+    List,
     UniformList,
 }
 
@@ -234,6 +237,18 @@ impl<D: PickerDelegate> Picker<D> {
         Self::new(delegate, ContainerKind::UniformList, head, window, cx)
     }
 
+    pub fn list(delegate: D, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let placeholder_text = delegate.placeholder_text(window, cx);
+        let head = Head::editor(
+            placeholder_text.as_ref(),
+            Self::on_input_editor_event,
+            window,
+            cx,
+        );
+
+        Self::new(delegate, ContainerKind::List, head, window, cx)
+    }
+
     fn new(
         delegate: D,
         container: ContainerKind,
@@ -264,6 +279,9 @@ impl<D: PickerDelegate> Picker<D> {
         match container {
             ContainerKind::UniformList => {
                 ElementContainer::UniformList(UniformListScrollHandle::new())
+            }
+            ContainerKind::List => {
+                ElementContainer::List(ListState::new(0, ListAlignment::Top, gpui::px(1000.0)))
             }
         }
     }
@@ -299,6 +317,13 @@ impl<D: PickerDelegate> Picker<D> {
 
     pub fn modal(mut self, modal: bool) -> Self {
         self.is_modal = modal;
+        self
+    }
+
+    pub fn list_measure_all(mut self) -> Self {
+        if let ElementContainer::List(state) = self.element_container {
+            self.element_container = ElementContainer::List(state.measure_all());
+        }
         self
     }
 
@@ -606,12 +631,27 @@ impl<D: PickerDelegate> Picker<D> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        match scroll_behavior {
-            ScrollBehavior::RevealSelected => {
-                let index = self.delegate.selected_index();
-                self.scroll_to_item_index(index);
-            }
-            ScrollBehavior::PreserveOffset => {}
+        let match_count = self.delegate.match_count();
+        match &mut self.element_container {
+            ElementContainer::List(state) => match scroll_behavior {
+                ScrollBehavior::RevealSelected => {
+                    state.reset(match_count);
+                    let index = self.delegate.selected_index();
+                    self.scroll_to_item_index(index);
+                }
+                ScrollBehavior::PreserveOffset => {
+                    let offset = state.logical_scroll_top();
+                    state.reset(match_count);
+                    state.scroll_to(offset);
+                }
+            },
+            ElementContainer::UniformList(_) => match scroll_behavior {
+                ScrollBehavior::RevealSelected => {
+                    let index = self.delegate.selected_index();
+                    self.scroll_to_item_index(index);
+                }
+                ScrollBehavior::PreserveOffset => {}
+            },
         }
         self.pending_update_matches = None;
         if let Some(secondary) = self.confirm_on_update.take() {
@@ -636,6 +676,7 @@ impl<D: PickerDelegate> Picker<D> {
 
     fn scroll_to_item_index(&mut self, index: usize) {
         match &mut self.element_container {
+            ElementContainer::List(state) => state.scroll_to_reveal_item(index),
             ElementContainer::UniformList(scroll_handle) => {
                 scroll_handle.scroll_to_item(index, ScrollStrategy::Nearest);
             }
@@ -644,6 +685,7 @@ impl<D: PickerDelegate> Picker<D> {
 
     pub fn is_scrolled_to_end(&self) -> Option<bool> {
         match &self.element_container {
+            ElementContainer::List(state) => state.is_scrolled_to_end(),
             ElementContainer::UniformList(scroll_handle) => scroll_handle.is_scrolled_to_end(),
         }
     }
@@ -719,6 +761,16 @@ impl<D: PickerDelegate> Picker<D> {
             .flex_grow_1()
             .py_1()
             .track_scroll(scroll_handle)
+            .into_any_element(),
+            ElementContainer::List(state) => gpui::list(
+                state.clone(),
+                cx.processor(|this, index, window, cx| {
+                    this.render_element(window, cx, index).into_any_element()
+                }),
+            )
+            .with_sizing_behavior(sizing_behavior)
+            .flex_grow_1()
+            .py(DynamicSpacing::Base04.rems(cx))
             .into_any_element(),
         }
     }

@@ -335,7 +335,7 @@ impl Render for CreateProjectModal {
                                             .h_full()
                                             .min_w_0()
                                             .px_2()
-                                            .child(Text::new(location).truncate()),
+                                            .child(Text::new(location).single_line().truncate()),
                                     )
                                     .child(
                                         gpui::div()

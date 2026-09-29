@@ -2,10 +2,12 @@ use gpui::{Bounds, Hsla, Pixels, Point, SharedString, TextLayout, Window, Wrappe
 use smallvec::SmallVec;
 use std::{cmp::Ordering, ops::Range, sync::Arc};
 
+use crate::utils;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TextSelectionPoint<T> {
-    id: T,
-    offset: usize,
+    pub(super) id: T,
+    pub(super) offset: usize,
 }
 
 impl<T> TextSelectionPoint<T> {
@@ -22,7 +24,7 @@ enum TextSelectionMode<T> {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-struct TextSelection<T> {
+pub(super) struct TextSelection<T> {
     start: TextSelectionPoint<T>,
     end: TextSelectionPoint<T>,
     reversed: bool,
@@ -30,11 +32,11 @@ struct TextSelection<T> {
 }
 
 impl<T: Copy + Ord> TextSelection<T> {
-    fn head(&self) -> TextSelectionPoint<T> {
+    pub(super) fn head(&self) -> TextSelectionPoint<T> {
         if self.reversed { self.start } else { self.end }
     }
 
-    fn tail(&self) -> TextSelectionPoint<T> {
+    pub(super) fn tail(&self) -> TextSelectionPoint<T> {
         if self.reversed { self.end } else { self.start }
     }
 
@@ -70,10 +72,92 @@ struct PointForPosition<T> {
 }
 
 #[derive(Clone)]
+pub(crate) struct RenderedText {
+    source: SharedString,
+    pub(super) rendered: SharedString,
+    source_mappings: Vec<SourceMapping>,
+}
+
+impl RenderedText {
+    pub(crate) fn new(source: SharedString) -> Self {
+        let rendered = source.clone();
+        Self {
+            source,
+            rendered,
+            source_mappings: Vec::new(),
+        }
+    }
+
+    pub(super) fn single_line(mut self) -> Self {
+        if !self.source.bytes().any(|byte| byte.is_ascii_control()) {
+            return self;
+        }
+
+        let mut rendered = String::with_capacity(self.source.len());
+        let mut source_mappings = Vec::new();
+        for (source_index, character) in self.source.char_indices() {
+            if let Some(substitute) = utils::printable_substitute(character) {
+                rendered.push(substitute);
+                source_mappings.push(SourceMapping {
+                    rendered_index: rendered.len(),
+                    source_index: source_index + character.len_utf8(),
+                });
+            } else {
+                rendered.push(character);
+            }
+        }
+
+        self.rendered = SharedString::from(rendered);
+        self.source_mappings = source_mappings;
+        self
+    }
+
+    fn to_rendered_index(&self, source_index: usize) -> usize {
+        let source_index = self.source.floor_char_boundary(source_index);
+        let mapping_index = match self
+            .source_mappings
+            .binary_search_by_key(&source_index, |mapping| mapping.source_index)
+        {
+            Ok(index) => index,
+            Err(0) => return source_index,
+            Err(index) => index - 1,
+        };
+        let mapping = self
+            .source_mappings
+            .get(mapping_index)
+            .expect("source mapping should exist");
+        mapping.rendered_index + (source_index - mapping.source_index)
+    }
+
+    fn to_source_index(&self, rendered_index: usize) -> usize {
+        let rendered_index = self.rendered.floor_char_boundary(rendered_index);
+        let mapping_index = match self
+            .source_mappings
+            .binary_search_by_key(&rendered_index, |mapping| mapping.rendered_index)
+        {
+            Ok(index) => index,
+            Err(0) => return rendered_index,
+            Err(index) => index - 1,
+        };
+        let mapping = self
+            .source_mappings
+            .get(mapping_index)
+            .expect("source mapping should exist");
+        mapping.source_index + (rendered_index - mapping.rendered_index)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct SourceMapping {
+    rendered_index: usize,
+    source_index: usize,
+}
+
+#[derive(Clone)]
 struct TextLayoutEntry<T> {
     id: T,
     line_index: usize,
-    text: SharedString,
+    text: RenderedText,
     layout: TextLayoutSnapshot,
 }
 
@@ -121,7 +205,7 @@ impl TextLayoutSnapshot {
 
     #[cfg(test)]
     fn position_for_offset(&self, text: &str, offset: usize) -> Option<Point<Pixels>> {
-        let offset = previous_char_boundary(text, offset.min(text.len()));
+        let offset = text.floor_char_boundary(offset);
         let mut line_origin = self.bounds.origin;
         let mut line_start_index = 0;
 
@@ -145,7 +229,7 @@ impl TextLayoutSnapshot {
 }
 
 pub struct TextSelectionState<T> {
-    selection: Option<TextSelection<T>>,
+    pub(super) selection: Option<TextSelection<T>>,
     is_selecting: bool,
     layouts: Vec<TextLayoutEntry<T>>,
     selection_bounds: Option<Bounds<Pixels>>,
@@ -185,11 +269,11 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         self.selection.as_ref().is_none_or(TextSelection::is_empty)
     }
 
-    pub fn register_layout(
+    pub(crate) fn register_layout(
         &mut self,
         id: T,
         line_index: usize,
-        text: SharedString,
+        text: RenderedText,
         layout: &TextLayout,
     ) {
         let snapshot = TextLayoutSnapshot::new(layout);
@@ -230,18 +314,25 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         } else {
             text_len
         };
-        let selected_start = previous_char_boundary(text, selected_start);
-        let selected_end = previous_char_boundary(text, selected_end);
+        let selected_start = text.floor_char_boundary(selected_start);
+        let selected_end = text.floor_char_boundary(selected_end);
 
         (selected_start < selected_end).then_some(selected_start..selected_end)
+    }
+
+    pub(super) fn selected_rendered_range_for_id(&self, id: T) -> Option<Range<usize>> {
+        let text = &self.layout_for_id(id)?.text;
+        let range = self.selected_range_for_id(id, &text.source)?;
+        Some(text.to_rendered_index(range.start)..text.to_rendered_index(range.end))
     }
 
     #[cfg(test)]
     pub(crate) fn position_for_id_offset(&self, id: T, offset: usize) -> Option<Point<Pixels>> {
         let layout = self.layout_for_id(id)?;
+        let offset = layout.text.to_rendered_index(offset);
         layout
             .layout
-            .position_for_offset(layout.text.as_ref(), offset)
+            .position_for_offset(&layout.text.rendered, offset)
     }
 
     pub(super) fn selected_text(
@@ -401,7 +492,7 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         point: TextSelectionPoint<T>,
     ) -> Option<Range<TextSelectionPoint<T>>> {
         let layout = self.layout_for_id(point.id)?;
-        let range = surrounding_word_range_for_text(layout.text.as_ref(), point.offset);
+        let range = surrounding_word_range_for_text(&layout.text.source, point.offset);
 
         Some(
             TextSelectionPoint::new(point.id, range.start)
@@ -417,7 +508,7 @@ impl<T: Copy + Ord> TextSelectionState<T> {
 
         Some(
             TextSelectionPoint::new(point.id, 0)
-                ..TextSelectionPoint::new(point.id, layout.text.len()),
+                ..TextSelectionPoint::new(point.id, layout.text.source.len()),
         )
     }
 
@@ -479,7 +570,7 @@ impl<T: Copy + Ord> TextSelectionState<T> {
             return Some(PointForPosition {
                 nearest_valid: TextSelectionPoint::new(
                     last_selection_layout.id,
-                    last_selection_layout.text.len(),
+                    last_selection_layout.text.source.len(),
                 ),
                 is_text_hovered: false,
             });
@@ -531,7 +622,7 @@ impl<T: Copy + Ord> TextSelectionState<T> {
                         .rev()
                         .find(|layout| layout.line_index == line_index)?;
                     return Some(PointForPosition {
-                        nearest_valid: TextSelectionPoint::new(layout.id, layout.text.len()),
+                        nearest_valid: TextSelectionPoint::new(layout.id, layout.text.source.len()),
                         is_text_hovered: false,
                     });
                 }
@@ -541,7 +632,7 @@ impl<T: Copy + Ord> TextSelectionState<T> {
                 return Some(PointForPosition {
                     nearest_valid: TextSelectionPoint::new(
                         last_selection_layout.id,
-                        last_selection_layout.text.len(),
+                        last_selection_layout.text.source.len(),
                     ),
                     is_text_hovered: false,
                 });
@@ -605,10 +696,8 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         layout: &TextLayoutEntry<T>,
         position: Point<Pixels>,
     ) -> TextSelectionPoint<T> {
-        let offset = layout
-            .layout
-            .closest_index_for_position(position)
-            .min(layout.text.len());
+        let offset = layout.layout.closest_index_for_position(position);
+        let offset = layout.text.to_source_index(offset);
         TextSelectionPoint::new(layout.id, offset)
     }
 }
@@ -639,7 +728,7 @@ impl From<char> for CharKind {
 }
 
 fn surrounding_word_range_for_text(text: &str, offset: usize) -> Range<usize> {
-    let offset = previous_char_boundary(text, offset.min(text.len()));
+    let offset = text.floor_char_boundary(offset);
     let mut start = offset;
     let mut end = offset;
 
@@ -674,13 +763,6 @@ fn surrounding_word_range_for_text(text: &str, offset: usize) -> Range<usize> {
     }
 
     start..end
-}
-
-fn previous_char_boundary(text: &str, mut offset: usize) -> usize {
-    while !text.is_char_boundary(offset) {
-        offset = offset.saturating_sub(1);
-    }
-    offset
 }
 
 pub fn paint_text_selection(
@@ -761,6 +843,78 @@ pub fn paint_text_selection(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_single_line_remaps_newline_offsets() {
+        let text = RenderedText::new("\n".into()).single_line();
+
+        pretty_assertions::assert_eq!(text.to_rendered_index(0), 0);
+        pretty_assertions::assert_eq!(text.to_rendered_index(1), 3);
+        pretty_assertions::assert_eq!(text.to_source_index(0), 0);
+        pretty_assertions::assert_eq!(text.to_source_index(3), 1);
+    }
+
+    #[test]
+    fn test_single_line_remaps_offsets() {
+        let source = "föö\nö\t\r\0\x7f bár🚀";
+        let rendered = "föö↵ö␉␍␀␡ bár🚀";
+        let text = RenderedText::new(source.into()).single_line();
+        pretty_assertions::assert_eq!(text.source.as_ref(), source);
+        pretty_assertions::assert_eq!(text.rendered.as_ref(), rendered);
+
+        let source_offsets = source.char_indices().map(|(index, _)| index);
+        let rendered_offsets = rendered.char_indices().map(|(index, _)| index);
+
+        for (source_index, rendered_index) in source_offsets
+            .zip(rendered_offsets)
+            .chain([(source.len(), rendered.len())])
+        {
+            pretty_assertions::assert_eq!(text.to_rendered_index(source_index), rendered_index,);
+            pretty_assertions::assert_eq!(text.to_source_index(rendered_index), source_index,);
+        }
+
+        pretty_assertions::assert_eq!(text.to_rendered_index("föö\n".len() + 1), "föö↵".len(),);
+        pretty_assertions::assert_eq!(text.to_source_index("föö".len() + 2), "föö".len(),);
+        pretty_assertions::assert_eq!(text.to_rendered_index(usize::MAX), rendered.len(),);
+        pretty_assertions::assert_eq!(text.to_source_index(usize::MAX), source.len(),);
+    }
+
+    #[test]
+    fn test_single_line_preserves_offsets_without_replacements() {
+        for source in ["", "foo", "föö bár🚀", "a\u{0085}b"] {
+            let text = RenderedText::new(source.into()).single_line();
+            pretty_assertions::assert_eq!(text.rendered.as_ref(), source);
+            assert!(text.source_mappings.is_empty());
+
+            for source_index in source
+                .char_indices()
+                .map(|(index, _)| index)
+                .chain(std::iter::once(source.len()))
+            {
+                pretty_assertions::assert_eq!(text.to_rendered_index(source_index), source_index);
+                pretty_assertions::assert_eq!(text.to_source_index(source_index), source_index);
+            }
+        }
+    }
+
+    #[test]
+    fn test_selected_text_preserves_control_characters_across_items() {
+        let items = ["föö\nö\t bár🚀", "\r\0\x7f", "a\u{0085}b"].map(SharedString::from);
+        let mut state = TextSelectionState::<usize>::new();
+        state.selection = Some(TextSelection {
+            start: TextSelectionPoint::new(0, "föö".len()),
+            end: TextSelectionPoint::new(2, "a\u{0085}".len()),
+            reversed: false,
+            mode: TextSelectionMode::Character,
+        });
+
+        pretty_assertions::assert_eq!(
+            state
+                .selected_text(&[0, 1, 2], "\t", |id| items.get(id).cloned())
+                .as_deref(),
+            Some("\nö\t bár🚀\t\r\0\x7f\ta\u{0085}"),
+        );
+    }
 
     #[test]
     fn test_selected_text_tracks_forward_and_backward_selection() {

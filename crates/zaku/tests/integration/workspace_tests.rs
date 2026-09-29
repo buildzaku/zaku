@@ -1,5 +1,5 @@
-use futures::channel::oneshot;
-use gpui::{Entity, ListOffset, TestAppContext};
+use futures::{FutureExt, channel::oneshot};
+use gpui::{Entity, Focusable, ListOffset, TestAppContext, WindowHandle};
 use indoc::{formatdoc, indoc};
 use parking_lot::Mutex;
 use serde_json::json;
@@ -11,6 +11,7 @@ use fs::{Fs, TempFs};
 use http_client::{AsyncBody, FakeHttpClient, Response, StatusCode};
 use path::rel_path;
 use project::ProjectPath;
+use recent_projects::RecentProjects;
 use response_panel::ResponsePanel;
 use session::Session;
 use settings::SettingsStore;
@@ -30,10 +31,12 @@ fn init_test(app_state: Arc<AppState>, app_db: AppDatabase, cx: &mut TestAppCont
         editor::init(cx);
         request_editor::init(cx);
         response_panel::init(cx);
+        recent_projects::init(cx);
         zaku::init(cx);
     });
 }
 
+#[cfg(test)]
 async fn open_workspace(
     project_path: PathBuf,
     app_state: Arc<AppState>,
@@ -42,76 +45,232 @@ async fn open_workspace(
     let open_result = cx
         .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
         .await
-        .expect("workspace should open");
+        .unwrap();
 
     open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
         .await;
     let worktree = open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace
-            .project()
-            .read(cx)
-            .root_worktree(cx)
-            .expect("workspace should have a root worktree")
+        workspace.project().read(cx).root_worktree(cx).unwrap()
     });
     worktree.flush_fs_events(cx).await;
 
     (open_result, worktree)
 }
 
-async fn open_path(open_result: &OpenResult, path: ProjectPath, cx: &mut TestAppContext) {
-    open_result
-        .window
+#[cfg(test)]
+async fn open_workspaces_in_window(
+    project_paths: &[PathBuf],
+    app_state: Arc<AppState>,
+    cx: &mut TestAppContext,
+) -> OpenResult {
+    let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+    let workspace_id = workspace_db.next_id().await.unwrap();
+    let window = cx.add_window({
+        let app_state = app_state.clone();
+        move |window, cx| {
+            window.activate_window();
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
+        }
+    });
+
+    for project_path in project_paths {
+        cx.update(|cx| {
+            Workspace::open(
+                project_path.clone(),
+                app_state.clone(),
+                Some(window),
+                OpenMode::Activate,
+                cx,
+            )
+        })
+        .await
+        .unwrap();
+        window
+            .update(cx, |root, window, cx| {
+                root.workspace().update(cx, |workspace, cx| {
+                    workspace.flush_serialization(window, cx)
+                })
+            })
+            .unwrap()
+            .await;
+    }
+
+    let workspace = window
+        .read_with(cx, |root, _| root.workspace().clone())
+        .unwrap();
+    OpenResult { window, workspace }
+}
+
+#[cfg(test)]
+async fn open_path(window: WindowHandle<Root>, path: ProjectPath, cx: &mut TestAppContext) {
+    window
         .update(cx, |root, window, cx| {
             root.workspace().update(cx, |workspace, cx| {
                 workspace.open_path(path, None, true, window, cx)
             })
         })
-        .expect("window should update to open path")
+        .unwrap()
         .await
-        .expect("path should open");
+        .unwrap();
 }
 
+#[cfg(test)]
 async fn open_path_preview(
-    open_result: &OpenResult,
+    window: WindowHandle<Root>,
     path: ProjectPath,
     cx: &mut TestAppContext,
 ) -> Box<dyn ItemHandle> {
-    open_result
-        .window
+    window
         .update(cx, |root, window, cx| {
             root.workspace().update(cx, |workspace, cx| {
                 workspace.open_path_preview(path, None, false, true, true, window, cx)
             })
         })
-        .expect("window should update to open preview path")
+        .unwrap()
         .await
-        .expect("preview path should open")
+        .unwrap()
 }
 
-fn activate_item_for_path(open_result: &OpenResult, path: &str, cx: &mut TestAppContext) {
+#[cfg(test)]
+fn activate_item_for_path(window: WindowHandle<Root>, path: &str, cx: &mut TestAppContext) {
     let path = rel_path(path);
-    let pane = open_result
-        .workspace
-        .read_with(cx, |workspace, _| workspace.pane().clone());
-    let item_index = pane.read_with(cx, |pane, cx| {
-        pane.items()
-            .position(|item| {
-                item.project_path(cx)
-                    .is_some_and(|project_path| project_path.path.as_ref() == path)
-            })
-            .expect("pane should contain item for path")
-    });
-
-    open_result
-        .window
-        .update(cx, |_, window, cx| {
+    window
+        .update(cx, |root, window, cx| {
+            let pane = root.workspace().read(cx).pane().clone();
+            let item_index = pane
+                .read(cx)
+                .items()
+                .position(|item| {
+                    item.project_path(cx)
+                        .is_some_and(|project_path| project_path.path.as_ref() == path)
+                })
+                .unwrap();
             pane.update(cx, |pane, cx| {
                 pane.activate_item(item_index, true, false, window, cx);
             });
         })
-        .expect("window should update to activate item");
+        .unwrap();
+}
+
+async fn wait_until(cx: &TestAppContext, condition: impl Fn(&TestAppContext) -> bool) {
+    let timeout = cx.background_executor.timer(Duration::from_secs(2)).fuse();
+    futures::pin_mut!(timeout);
+
+    while !condition(cx) {
+        futures::select_biased! {
+            () = cx.background_executor.timer(Duration::from_millis(10)).fuse() => {}
+            () = timeout => panic!("timed out waiting for polled condition"),
+        }
+    }
+}
+
+#[gpui::test]
+async fn test_open_recent_projects_action(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("first", json!({}));
+    temp_fs.insert_tree("second", json!({}));
+
+    let first_path = temp_fs.path().join("first");
+    let second_path = temp_fs.path().join("second");
+    let open_result =
+        open_workspaces_in_window(&[first_path.clone(), second_path], app_state, cx).await;
+
+    cx.dispatch_action(open_result.window.into(), actions::projects::OpenRecent);
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<RecentProjects>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+    // Recent projects exclude the current project.
+    cx.condition(&picker, |picker, _| {
+        picker.delegate.matched_locations() == [first_path.clone()]
+    })
+    .await;
+    open_result
+        .window
+        .update(cx, |_, window, cx| {
+            assert!(picker.focus_handle(cx).is_focused(window));
+        })
+        .unwrap();
+
+    cx.dispatch_action(open_result.window.into(), actions::menu::Confirm);
+
+    wait_until(cx, |cx| {
+        open_result
+            .window
+            .read_with(cx, |root, cx| {
+                root.workspace().read(cx).project().read(cx).root(cx) == Some(first_path.clone())
+            })
+            .unwrap()
+    })
+    .await;
+}
+
+#[gpui::test]
+async fn test_open_recent_projects_action_in_new_window(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("first", json!({}));
+    temp_fs.insert_tree("second", json!({}));
+
+    let first_path = temp_fs.path().join("first");
+    let second_path = temp_fs.path().join("second");
+    let open_result =
+        open_workspaces_in_window(&[first_path.clone(), second_path.clone()], app_state, cx).await;
+
+    cx.dispatch_action(open_result.window.into(), actions::projects::OpenRecent);
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<RecentProjects>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+    // Recent projects exclude the current project.
+    cx.condition(&picker, |picker, _| {
+        picker.delegate.matched_locations() == [first_path.clone()]
+    })
+    .await;
+
+    cx.dispatch_action(open_result.window.into(), actions::menu::SecondaryConfirm);
+
+    wait_until(cx, |cx| cx.windows().len() == 2).await;
+    let new_window = cx.windows()[1].downcast::<Root>().unwrap();
+    new_window
+        .read_with(cx, |root, cx| {
+            assert_eq!(
+                root.workspace().read(cx).project().read(cx).root(cx),
+                Some(first_path),
+            );
+        })
+        .unwrap();
+    open_result
+        .window
+        .read_with(cx, |root, cx| {
+            let workspace = root.workspace().read(cx);
+            assert_eq!(workspace.project().read(cx).root(cx), Some(second_path));
+            assert!(workspace.active_modal::<RecentProjects>(cx).is_none());
+        })
+        .unwrap();
 }
 
 #[gpui::test]
@@ -168,25 +327,25 @@ async fn test_reload_restores_project_windows_and_tabs(cx: &mut TestAppContext) 
         let preview_path = format!("collection/{preview_request}.toml");
 
         open_path(
-            &open_result,
+            open_result.window,
             ProjectPath::from((worktree_id, rel_path(&request_path))),
             cx,
         )
         .await;
         open_path(
-            &open_result,
+            open_result.window,
             ProjectPath::from((worktree_id, rel_path(settings_file))),
             cx,
         )
         .await;
         open_path_preview(
-            &open_result,
+            open_result.window,
             ProjectPath::from((worktree_id, rel_path(&preview_path))),
             cx,
         )
         .await;
 
-        activate_item_for_path(&open_result, settings_file, cx);
+        activate_item_for_path(open_result.window, settings_file, cx);
         windows.push(open_result.window);
     }
 
@@ -487,7 +646,7 @@ async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
     let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
 
     open_path(
-        &open_result,
+        open_result.window,
         ProjectPath::from((worktree_id, rel_path("collection/request.toml"))),
         cx,
     )
@@ -587,7 +746,7 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
         .unwrap();
 
     open_path(
-        &open_result,
+        open_result.window,
         ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
         cx,
     )
@@ -596,7 +755,7 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
     cx.run_until_parked();
 
     open_path(
-        &open_result,
+        open_result.window,
         ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
         cx,
     )
@@ -638,7 +797,7 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
         "second response"
     );
 
-    activate_item_for_path(&open_result, "collection/first.toml", cx);
+    activate_item_for_path(open_result.window, "collection/first.toml", cx);
 
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
@@ -705,7 +864,7 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
         .read_with(cx, |workspace, _| workspace.pane().clone());
 
     let first_item = open_path_preview(
-        &open_result,
+        open_result.window,
         ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
         cx,
     )
@@ -715,7 +874,7 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
     assert!(pane.read_with(cx, |pane, _| pane.preview_item_idx().is_none()));
 
     open_path_preview(
-        &open_result,
+        open_result.window,
         ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
         cx,
     )
@@ -760,7 +919,7 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
         "second response"
     );
 
-    activate_item_for_path(&open_result, "collection/first.toml", cx);
+    activate_item_for_path(open_result.window, "collection/first.toml", cx);
 
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
@@ -844,7 +1003,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
         .unwrap();
 
     open_path(
-        &open_result,
+        open_result.window,
         ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
         cx,
     )
@@ -881,18 +1040,18 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     response_panel.update(cx, |response_panel, cx| {
         response_panel
             .headers_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .scroll_to(first_headers_scroll_offset);
         response_panel
             .cookies_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .scroll_to(first_cookies_scroll_offset);
     });
 
     let headers_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
         response_panel
             .headers_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .logical_scroll_top()
     });
     assert_eq!(
@@ -907,7 +1066,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     let cookies_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
         response_panel
             .cookies_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .logical_scroll_top()
     });
     assert_eq!(
@@ -920,7 +1079,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     );
 
     open_path(
-        &open_result,
+        open_result.window,
         ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
         cx,
     )
@@ -940,18 +1099,18 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     response_panel.update(cx, |response_panel, cx| {
         response_panel
             .headers_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .scroll_to(second_headers_scroll_offset);
         response_panel
             .cookies_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .scroll_to(second_cookies_scroll_offset);
     });
 
     let headers_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
         response_panel
             .headers_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .logical_scroll_top()
     });
     assert_eq!(
@@ -966,7 +1125,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     let cookies_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
         response_panel
             .cookies_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .logical_scroll_top()
     });
     assert_eq!(
@@ -978,7 +1137,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
         second_cookies_scroll_offset.offset_in_item,
     );
 
-    activate_item_for_path(&open_result, "collection/first.toml", cx);
+    activate_item_for_path(open_result.window, "collection/first.toml", cx);
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -991,7 +1150,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     let headers_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
         response_panel
             .headers_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .logical_scroll_top()
     });
     assert_eq!(
@@ -1006,7 +1165,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     let cookies_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
         response_panel
             .cookies_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .logical_scroll_top()
     });
     assert_eq!(
@@ -1018,7 +1177,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
         first_cookies_scroll_offset.offset_in_item,
     );
 
-    activate_item_for_path(&open_result, "collection/second.toml", cx);
+    activate_item_for_path(open_result.window, "collection/second.toml", cx);
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1031,7 +1190,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     let headers_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
         response_panel
             .headers_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .logical_scroll_top()
     });
     assert_eq!(
@@ -1046,7 +1205,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     let cookies_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
         response_panel
             .cookies_list_state(cx)
-            .expect("response panel should have response")
+            .unwrap()
             .logical_scroll_top()
     });
     assert_eq!(
@@ -1116,19 +1275,19 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
     let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
 
     open_path(
-        &open_result,
+        open_result.window,
         ProjectPath::from((worktree_id, rel_path("settings.jsonc"))),
         cx,
     )
     .await;
     open_path(
-        &open_result,
+        open_result.window,
         ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
         cx,
     )
     .await;
     open_path(
-        &open_result,
+        open_result.window,
         ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
         cx,
     )
@@ -1146,7 +1305,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         response_panel.has_response_context()
     }));
 
-    activate_item_for_path(&open_result, "settings.jsonc", cx);
+    activate_item_for_path(open_result.window, "settings.jsonc", cx);
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1191,7 +1350,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         workspace.is_panel_open::<ResponsePanel>(cx)
     }));
 
-    activate_item_for_path(&open_result, "collection/second.toml", cx);
+    activate_item_for_path(open_result.window, "collection/second.toml", cx);
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1206,7 +1365,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         "response panel should reflect restored request tab"
     );
 
-    activate_item_for_path(&open_result, "settings.jsonc", cx);
+    activate_item_for_path(open_result.window, "settings.jsonc", cx);
 
     cx.dispatch_action(
         open_result.window.into(),
@@ -1220,7 +1379,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         response_panel.has_response_context()
     }));
 
-    activate_item_for_path(&open_result, "collection/second.toml", cx);
+    activate_item_for_path(open_result.window, "collection/second.toml", cx);
 
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
@@ -1233,7 +1392,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         "second response"
     );
 
-    activate_item_for_path(&open_result, "settings.jsonc", cx);
+    activate_item_for_path(open_result.window, "settings.jsonc", cx);
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1242,7 +1401,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         response_panel.has_response_context()
     }));
 
-    activate_item_for_path(&open_result, "collection/first.toml", cx);
+    activate_item_for_path(open_result.window, "collection/first.toml", cx);
 
     assert!(
         response_panel.read_with(cx, |response_panel, cx| {
@@ -1262,7 +1421,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         "first response"
     );
 
-    activate_item_for_path(&open_result, "collection/second.toml", cx);
+    activate_item_for_path(open_result.window, "collection/second.toml", cx);
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1328,7 +1487,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         ProjectPath::from((worktree_id, rel_path("collection/invalid.toml")));
     let settings_path = ProjectPath::from((worktree_id, rel_path("settings.jsonc")));
 
-    open_path(&open_result, valid_request_path.clone(), cx).await;
+    open_path(open_result.window, valid_request_path.clone(), cx).await;
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1348,13 +1507,13 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         "valid response"
     );
 
-    open_path(&open_result, invalid_request_path, cx).await;
+    open_path(open_result.window, invalid_request_path, cx).await;
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
     }));
 
-    open_path(&open_result, valid_request_path.clone(), cx).await;
+    open_path(open_result.window, valid_request_path.clone(), cx).await;
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1364,7 +1523,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         "valid response"
     );
 
-    open_path(&open_result, settings_path.clone(), cx).await;
+    open_path(open_result.window, settings_path.clone(), cx).await;
 
     assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 3);
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
@@ -1380,7 +1539,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         workspace.is_panel_open::<ResponsePanel>(cx)
     }));
 
-    open_path(&open_result, valid_request_path, cx).await;
+    open_path(open_result.window, valid_request_path, cx).await;
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1390,7 +1549,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         "valid response"
     );
 
-    open_path(&open_result, settings_path, cx).await;
+    open_path(open_result.window, settings_path, cx).await;
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1439,10 +1598,10 @@ async fn test_trash_delete_with_active_pane_item(cx: &mut TestAppContext) {
     let second_request_path = ProjectPath::from((worktree_id, rel_path("collection/second.toml")));
     let settings_path = ProjectPath::from((worktree_id, rel_path("settings.jsonc")));
 
-    open_path(&open_result, first_request_path.clone(), cx).await;
-    open_path(&open_result, second_request_path.clone(), cx).await;
-    open_path(&open_result, settings_path.clone(), cx).await;
-    activate_item_for_path(&open_result, "collection/first.toml", cx);
+    open_path(open_result.window, first_request_path.clone(), cx).await;
+    open_path(open_result.window, second_request_path.clone(), cx).await;
+    open_path(open_result.window, settings_path.clone(), cx).await;
+    activate_item_for_path(open_result.window, "collection/first.toml", cx);
 
     let pane = open_result
         .workspace

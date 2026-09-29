@@ -324,13 +324,11 @@ mod tests {
             None,
             Modifiers::default(),
         );
-        cx.run_until_parked();
         cx.simulate_mouse_move(
             gpui::point(gpui::px(31.0), gpui::px(30.0)),
             None,
             Modifiers::default(),
         );
-        cx.run_until_parked();
 
         cx.executor().advance_clock(TOOLTIP_SHOW_DELAY);
         cx.run_until_parked();
@@ -339,7 +337,6 @@ mod tests {
 
         tooltip_rendered.set(0);
         cx.update(|window, _| window.refresh());
-        cx.run_until_parked();
         assert!(
             tooltip_rendered.get() > 0,
             "tooltip should still be rendered after another frame"
