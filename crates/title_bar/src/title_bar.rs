@@ -246,7 +246,10 @@ impl Render for TitleBar {
             .min_w_0()
             .overflow_x_hidden()
             .flex_1()
-            .pl_1()
+            .map(|this| match platform_style {
+                PlatformStyle::Mac => this,
+                PlatformStyle::Linux | PlatformStyle::Windows => this.pl_1(),
+            })
             .child(
                 gpui::div()
                     .flex()
