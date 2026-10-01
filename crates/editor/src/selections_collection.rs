@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use std::{
-    cmp, fmt, iter,
+    cmp, fmt, iter, mem,
     ops::{AddAssign, Deref, DerefMut, Range, Sub},
     sync::Arc,
 };
@@ -238,7 +238,7 @@ impl MutableSelectionsCollection<'_, '_> {
         let mut end = range.end;
         let reversed = start.cmp(&end, snapshot).is_gt();
         if reversed {
-            std::mem::swap(&mut start, &mut end);
+            mem::swap(&mut start, &mut end);
         }
 
         self.collection.pending = Some(PendingSelection {
@@ -268,7 +268,7 @@ impl MutableSelectionsCollection<'_, '_> {
             .map(|selection| selection.map(|it| it.to_offset(self.snapshot.buffer_snapshot())))
             .map(|mut selection| {
                 if selection.start > selection.end {
-                    std::mem::swap(&mut selection.start, &mut selection.end);
+                    mem::swap(&mut selection.start, &mut selection.end);
                     selection.reversed = true;
                 }
                 selection
@@ -331,7 +331,7 @@ impl MutableSelectionsCollection<'_, '_> {
                 let mut end = snapshot.clip_offset(range.end.to_offset(snapshot), Bias::Right);
                 let reversed = end < start;
                 if reversed {
-                    std::mem::swap(&mut start, &mut end);
+                    mem::swap(&mut start, &mut end);
                 }
 
                 Selection {
@@ -344,6 +344,30 @@ impl MutableSelectionsCollection<'_, '_> {
             })
             .collect::<Vec<_>>();
         self.select(selections);
+    }
+
+    pub fn select_anchor_ranges(&mut self, ranges: impl IntoIterator<Item = Range<Anchor>>) {
+        let selections = ranges
+            .into_iter()
+            .map(|range| {
+                let mut start = range.start;
+                let mut end = range.end;
+                let reversed = if start.cmp(&end, self.snapshot.buffer_snapshot()).is_gt() {
+                    mem::swap(&mut start, &mut end);
+                    true
+                } else {
+                    false
+                };
+                Selection {
+                    id: self.new_selection_id(),
+                    start,
+                    end,
+                    reversed,
+                    goal: SelectionGoal::None,
+                }
+            })
+            .collect::<Vec<_>>();
+        self.select_anchors(&selections);
     }
 
     pub fn move_with(

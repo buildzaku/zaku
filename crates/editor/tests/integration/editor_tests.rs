@@ -1723,6 +1723,27 @@ fn test_single_line_editor_replace_text_in_range_strips_newlines(cx: &mut TestAp
 }
 
 #[gpui::test]
+fn test_paste_normalizes_line_endings(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("foo\nˇqux");
+    cx.cx
+        .write_to_clipboard(ClipboardItem::new_string("bar\r\nbaz\r\n".to_string()));
+    cx.dispatch_action(actions::editor::Paste);
+    cx.assert_state("foo\nbar\nbaz\nˇqux");
+}
+
+#[gpui::test]
+fn test_set_text_normalizes_line_endings(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.update_editor(|editor, _, cx| editor.set_text("foo\r\nbar\r\nbaz", cx));
+    cx.assert_state("foo\nbar\nbazˇ");
+}
+
+#[gpui::test]
 fn test_move_cursor(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
