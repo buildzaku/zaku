@@ -34,7 +34,8 @@
       "tabs": {
         "colors": true
       }
-    }
+    },
+    "fallback_branch_name": "main"
   },
   "update": {
     "automatic": true,
