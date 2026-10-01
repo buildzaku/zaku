@@ -1126,13 +1126,13 @@ impl Editor {
         let now = Instant::now();
         self.start_transaction_at(now, cx);
 
-        let edit_range = range.start..range.end;
-        self.buffer.update(cx, |buffer, cx| {
-            buffer.edit([(edit_range.clone(), new_text)], cx);
+        let cursor = self.buffer.update(cx, |buffer, cx| {
+            let cursor = buffer.read(cx).anchor_after(&range.end);
+            buffer.edit([(range, new_text)], cx);
+            cursor
         });
-        let cursor = (range.start + new_text.len()).0;
         self.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
-            selections.select_ranges([MultiBufferOffset(cursor)..MultiBufferOffset(cursor)]);
+            selections.select_anchor_ranges([cursor..cursor]);
         });
         self.selection_goal = SelectionGoal::None;
         self.request_autoscroll(scroll::Autoscroll::newest(), cx);
@@ -1234,7 +1234,7 @@ impl Editor {
                 .expect("set_text requires a singleton buffer");
             buffer.set_text(text, cx);
         });
-        let cursor = MultiBufferOffset(text.len());
+        let cursor = self.buffer_snapshot(cx).len();
         let mode = self.selection_history.mode;
         self.selection_history.mode = SelectionHistoryMode::Skipping;
         self.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
