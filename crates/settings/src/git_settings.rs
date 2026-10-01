@@ -18,10 +18,11 @@ pub struct GitStatusTabsSettings {
     pub colors: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, RegisterSetting)]
+#[derive(Debug, Clone, PartialEq, Eq, RegisterSetting)]
 pub struct GitSettings {
     pub enabled: bool,
     pub status: GitStatusSettings,
+    pub fallback_branch_name: String,
 }
 
 impl GitSettings {
@@ -59,6 +60,9 @@ impl Settings for GitSettings {
                         .expect("git status tabs colors should be defaulted"),
                 },
             },
+            fallback_branch_name: git
+                .and_then(|git| git.fallback_branch_name.clone())
+                .expect("git fallback branch name should be defaulted"),
         }
     }
 }

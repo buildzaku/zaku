@@ -6,20 +6,28 @@ use gpui::{
 };
 use std::path::{Component, Path, PathBuf};
 
+use db::kv::KeyValueStore;
 use input::{ErasedEditorEvent, InputField};
+use settings::{GitSettings, Settings};
 use theme::ActiveTheme;
 use ui::{
-    Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, Disableable, Headline,
-    HeadlineSize, StyledExt, Text, TextCommon, TextSize,
+    Button, ButtonCommon, ButtonSize, ButtonVariant, Checkbox, Clickable, Color, Disableable,
+    Headline, HeadlineSize, StyledExt, Text, TextCommon, TextSize, ToggleState,
 };
+use util::ResultExt;
 
-use crate::{DismissDecision, ModalView, OpenMode, Workspace, notifications::DetachAndPromptErr};
+use crate::{
+    DismissDecision, GitInitErrorToast, ModalView, OpenMode, Toast, Workspace,
+    notifications::{DetachAndPromptErr, NotificationId},
+    persistence,
+};
 
 pub(crate) struct CreateProjectModal {
     focus_handle: FocusHandle,
     workspace: WeakEntity<Workspace>,
     project_name: Entity<InputField>,
     location: PathBuf,
+    initialize_git_repository: bool,
     is_creating: bool,
     error: Option<SharedString>,
     _project_name_subscription: Subscription,
@@ -58,6 +66,10 @@ impl CreateProjectModal {
             workspace,
             project_name,
             location: path::home_dir().clone(),
+            initialize_git_repository: persistence::read_initialize_git_repository(
+                &KeyValueStore::global(cx),
+            )
+            .unwrap_or(true),
             is_creating: false,
             error: None,
             _project_name_subscription: project_name_subscription,
@@ -160,6 +172,18 @@ impl CreateProjectModal {
             return;
         };
         let fs = workspace_entity.read(cx).app_state().fs.clone();
+        let fallback_branch_name = self
+            .initialize_git_repository
+            .then(|| GitSettings::get_global(cx).fallback_branch_name.clone());
+
+        let kv_store = KeyValueStore::global(cx);
+        let initialize_git_repository = self.initialize_git_repository;
+        cx.background_spawn(async move {
+            persistence::write_initialize_git_repository(&kv_store, initialize_git_repository)
+                .await
+                .log_err();
+        })
+        .detach();
 
         self.is_creating = true;
         self.error = None;
@@ -188,6 +212,16 @@ impl CreateProjectModal {
 
             match create_result {
                 Ok(true) => {
+                    let git_init_error = match fallback_branch_name {
+                        Some(fallback_branch_name) => {
+                            fs.git_init(&project_path, fallback_branch_name).await.err()
+                        }
+                        None => None,
+                    };
+                    if let Some(error) = &git_init_error {
+                        log::error!("Failed to initialize Git repository: {error:#}");
+                    }
+
                     if let Err(error) = create_project_modal.update(cx, |modal, cx| {
                         modal.is_creating = false;
                         let name_editor = modal.project_name.read(cx).editor().clone();
@@ -197,7 +231,7 @@ impl CreateProjectModal {
                         log::debug!("Failed to dismiss create project modal: {error:?}");
                     }
 
-                    if let Err(error) = workspace.update_in(cx, |workspace, window, cx| {
+                    let open_task = match workspace.update_in(cx, |workspace, window, cx| {
                         workspace
                             .open_workspace_for_path(
                                 project_path,
@@ -205,14 +239,30 @@ impl CreateProjectModal {
                                 window,
                                 cx,
                             )
-                            .detach_and_prompt_err(
-                                "Failed to open project",
-                                window,
-                                cx,
-                                |_, _, _| None,
-                            );
+                            .prompt_err("Failed to open project", window, cx, |_, _, _| None)
                     }) {
-                        log::debug!("Failed to open created project: {error:?}");
+                        Ok(task) => task,
+                        Err(error) => {
+                            log::debug!("Failed to open created project: {error:?}");
+                            return;
+                        }
+                    };
+
+                    if let Some(opened_workspace) = open_task.await
+                        && git_init_error.is_some()
+                    {
+                        opened_workspace.update(cx, |workspace, cx| {
+                            workspace.show_toast(
+                                Toast::new(
+                                    NotificationId::unique::<GitInitErrorToast>(),
+                                    "Failed to initialize Git repository.",
+                                )
+                                .on_click("Open Logs", |window, cx| {
+                                    window.dispatch_action(Box::new(actions::zaku::OpenLogs), cx);
+                                }),
+                                cx,
+                            );
+                        });
                     }
                 }
                 Ok(false) => {
@@ -349,6 +399,22 @@ impl Render for CreateProjectModal {
                                             .child(Text::new("Choose…").size(TextSize::Small)),
                                     ),
                             ),
+                    )
+                    .child(
+                        gpui::div().flex().child(
+                            Checkbox::new(
+                                "create-project-initialize-git-repository",
+                                ToggleState::from(self.initialize_git_repository),
+                            )
+                            .text("Initialize Git repository")
+                            .disabled(self.is_creating)
+                            .on_click(cx.listener(
+                                |modal, toggle_state: &ToggleState, _, cx| {
+                                    modal.initialize_git_repository = toggle_state.selected();
+                                    cx.notify();
+                                },
+                            )),
+                        ),
                     )
                     .when_some(self.error.clone(), |this, error| {
                         this.child(Text::new(error).size(TextSize::Small).color(Color::Error))

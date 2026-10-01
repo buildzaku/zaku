@@ -65,7 +65,7 @@ use language::LanguageRegistry;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
 use session::AppSession;
-use settings::{SettingsStore, ThemeAppearanceMode};
+use settings::{GitSettings, Settings, SettingsStore, ThemeAppearanceMode};
 use theme::{ActiveTheme, Appearance, SystemAppearance};
 use ui::StyledTypography;
 #[cfg(target_os = "macos")]
@@ -176,6 +176,8 @@ impl PartialEq for Toast {
             && self.on_click.is_some() == other.on_click.is_some()
     }
 }
+
+struct GitInitErrorToast;
 
 pub struct OpenResult {
     pub window: WindowHandle<Root>,
@@ -530,7 +532,10 @@ fn register_actions(
             |workspace, action: &actions::theme::ToggleMode, window, cx| {
                 workspace.toggle_theme_mode(action, window, cx);
             },
-        );
+        )
+        .register_action(|workspace, _: &actions::git::Init, window, cx| {
+            workspace.git_init(window, cx);
+        });
 }
 
 pub fn default_window_options(cx: &mut App) -> WindowOptions {
@@ -2551,6 +2556,53 @@ impl Workspace {
         settings::update_settings_file(fs, cx, move |settings, _| {
             theme_settings::set_mode(settings, new_mode);
         });
+    }
+
+    fn git_init(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(worktree) = self.project.read(cx).root_worktree(cx) else {
+            let prompt = window.prompt(
+                PromptLevel::Warning,
+                "Unable to initialize a Git repository",
+                Some("Open a project first"),
+                &["OK"],
+                cx,
+            );
+            cx.background_spawn(async move {
+                if let Err(error) = prompt.await {
+                    log::debug!("Git init prompt dropped: {error:?}");
+                }
+            })
+            .detach();
+            return;
+        };
+
+        let fallback_branch_name = GitSettings::get_global(cx).fallback_branch_name.clone();
+        let git_init = self.project.read(cx).git_init(
+            worktree.read(cx).abs_path().clone(),
+            fallback_branch_name,
+            cx,
+        );
+
+        cx.spawn(async move |workspace, cx| {
+            if let Err(error) = git_init.await {
+                log::error!("Failed to initialize Git repository: {error:#}");
+                workspace.update(cx, |workspace, cx| {
+                    workspace.show_toast(
+                        Toast::new(
+                            NotificationId::unique::<GitInitErrorToast>(),
+                            "Failed to initialize Git repository.",
+                        )
+                        .on_click("Open Logs", |window, cx| {
+                            window.dispatch_action(Box::new(actions::zaku::OpenLogs), cx);
+                        }),
+                        cx,
+                    );
+                })?;
+            }
+
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
     }
 
     pub fn toggle_panel_focus<T: Panel>(

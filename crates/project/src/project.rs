@@ -233,8 +233,10 @@ pub struct Project {
 
 impl Project {
     pub fn new(fs: Arc<dyn Fs>, languages: Arc<LanguageRegistry>, cx: &mut Context<Self>) -> Self {
-        let worktree_store =
-            cx.new(move |cx| WorktreeStore::new(fs.clone(), WorktreeIdCounter::get(cx)));
+        let worktree_store = cx.new({
+            let fs = fs.clone();
+            move |cx| WorktreeStore::new(fs.clone(), WorktreeIdCounter::get(cx))
+        });
         let buffer_store = cx.new({
             let worktree_store = worktree_store.clone();
             move |cx| BufferStore::new(&worktree_store, cx)
@@ -245,7 +247,7 @@ impl Project {
         });
         let git_store = cx.new({
             let worktree_store = worktree_store.clone();
-            move |cx| GitStore::new(worktree_store.clone(), cx)
+            move |cx| GitStore::new(worktree_store.clone(), fs.clone(), cx)
         });
         cx.subscribe(&worktree_store, |this, _, event, cx| {
             this.on_worktree_store_event(event, cx);
@@ -560,6 +562,17 @@ impl Project {
         self.git_store
             .read(cx)
             .project_path_git_status(project_path, cx)
+    }
+
+    pub fn git_init(
+        &self,
+        path: Arc<Path>,
+        fallback_branch_name: String,
+        cx: &App,
+    ) -> Task<anyhow::Result<()>> {
+        self.git_store
+            .read(cx)
+            .git_init(path, fallback_branch_name, cx)
     }
 
     pub fn wait_for_initial_scan(&self, cx: &App) -> impl Future<Output = ()> + use<> {

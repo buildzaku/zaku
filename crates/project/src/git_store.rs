@@ -1,6 +1,6 @@
 pub mod git_traversal;
 
-use anyhow::Context as AnyhowContext;
+use anyhow::Context as _;
 use futures::{FutureExt, StreamExt, channel::mpsc, future, stream::FuturesOrdered};
 use gpui::{
     App, AppContext, AsyncApp, Context, Entity, EventEmitter, SharedString, Subscription, Task,
@@ -9,6 +9,7 @@ use std::{ops, path::Path, sync::Arc};
 use sum_tree::{Bias, Edit, SumTree};
 
 use collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use fs::Fs;
 use git::{
     repository::{
         Branch, BranchesScanResult, CommitDetails, GitRepository, RepoPath, SystemGitRepository,
@@ -201,6 +202,7 @@ enum GitJobKey {
 
 pub struct GitStore {
     worktree_store: Entity<WorktreeStore>,
+    fs: Arc<dyn Fs>,
     repositories: HashMap<RepositoryId, Entity<Repository>>,
     worktree_ids: HashMap<RepositoryId, HashSet<WorktreeId>>,
     active_repo_id: Option<RepositoryId>,
@@ -210,7 +212,11 @@ pub struct GitStore {
 }
 
 impl GitStore {
-    pub fn new(worktree_store: Entity<WorktreeStore>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        worktree_store: Entity<WorktreeStore>,
+        fs: Arc<dyn Fs>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let worktree_store_subscription =
             cx.subscribe(&worktree_store, |this, worktree_store, event, cx| {
                 this.on_worktree_store_event(&worktree_store, event, cx);
@@ -218,6 +224,7 @@ impl GitStore {
 
         Self {
             worktree_store,
+            fs,
             repositories: HashMap::default(),
             worktree_ids: HashMap::default(),
             active_repo_id: None,
@@ -301,6 +308,16 @@ impl GitStore {
                 Some((repo.clone(), repo_path))
             })
             .max_by_key(|(repo, _)| repo.read(cx).work_directory_abs_path.clone())
+    }
+
+    pub fn git_init(
+        &self,
+        path: Arc<Path>,
+        fallback_branch_name: String,
+        cx: &App,
+    ) -> Task<anyhow::Result<()>> {
+        let fs = self.fs.clone();
+        cx.background_spawn(async move { fs.git_init(&path, fallback_branch_name).await })
     }
 
     fn on_worktree_store_event(
@@ -539,7 +556,7 @@ impl GitStore {
             .collect::<Arc<[_]>>();
 
         let executor = cx.background_executor().clone();
-        cx.background_executor().spawn(async move {
+        cx.background_spawn(async move {
             repo_paths.sort_by(|lhs, rhs| lhs.0.cmp(&rhs.0));
             let mut paths_by_git_repo = HashMap::<_, Vec<_>>::default();
             let mut tasks = FuturesOrdered::new();

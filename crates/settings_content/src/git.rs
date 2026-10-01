@@ -7,6 +7,7 @@ use settings_macros::{MergeFrom, with_fallible_options};
 pub struct GitSettingsContent {
     pub enabled: Option<bool>,
     pub status: Option<GitStatusSettingsContent>,
+    pub fallback_branch_name: Option<String>,
 }
 
 #[with_fallible_options]

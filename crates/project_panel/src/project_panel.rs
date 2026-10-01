@@ -1,4 +1,4 @@
-use anyhow::Context as AnyhowContext;
+use anyhow::Context as _;
 use gpui::{
     Action, Anchor, AnyElement, App, Bounds, ClickEvent, ClipboardItem, Context, DismissEvent, Div,
     Entity, EventEmitter, FocusHandle, Focusable, FontWeight, KeyContext,
@@ -38,9 +38,9 @@ use util::ResultExt;
 use workspace::{Panel, Workspace, WorkspaceEvent};
 
 pub fn init(cx: &mut App) {
-    let mut previous_settings = *GitSettings::get_global(cx);
+    let mut previous_settings = GitSettings::get_global(cx).clone();
     cx.observe_global::<SettingsStore>(move |cx| {
-        let current_settings = *GitSettings::get_global(cx);
+        let current_settings = GitSettings::get_global(cx).clone();
 
         for (setting, previous, current) in [
             (
@@ -266,9 +266,9 @@ impl ProjectPanel {
             )
             .detach();
 
-            let mut previous_settings = *GitSettings::get_global(cx);
+            let mut previous_settings = GitSettings::get_global(cx).clone();
             cx.observe_global_in::<SettingsStore>(window, move |_, _, cx| {
-                let current_settings = *GitSettings::get_global(cx);
+                let current_settings = GitSettings::get_global(cx).clone();
                 if previous_settings != current_settings {
                     previous_settings = current_settings;
                     cx.notify();
