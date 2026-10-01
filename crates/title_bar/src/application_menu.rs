@@ -1,7 +1,7 @@
 use gpui::{Action, App, Context, Entity, Window, prelude::*};
 
 use ui::{
-    ActiveTheme, Color, ContextMenu, IconAsset, IconButton, IconButtonShape, IconSize, PopoverMenu,
+    ActiveTheme, ContextMenu, IconAsset, IconButton, IconButtonShape, IconSize, PopoverMenu,
     PopoverMenuHandle, SelectableButton, Tooltip,
 };
 use workspace::Root;
@@ -59,8 +59,7 @@ impl Render for ApplicationMenu {
                         IconButton::new("application-menu-trigger", IconAsset::Menu)
                             .shape(IconButtonShape::Square)
                             .icon_size(IconSize::Small)
-                            .selected_background(selected_background)
-                            .selected_icon_color(Color::Default),
+                            .selected_background(selected_background),
                         Tooltip::text("Open Application Menu"),
                     )
                     .with_handle(handle),

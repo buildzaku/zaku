@@ -6,16 +6,18 @@ mod selection;
 pub use highlighted_text::HighlightedText;
 pub use interaction::TextInteractionState;
 pub use selectable::{SelectableText, SelectableTextGroup};
+pub(crate) use selection::RenderedText;
 pub use selection::{TextSelectionPoint, TextSelectionState, paint_text_selection};
 
 use gpui::{
     App, Bounds, Div, FontWeight, Hitbox, HitboxBehavior, Hsla, Pixels, RenderOnce, SharedString,
     StyleRefinement, StyledText, TextAlign, TextLayout, UnderlineStyle, Window, prelude::*,
 };
+use std::borrow::Cow;
 
 use theme::{ActiveTheme, ThemeSettings};
 
-use crate::{Color, StyledTypography, TextSize};
+use crate::{Color, StyledTypography, TextSize, utils};
 
 #[derive(Clone, Copy, Default, PartialEq)]
 pub enum LineHeightStyle {
@@ -198,7 +200,9 @@ impl TextCommon for Text {
     }
 
     fn single_line(mut self) -> Self {
-        self.text = SharedString::from(self.text.replace('\n', "\u{23ce}"));
+        if let Cow::Owned(replaced) = utils::replace_control_characters(&self.text) {
+            self.text = SharedString::from(replaced);
+        }
         self.style.single_line = true;
         self
     }

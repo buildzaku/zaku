@@ -419,7 +419,9 @@ pub struct Editor {
     muted: bool,
     text_style_refinement: Option<TextStyleRefinement>,
     current_line_highlight: Option<CurrentLineHighlight>,
-    _subscriptions: Vec<Subscription>,
+    _focus_subscriptions: Vec<Subscription>,
+    _settings_subscription: Subscription,
+    _buffer_subscription: Option<Subscription>,
 }
 
 impl Editor {
@@ -483,13 +485,14 @@ impl Editor {
         let selection_history = SelectionHistory::new(selections.disjoint_anchors_arc());
 
         let editor = cx.weak_entity();
-        let mut subscriptions = vec![
+        let focus_subscriptions = vec![
             cx.on_focus(&focus_handle, window, Self::on_focus),
             cx.on_blur(&focus_handle, window, Self::on_blur),
-            cx.observe_global_in::<SettingsStore>(window, |_, _, cx| cx.notify()),
         ];
-        if let Some(singleton_buffer) = buffer.read(cx).as_singleton() {
-            subscriptions.push(window.subscribe(
+        let settings_subscription =
+            cx.observe_global_in::<SettingsStore>(window, |_, _, cx| cx.notify());
+        let buffer_subscription = buffer.read(cx).as_singleton().map(|singleton_buffer| {
+            window.subscribe(
                 &singleton_buffer,
                 cx,
                 move |_, event: &BufferEvent, _, cx| {
@@ -511,8 +514,8 @@ impl Editor {
                         log::debug!("Failed to update editor buffer state: {error:?}");
                     }
                 },
-            ));
-        }
+            )
+        });
 
         let mut editor = Self {
             focus_handle,
@@ -545,7 +548,9 @@ impl Editor {
             muted: false,
             text_style_refinement: None,
             current_line_highlight: None,
-            _subscriptions: subscriptions,
+            _focus_subscriptions: focus_subscriptions,
+            _settings_subscription: settings_subscription,
+            _buffer_subscription: buffer_subscription,
         };
 
         editor.selection_history.mode = SelectionHistoryMode::Skipping;
