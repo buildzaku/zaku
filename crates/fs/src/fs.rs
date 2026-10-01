@@ -38,7 +38,6 @@ use {
             io::AsRawHandle,
         },
     },
-    util::command::new_command,
     windows::{
         Win32::{
             Foundation::HANDLE,
@@ -67,7 +66,7 @@ use {
 };
 
 use path::SanitizedPath;
-use util::ResultExt;
+use util::{ResultExt, command::new_command};
 
 use crate::fs_watcher::FsWatcher;
 
@@ -182,6 +181,11 @@ pub trait Fs: Send + Sync {
         Arc<dyn Watcher>,
     );
     async fn write(&self, path: &Path, content: &[u8]) -> anyhow::Result<()>;
+    async fn git_init(
+        &self,
+        work_directory_abs_path: &Path,
+        fallback_branch_name: String,
+    ) -> anyhow::Result<()>;
     async fn is_case_sensitive(&self) -> bool;
 }
 
@@ -861,6 +865,39 @@ impl Fs for NativeFs {
         Ok(())
     }
 
+    async fn git_init(
+        &self,
+        work_directory_abs_path: &Path,
+        fallback_branch_name: String,
+    ) -> anyhow::Result<()> {
+        let result = new_command("git")
+            .current_dir(work_directory_abs_path)
+            .args(["config", "--global", "--get", "init.defaultBranch"])
+            .output()
+            .await;
+
+        // Git exits with 1 when `init.defaultBranch` is unset, so a failed lookup uses the fallback.
+        let branch_name = match result {
+            Ok(output) if !output.stdout.is_empty() => String::from_utf8(output.stdout)?,
+            _ => fallback_branch_name,
+        };
+
+        let output = new_command("git")
+            .current_dir(work_directory_abs_path)
+            .args(["init", "-b"])
+            .arg(branch_name.trim())
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr = stderr.trim();
+            anyhow::bail!("git init failed: {stderr}");
+        }
+
+        Ok(())
+    }
+
     async fn is_case_sensitive(&self) -> bool {
         const UNINITIALIZED: u8 = 0;
         const CASE_SENSITIVE: u8 = 1;
@@ -1122,6 +1159,17 @@ impl Fs for TempFs {
         let absolute_path = resolve_path(self.path(), path);
         NativeFs::new(self.executor.clone())
             .write(&absolute_path, content)
+            .await
+    }
+
+    async fn git_init(
+        &self,
+        work_directory_abs_path: &Path,
+        fallback_branch_name: String,
+    ) -> anyhow::Result<()> {
+        let absolute_path = resolve_path(self.path(), work_directory_abs_path);
+        NativeFs::new(self.executor.clone())
+            .git_init(&absolute_path, fallback_branch_name)
             .await
     }
 

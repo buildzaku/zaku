@@ -1427,7 +1427,7 @@ impl RequestEditor {
             });
             let language = language_name.map(|language_name| {
                 let languages = languages.clone();
-                cx.background_executor().spawn(async move {
+                cx.background_spawn(async move {
                     match languages.language_for_name(language_name).await {
                         Ok(language) => Some(language),
                         Err(error) => {
@@ -1514,8 +1514,7 @@ impl RequestEditor {
             };
             let pretty_payload = (read_succeeded && language_name == Some("JSON")).then(|| {
                 let payload = payload.clone();
-                cx.background_executor()
-                    .spawn(async move { format_json(&payload).unwrap_or(payload) })
+                cx.background_spawn(async move { format_json(&payload).unwrap_or(payload) })
             });
             let language = if read_succeeded {
                 match language {
