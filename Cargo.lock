@@ -6477,7 +6477,7 @@ dependencies = [
 
 [[package]]
 name = "recent_projects"
-version = "26.1.0-dev"
+version = "26.0.0-beta.4"
 dependencies = [
  "actions",
  "anyhow",
@@ -6485,7 +6485,7 @@ dependencies = [
  "fuzzy_nucleo",
  "gpui",
  "log",
- "path 26.1.0-dev",
+ "path 26.0.0-beta.4",
  "picker",
  "ui",
  "workspace",
