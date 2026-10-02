@@ -96,7 +96,7 @@ jobs:
         shell: pwsh
 
       - name: "Run tests"
-        run: cargo nextest run --workspace --all-features --no-fail-fast
+        run: cargo nextest run --workspace --all-features --locked --no-fail-fast
 
       - name: "Show sccache stats"
         if: env.RUSTC_WRAPPER
