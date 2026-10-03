@@ -8,9 +8,6 @@
   <img alt="Zaku" width="100%" src="./assets/readme/zaku_screenshot_dark.png">
 </p>
 
-> [!WARNING]
-> Zaku is currently in beta. Expect some rough edges.
-
 ## Installation
 
 <h3>
@@ -25,8 +22,10 @@
 Install using the shell script:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/buildzaku/zaku/main/script/install.sh | sh -s -- --channel beta
+curl -fsSL https://zaku.dev/install.sh | sh
 ```
+
+Or download the tarball for [x86_64](https://api.zaku.dev/releases/stable/latest/linux-x86_64/download) or [aarch64](https://api.zaku.dev/releases/stable/latest/linux-aarch64/download).
 
 <h3>
   <picture>
@@ -37,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/buildzaku/zaku/main/script/install.
   <span>macOS</span>
 </h3>
 
-Download the DMG for [Apple silicon](https://api.zaku.dev/releases/beta/latest/macos-aarch64/download) or [Intel](https://api.zaku.dev/releases/beta/latest/macos-x86_64/download). Requires macOS 14 or later.
+Download the DMG for [Apple Silicon](https://api.zaku.dev/releases/stable/latest/macos-aarch64/download) or [Intel Chip](https://api.zaku.dev/releases/stable/latest/macos-x86_64/download). Requires macOS 14 or later.
 
 After copying Zaku to Applications, open Terminal and run:
 
@@ -56,7 +55,7 @@ This is required because Zaku isn't signed yet. Otherwise, macOS will refuse to 
   <span>Windows</span>
 </h3>
 
-Download the installer for [ARM64](https://api.zaku.dev/releases/beta/latest/windows-aarch64/download) or [x64](https://api.zaku.dev/releases/beta/latest/windows-x86_64/download). Requires Windows 11.
+Download the installer for [Intel/AMD](https://api.zaku.dev/releases/stable/latest/windows-x86_64/download) or [ARM64](https://api.zaku.dev/releases/stable/latest/windows-aarch64/download). Requires Windows 11.
 
 The installer is not signed yet. If Microsoft Defender SmartScreen appears, select **More info**, then **Run anyway**.
 
