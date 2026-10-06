@@ -1992,6 +1992,7 @@ dependencies = [
  "path 26.1.0-dev",
  "pretty_assertions",
  "project",
+ "rand 0.10.2",
  "serde",
  "serde_json",
  "settings",
@@ -9282,6 +9283,7 @@ version = "26.1.0-dev"
 dependencies = [
  "indoc",
  "log",
+ "rand 0.10.2",
  "rust-embed",
  "serde",
  "smol",

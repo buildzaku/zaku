@@ -1,5 +1,5 @@
 use futures::channel::oneshot;
-use gpui::{App, AppContext, Context, EventEmitter, Task};
+use gpui::{App, AppContext, Context, EventEmitter, HighlightStyle, Task};
 use parking_lot::Mutex;
 use std::{
     any::Any,
@@ -253,6 +253,7 @@ impl<'a> Iterator for BufferChunks<'a> {
                 chars,
                 tabs,
                 newlines,
+                ..Chunk::default()
             })
         } else {
             None
@@ -264,6 +265,7 @@ impl<'a> Iterator for BufferChunks<'a> {
 pub struct Chunk<'a> {
     pub text: &'a str,
     pub syntax_highlight_id: Option<HighlightId>,
+    pub highlight_style: Option<HighlightStyle>,
     pub chars: u128,
     pub tabs: u128,
     pub newlines: u128,

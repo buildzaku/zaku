@@ -15,13 +15,15 @@ path = "src/util.rs"
 workspace = true
 
 [features]
-test = []
+test = ["rand"]
 
 [dependencies]
 log = { workspace = true }
+rand = { workspace = true, optional = true }
 rust-embed = { workspace = true }
 serde = { workspace = true }
 smol = { workspace = true }
 
 [dev-dependencies]
 indoc = { workspace = true }
+rand = { workspace = true }

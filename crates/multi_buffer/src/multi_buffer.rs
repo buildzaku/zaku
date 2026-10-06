@@ -3,6 +3,8 @@ mod transaction;
 
 pub use anchor::Anchor;
 
+#[cfg(any(test, feature = "test"))]
+use gpui::AppContext;
 use gpui::{App, Context, Entity};
 use std::{
     borrow::Cow,
@@ -429,6 +431,12 @@ impl MultiBuffer {
         }
     }
 
+    #[cfg(any(test, feature = "test"))]
+    pub fn build_simple(text: &str, cx: &mut App) -> Entity<Self> {
+        let buffer = cx.new(|cx| Buffer::local(text, cx));
+        cx.new(|cx| Self::singleton(buffer, cx))
+    }
+
     pub fn with_title(mut self, title: String) -> Self {
         self.title = Some(title);
         self
@@ -839,17 +847,33 @@ impl MultiBufferSnapshot {
         MBD::TextDimension: Sub<Output = MBD::TextDimension> + Ord,
         I: 'a + IntoIterator<Item = &'a Anchor>,
     {
-        let mut anchors = anchors.into_iter().peekable();
         let mut summaries = Vec::new();
+        self.for_each_summary_for_anchors(anchors, |summary| summaries.push(summary));
+        summaries
+    }
+
+    pub fn for_each_summary_for_anchors<'a, MBD, I>(
+        &'a self,
+        anchors: I,
+        mut callback: impl FnMut(MBD),
+    ) where
+        MBD: MultiBufferDimension
+            + Ord
+            + Sub<Output = MBD::TextDimension>
+            + AddAssign<MBD::TextDimension>,
+        MBD::TextDimension: Sub<Output = MBD::TextDimension> + Ord,
+        I: 'a + IntoIterator<Item = &'a Anchor>,
+    {
+        let mut anchors = anchors.into_iter().peekable();
 
         while let Some(anchor) = anchors.peek() {
             match anchor {
                 Anchor::Min => {
-                    summaries.push(MBD::default());
+                    callback(MBD::default());
                     anchors.next();
                 }
                 Anchor::Max => {
-                    summaries.push(MBD::from_summary(&self.text_summary()));
+                    callback(MBD::from_summary(&self.text_summary()));
                     anchors.next();
                 }
                 Anchor::Excerpt(_) => {
@@ -865,13 +889,11 @@ impl MultiBufferSnapshot {
                     {
                         let mut multi_buffer_summary = MBD::default();
                         multi_buffer_summary.add_text_dim(&summary);
-                        summaries.push(multi_buffer_summary);
+                        callback(multi_buffer_summary);
                     }
                 }
             }
         }
-
-        summaries
     }
 
     pub fn dimensions_from_points<'a, MBD>(
