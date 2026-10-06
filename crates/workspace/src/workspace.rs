@@ -3174,7 +3174,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -3260,7 +3260,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("first"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -3271,7 +3271,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("second"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -3358,7 +3358,7 @@ mod tests {
                 ".gitignore": indoc! {"
                     .DS_Store
                 "},
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4012,7 +4012,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4075,7 +4075,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4148,7 +4148,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4222,7 +4222,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4294,7 +4294,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4405,7 +4405,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("first"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4416,7 +4416,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("second"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1

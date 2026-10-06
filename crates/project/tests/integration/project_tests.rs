@@ -396,7 +396,7 @@ async fn test_buffer_identity_across_renames(cx: &mut TestAppContext) {
     temp_fs.insert_tree(
         path!("project"),
         json!({
-            "collection": {
+            "folder": {
                 "request.toml": indoc! {r#"
                     [meta]
                     version = 1
@@ -421,13 +421,13 @@ async fn test_buffer_identity_across_renames(cx: &mut TestAppContext) {
         })
     };
 
-    let collection_id = entry_id_for_path("collection", cx);
-    let request_entry_id = entry_id_for_path("collection/request.toml", cx);
+    let folder_id = entry_id_for_path("folder", cx);
+    let request_entry_id = entry_id_for_path("folder/request.toml", cx);
     let buffer = cx
         .update(|cx| {
             <RequestBuffer as ProjectItem>::try_open(
                 &project,
-                &(worktree_id, rel_path("collection/request.toml")).into(),
+                &(worktree_id, rel_path("folder/request.toml")).into(),
                 cx,
             )
             .unwrap()
@@ -449,14 +449,14 @@ async fn test_buffer_identity_across_renames(cx: &mut TestAppContext) {
 
     project
         .update(cx, |project, cx| {
-            project.rename_entry(collection_id, (worktree_id, rel_path("renamed")).into(), cx)
+            project.rename_entry(folder_id, (worktree_id, rel_path("renamed")).into(), cx)
         })
         .await
         .unwrap();
     cx.run_until_parked();
     worktree.flush_fs_events(cx).await;
 
-    assert_eq!(entry_id_for_path("renamed", cx), collection_id);
+    assert_eq!(entry_id_for_path("renamed", cx), folder_id);
     assert_eq!(
         entry_id_for_path("renamed/request.toml", cx),
         request_entry_id

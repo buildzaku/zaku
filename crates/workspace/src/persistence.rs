@@ -980,7 +980,7 @@ mod tests {
                 ".gitignore": indoc! {"
                     .DS_Store
                 "},
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1

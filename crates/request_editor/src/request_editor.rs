@@ -2228,7 +2228,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -2258,7 +2258,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("collection/request.toml")),
+            path: Arc::from(rel_path("folder/request.toml")),
         };
 
         workspace
@@ -2317,7 +2317,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -2357,7 +2357,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("collection/request.toml")),
+            path: Arc::from(rel_path("folder/request.toml")),
         };
 
         workspace
@@ -2412,7 +2412,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -2439,7 +2439,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("collection/request.toml")),
+            path: Arc::from(rel_path("folder/request.toml")),
         };
 
         let request_editor = workspace
@@ -2503,7 +2503,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -2535,7 +2535,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("collection/request.toml")),
+            path: Arc::from(rel_path("folder/request.toml")),
         };
 
         let request_editor = workspace
@@ -2616,7 +2616,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -2636,7 +2636,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("collection/request.toml")),
+            path: Arc::from(rel_path("folder/request.toml")),
         };
 
         let request_editor = workspace
@@ -2723,7 +2723,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -2743,7 +2743,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("collection/request.toml")),
+            path: Arc::from(rel_path("folder/request.toml")),
         };
 
         let request_editor = workspace
@@ -2822,7 +2822,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "first.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -2851,7 +2851,7 @@ mod tests {
         let first_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(
-                    ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+                    ProjectPath::from((worktree_id, rel_path("folder/first.toml"))),
                     None,
                     true,
                     window,
@@ -2869,7 +2869,7 @@ mod tests {
         let second_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(
-                    ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+                    ProjectPath::from((worktree_id, rel_path("folder/second.toml"))),
                     None,
                     true,
                     window,
@@ -2949,7 +2949,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -2969,7 +2969,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("collection/request.toml")),
+            path: Arc::from(rel_path("folder/request.toml")),
         };
 
         let request_editor = workspace
@@ -3076,7 +3076,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -3113,7 +3113,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("collection/request.toml")),
+            path: Arc::from(rel_path("folder/request.toml")),
         };
 
         let request_editor = workspace
@@ -3166,7 +3166,7 @@ mod tests {
         assert!(!request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
 
         let saved = temp_fs
-            .load("project/collection/request.toml".as_ref())
+            .load("project/folder/request.toml".as_ref())
             .await
             .unwrap();
         let expected = indoc! {r#"
@@ -3276,7 +3276,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -3297,7 +3297,7 @@ mod tests {
         let request_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(
-                    (worktree_id, rel_path("collection/request.toml")).into(),
+                    (worktree_id, rel_path("folder/request.toml")).into(),
                     None,
                     true,
                     window,
@@ -3325,10 +3325,7 @@ mod tests {
         let entry_id = project
             .read_with(cx, |project, cx| {
                 project
-                    .entry_for_path(
-                        &(worktree_id, rel_path("collection/request.toml")).into(),
-                        cx,
-                    )
+                    .entry_for_path(&(worktree_id, rel_path("folder/request.toml")).into(), cx)
                     .map(|entry| entry.id)
             })
             .unwrap();
@@ -3336,7 +3333,7 @@ mod tests {
             .update(cx, |project, cx| {
                 project.rename_entry(
                     entry_id,
-                    (worktree_id, rel_path("collection/renamed.toml")).into(),
+                    (worktree_id, rel_path("folder/renamed.toml")).into(),
                     cx,
                 )
             })
@@ -3350,13 +3347,10 @@ mod tests {
         );
         assert_eq!(
             request_editor.read_with(cx, |editor, cx| editor.project_path(cx)),
-            Some((worktree_id, rel_path("collection/renamed.toml")).into())
+            Some((worktree_id, rel_path("folder/renamed.toml")).into())
         );
         buffer.read_with(cx, |buffer, _| {
-            assert_eq!(
-                buffer.file().path.as_ref(),
-                rel_path("collection/renamed.toml")
-            );
+            assert_eq!(buffer.file().path.as_ref(), rel_path("folder/renamed.toml"));
         });
         assert_eq!(
             request_editor.read_with(cx, |editor, cx| editor.title(cx).to_string()),
