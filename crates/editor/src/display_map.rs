@@ -1,3 +1,4 @@
+mod custom_highlights;
 mod raw_chunks;
 mod tab_map;
 
@@ -39,6 +40,8 @@ pub enum HighlightKey {
     InputComposition,
 }
 
+type TextHighlights = Arc<HashMap<HighlightKey, Arc<(HighlightStyle, Vec<Range<Anchor>>)>>>;
+
 pub struct HighlightedChunk<'a> {
     pub text: &'a str,
     pub style: Option<HighlightStyle>,
@@ -49,7 +52,7 @@ pub struct DisplayMap {
     buffer_subscription: BufferSubscription<MultiBufferOffset>,
     tab_map: TabMap,
     tab_size: NonZeroU32,
-    text_highlights: HashMap<HighlightKey, (HighlightStyle, Vec<Range<Anchor>>)>,
+    text_highlights: TextHighlights,
 }
 
 impl DisplayMap {
@@ -63,7 +66,7 @@ impl DisplayMap {
             buffer_subscription,
             tab_map,
             tab_size,
-            text_highlights: HashMap::default(),
+            text_highlights: TextHighlights::default(),
         }
     }
 
@@ -77,7 +80,10 @@ impl DisplayMap {
     pub fn snapshot(&mut self, cx: &mut Context<Self>) -> DisplaySnapshot {
         let tab_snapshot = self.sync_through_tab(cx);
 
-        DisplaySnapshot { tab_snapshot }
+        DisplaySnapshot {
+            tab_snapshot,
+            text_highlights: self.text_highlights.clone(),
+        }
     }
 
     pub fn highlight_text(
@@ -89,20 +95,30 @@ impl DisplayMap {
         cx: &Context<Self>,
     ) {
         let snapshot = self.buffer.read(cx).snapshot(cx);
-        match self.text_highlights.entry(key) {
-            Entry::Occupied(mut slot) => {
-                if merge {
-                    slot.get_mut().1.extend(ranges);
-                    slot.get_mut()
-                        .1
-                        .sort_by(|left, right| left.start.cmp(&right.start, &snapshot));
-                } else {
-                    slot.insert((style, ranges));
+        match Arc::make_mut(&mut self.text_highlights).entry(key) {
+            Entry::Occupied(mut slot) => match Arc::get_mut(slot.get_mut()) {
+                Some((_, previous_ranges)) if merge => {
+                    previous_ranges.extend(ranges);
+                    previous_ranges.sort_by(|left, right| left.start.cmp(&right.start, &snapshot));
                 }
-            }
+                Some((previous_style, previous_ranges)) => {
+                    *previous_style = style;
+                    *previous_ranges = ranges;
+                    previous_ranges.sort_by(|left, right| left.start.cmp(&right.start, &snapshot));
+                }
+                None if merge => {
+                    ranges.extend(slot.get().1.iter().cloned());
+                    ranges.sort_by(|left, right| left.start.cmp(&right.start, &snapshot));
+                    slot.insert(Arc::new((style, ranges)));
+                }
+                None => {
+                    ranges.sort_by(|left, right| left.start.cmp(&right.start, &snapshot));
+                    slot.insert(Arc::new((style, ranges)));
+                }
+            },
             Entry::Vacant(slot) => {
                 ranges.sort_by(|left, right| left.start.cmp(&right.start, &snapshot));
-                slot.insert((style, ranges));
+                slot.insert(Arc::new((style, ranges)));
             }
         }
     }
@@ -113,13 +129,16 @@ impl DisplayMap {
     }
 
     pub fn clear_highlights(&mut self, key: HighlightKey) -> bool {
-        self.text_highlights.remove(&key).is_some()
+        Arc::make_mut(&mut self.text_highlights)
+            .remove(&key)
+            .is_some()
     }
 }
 
 #[derive(Clone)]
 pub struct DisplaySnapshot {
     tab_snapshot: TabSnapshot,
+    text_highlights: TextHighlights,
 }
 
 impl DisplaySnapshot {
@@ -167,6 +186,7 @@ impl DisplaySnapshot {
                     tree_sitter: false,
                     diagnostics: false,
                 },
+                None,
             )
             .map(|chunk| chunk.text)
     }
@@ -178,11 +198,15 @@ impl DisplaySnapshot {
         editor_style: &'a EditorStyle,
     ) -> impl Iterator<Item = HighlightedChunk<'a>> {
         self.tab_snapshot
-            .chunks(range, language_aware)
+            .chunks(range, language_aware, Some(&self.text_highlights))
             .map(move |chunk| {
-                let style = chunk
+                let syntax_highlight_style = chunk
                     .syntax_highlight_id
                     .and_then(|id| editor_style.syntax.get(id).copied());
+                let style = [syntax_highlight_style, chunk.highlight_style]
+                    .into_iter()
+                    .flatten()
+                    .reduce(|accumulated, highlight| accumulated.highlight(highlight));
 
                 HighlightedChunk {
                     text: chunk.text,
@@ -424,7 +448,7 @@ pub(crate) fn marked_display_snapshot(
     let buffer = cx.new(|cx| Buffer::local(text.as_str(), cx));
     let multibuffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
     let display_map = cx.new(|cx| DisplayMap::new(multibuffer, crate::DEFAULT_TAB_SIZE, cx));
-    let snapshot = display_map.update(cx, |map, cx| map.snapshot(cx));
+    let snapshot = display_map.update(cx, DisplayMap::snapshot);
     let display_points = marker_offsets
         .into_iter()
         .map(|offset| {
@@ -441,10 +465,13 @@ pub(crate) fn marked_display_snapshot(
 mod tests {
     use super::*;
 
-    use gpui::{App, AppContext};
+    use gpui::{App, AppContext, Hsla};
+    use indoc::indoc;
 
     use language::Buffer;
     use settings::SettingsStore;
+    use theme::SyntaxTheme;
+    use util::test::marked_text_ranges;
 
     use crate::DEFAULT_TAB_SIZE;
 
@@ -459,7 +486,7 @@ mod tests {
         let buffer = cx.new(|cx| Buffer::local(text, cx));
         let multi_buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
         let display_map = cx.new(|cx| DisplayMap::new(multi_buffer, DEFAULT_TAB_SIZE, cx));
-        display_map.update(cx, |display_map, cx| display_map.snapshot(cx))
+        display_map.update(cx, DisplayMap::snapshot)
     }
 
     #[gpui::test]
@@ -493,7 +520,7 @@ mod tests {
 
         assert_eq!(
             display_map
-                .update(cx, |display_map, cx| display_map.snapshot(cx))
+                .update(cx, DisplayMap::snapshot)
                 .text_chunks(DisplayRow(1))
                 .collect::<String>()
                 .lines()
@@ -502,12 +529,140 @@ mod tests {
         );
         assert_eq!(
             display_map
-                .update(cx, |display_map, cx| display_map.snapshot(cx))
+                .update(cx, DisplayMap::snapshot)
                 .text_chunks(DisplayRow(2))
                 .collect::<String>()
                 .lines()
                 .next(),
             Some("c   ccccc")
+        );
+    }
+
+    fn chunks(
+        display_map: &Entity<DisplayMap>,
+        theme: &SyntaxTheme,
+        cx: &mut App,
+    ) -> Vec<(String, Option<Hsla>, Option<Hsla>)> {
+        let snapshot = display_map.update(cx, DisplayMap::snapshot);
+        let mut chunks: Vec<(String, Option<Hsla>, Option<Hsla>)> = Vec::new();
+        for chunk in snapshot.tab_snapshot.chunks(
+            TabPoint::zero()..snapshot.tab_snapshot.max_point(),
+            LanguageAwareStyling {
+                tree_sitter: true,
+                diagnostics: true,
+            },
+            Some(&snapshot.text_highlights),
+        ) {
+            let syntax_color = chunk
+                .syntax_highlight_id
+                .and_then(|id| theme.get(id)?.color);
+
+            let highlight_color = chunk.highlight_style.and_then(|style| style.color);
+            if let Some((last_chunk, last_syntax_color, last_highlight_color)) = chunks.last_mut()
+                && syntax_color == *last_syntax_color
+                && highlight_color == *last_highlight_color
+            {
+                last_chunk.push_str(chunk.text);
+                continue;
+            }
+            chunks.push((chunk.text.to_string(), syntax_color, highlight_color));
+        }
+        chunks
+    }
+
+    #[gpui::test]
+    fn test_chunks_with_text_highlights(cx: &mut App) {
+        init_test(cx);
+
+        let theme = SyntaxTheme::new([
+            (
+                "punctuation".to_string(),
+                HighlightStyle {
+                    color: Some(gpui::white()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "property.json_key".to_string(),
+                HighlightStyle {
+                    color: Some(gpui::blue()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "string".to_string(),
+                HighlightStyle {
+                    color: Some(gpui::red()),
+                    ..Default::default()
+                },
+            ),
+        ]);
+        let language = language::json_lang();
+        language.set_theme(&theme);
+
+        let (text, highlighted_ranges) = marked_text_ranges(
+            indoc! {r#"
+                {
+                  "url": "«{{base_url}}»/webhooks/events",
+                  "secret": "«{{webhook_secret}}»"
+                }"#},
+            false,
+        );
+        let buffer = cx.new(|cx| Buffer::local(text, cx).with_language(language, cx));
+        let multi_buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
+        let buffer_snapshot = multi_buffer.read(cx).snapshot(cx);
+        let display_map = cx.new(|cx| DisplayMap::new(multi_buffer, DEFAULT_TAB_SIZE, cx));
+
+        let highlight_style = HighlightStyle {
+            color: Some(gpui::green()),
+            ..Default::default()
+        };
+        display_map.update(cx, |display_map, cx| {
+            display_map.highlight_text(
+                HighlightKey::InputComposition,
+                highlighted_ranges
+                    .into_iter()
+                    .map(|range| {
+                        buffer_snapshot.anchor_before(&MultiBufferOffset(range.start))
+                            ..buffer_snapshot.anchor_before(&MultiBufferOffset(range.end))
+                    })
+                    .collect(),
+                highlight_style,
+                false,
+                cx,
+            );
+        });
+
+        assert_eq!(
+            chunks(&display_map, &theme, cx),
+            [
+                ("{".to_string(), Some(gpui::white()), None),
+                ("\n  ".to_string(), None, None),
+                ("\"url\"".to_string(), Some(gpui::blue()), None),
+                (":".to_string(), Some(gpui::white()), None),
+                (" ".to_string(), None, None),
+                ("\"".to_string(), Some(gpui::red()), None),
+                (
+                    "{{base_url}}".to_string(),
+                    Some(gpui::red()),
+                    Some(gpui::green())
+                ),
+                ("/webhooks/events\"".to_string(), Some(gpui::red()), None),
+                (",".to_string(), Some(gpui::white()), None),
+                ("\n  ".to_string(), None, None),
+                ("\"secret\"".to_string(), Some(gpui::blue()), None),
+                (":".to_string(), Some(gpui::white()), None),
+                (" ".to_string(), None, None),
+                ("\"".to_string(), Some(gpui::red()), None),
+                (
+                    "{{webhook_secret}}".to_string(),
+                    Some(gpui::red()),
+                    Some(gpui::green())
+                ),
+                ("\"".to_string(), Some(gpui::red()), None),
+                ("\n".to_string(), None, None),
+                ("}".to_string(), Some(gpui::white()), None),
+            ]
         );
     }
 

@@ -2517,7 +2517,7 @@ impl Editor {
         }
     }
 
-    fn highlight_text(
+    pub fn highlight_text(
         &mut self,
         key: HighlightKey,
         ranges: Vec<Range<Anchor>>,
@@ -2530,14 +2530,12 @@ impl Editor {
         cx.notify();
     }
 
-    fn text_highlights(
-        &self,
+    pub fn text_highlights<'a>(
+        &'a self,
         key: HighlightKey,
-        cx: &App,
-    ) -> Option<(HighlightStyle, Vec<Range<Anchor>>)> {
-        let map = self.display_map.read(cx);
-        map.text_highlights(key)
-            .map(|(style, ranges)| (style, ranges.to_vec()))
+        cx: &'a App,
+    ) -> Option<(HighlightStyle, &'a [Range<Anchor>])> {
+        self.display_map.read(cx).text_highlights(key)
     }
 
     pub fn clear_highlights(&mut self, key: HighlightKey, cx: &mut Context<Self>) {

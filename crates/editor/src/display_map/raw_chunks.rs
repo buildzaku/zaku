@@ -1,13 +1,13 @@
 use std::{cmp, ops::Range};
 
-use language::LanguageAwareStyling;
-use multi_buffer::{MultiBufferChunks, MultiBufferOffset, MultiBufferSnapshot};
+use language::{Chunk, LanguageAwareStyling};
+use multi_buffer::{MultiBufferOffset, MultiBufferSnapshot};
 
-use super::tab_map::Chunk;
+use super::{TextHighlights, custom_highlights::CustomHighlightsChunks};
 
 pub(super) struct RawChunks<'a> {
-    buffer_chunks: MultiBufferChunks<'a>,
-    buffer_chunk: Option<language::Chunk<'a>>,
+    buffer_chunks: CustomHighlightsChunks<'a>,
+    buffer_chunk: Option<Chunk<'a>>,
     offset: MultiBufferOffset,
     max_offset: MultiBufferOffset,
 }
@@ -17,10 +17,16 @@ impl<'a> RawChunks<'a> {
         range: Range<MultiBufferOffset>,
         multibuffer_snapshot: &'a MultiBufferSnapshot,
         language_aware: LanguageAwareStyling,
+        text_highlights: Option<&'a TextHighlights>,
     ) -> Self {
         let range = normalize_range(multibuffer_snapshot, range);
         Self {
-            buffer_chunks: multibuffer_snapshot.chunks(range.start..range.end, language_aware),
+            buffer_chunks: CustomHighlightsChunks::new(
+                range.start..range.end,
+                language_aware,
+                text_highlights,
+                multibuffer_snapshot,
+            ),
             buffer_chunk: None,
             offset: range.start,
             max_offset: range.end,
@@ -65,10 +71,13 @@ impl<'a> Iterator for RawChunks<'a> {
             let (text, suffix) = chunk.text.split_at(split_index);
             let shift = u32::try_from(split_index).expect("split index should fit in u32");
             let mask = 1u128.unbounded_shl(shift).wrapping_sub(1);
-            let chars = chunk.chars & mask;
-            let tabs = chunk.tabs & mask;
-            let newlines = chunk.newlines & mask;
-            let syntax_highlight_id = chunk.syntax_highlight_id;
+            let raw_chunk = Chunk {
+                text,
+                chars: chunk.chars & mask,
+                tabs: chunk.tabs & mask,
+                newlines: chunk.newlines & mask,
+                ..chunk.clone()
+            };
             chunk.text = suffix;
             chunk.chars = chunk.chars.unbounded_shr(shift);
             chunk.tabs = chunk.tabs.unbounded_shr(shift);
@@ -79,13 +88,7 @@ impl<'a> Iterator for RawChunks<'a> {
                 self.buffer_chunk = None;
             }
 
-            return Some(Chunk {
-                text,
-                syntax_highlight_id,
-                chars,
-                tabs,
-                newlines,
-            });
+            return Some(raw_chunk);
         }
     }
 }

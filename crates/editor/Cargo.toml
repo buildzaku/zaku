@@ -51,8 +51,11 @@ db = { workspace = true, features = ["test"] }
 fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
+language = { workspace = true, features = ["test"] }
+multi_buffer = { workspace = true, features = ["test"] }
 pretty_assertions = { workspace = true }
 project = { workspace = true, features = ["test"] }
+rand = { workspace = true }
 serde_json = { workspace = true }
 settings = { workspace = true, features = ["test"] }
 text = { workspace = true, features = ["test-support"] }

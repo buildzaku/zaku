@@ -4,7 +4,7 @@ use gpui::{
     GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, LayoutId, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, PathBuilder, Pixels, Point,
     ScrollDelta, ScrollWheelEvent, ShapedLine, SharedString, Size, Style, TextAlign, TextRun,
-    TextStyle, UnderlineStyle, Window, prelude::*,
+    TextStyle, Window, prelude::*,
 };
 use num_traits::ToPrimitive;
 use smallvec::SmallVec;
@@ -1310,7 +1310,6 @@ impl Element for EditorElement {
                 &placeholder,
                 placeholder_color,
                 masked,
-                marked_range.as_ref(),
                 max_display_row,
                 top_row,
                 visible_row_count,
@@ -1347,7 +1346,6 @@ impl Element for EditorElement {
                         &placeholder,
                         placeholder_color,
                         masked,
-                        marked_range.as_ref(),
                         max_display_row,
                         top_row,
                         visible_row_count,
@@ -1377,7 +1375,6 @@ impl Element for EditorElement {
                     &placeholder,
                     placeholder_color,
                     masked,
-                    marked_range.as_ref(),
                     max_display_row,
                     top_row,
                     visible_row_count,
@@ -1699,7 +1696,6 @@ fn build_visible_lines(
     placeholder: &SharedString,
     placeholder_color: Hsla,
     masked: bool,
-    marked_range: Option<&Range<usize>>,
     max_display_row: u32,
     top_row: u32,
     visible_row_count: u32,
@@ -1723,26 +1719,19 @@ fn build_visible_lines(
         let line_start_offset = display_snapshot
             .buffer_snapshot()
             .point_to_offset(text::Point::new(row.0, 0));
-        let line_len = display_snapshot
-            .buffer_snapshot()
-            .line_len(MultiBufferRow(row.0)) as usize;
-        let line_end_offset = line_start_offset + line_len;
         let mut line_text = String::new();
         let mut runs = Vec::new();
         let line_display_column_start = if masked {
             let mut line_exceeded_max_len = false;
-            for text_chunk in display_snapshot.text_chunks(row) {
-                let (mut chunk, has_newline) = if let Some(index) = text_chunk.find('\n') {
-                    (
-                        text_chunk
-                            .get(..index)
-                            .expect("newline index should be valid"),
-                        true,
-                    )
-                } else {
-                    (text_chunk, false)
-                };
-
+            for highlighted_chunk in display_snapshot.highlighted_chunks(
+                TabPoint::new(row.0, 0)..TabPoint::new(row.0, display_snapshot.line_len(row)),
+                LanguageAwareStyling {
+                    tree_sitter: false,
+                    diagnostics: false,
+                },
+                editor_style,
+            ) {
+                let mut chunk = highlighted_chunk.text;
                 if !chunk.is_empty() && !line_exceeded_max_len {
                     if line_text.len() + chunk.len() > MAX_LINE_LEN {
                         let mut chunk_len = MAX_LINE_LEN - line_text.len();
@@ -1756,9 +1745,22 @@ fn build_visible_lines(
                     }
 
                     line_text.push_str(chunk);
+                    let text_style = if let Some(highlight_style) = highlighted_chunk.style {
+                        Cow::Owned(style.clone().highlight(highlight_style))
+                    } else {
+                        Cow::Borrowed(style)
+                    };
+                    runs.push(TextRun {
+                        len: chunk.chars().count(),
+                        font: text_style.font(),
+                        color: text_style.color,
+                        background_color: text_style.background_color,
+                        underline: text_style.underline,
+                        strikethrough: text_style.strikethrough,
+                    });
                 }
 
-                if has_newline || line_exceeded_max_len {
+                if line_exceeded_max_len {
                     break;
                 }
             }
@@ -1903,91 +1905,6 @@ fn build_visible_lines(
                 underline: base_style.underline,
                 strikethrough: base_style.strikethrough,
             });
-        }
-
-        if let Some(marked_range) = marked_range {
-            let marked_start = marked_range.start.max(line_start_offset.0);
-            let marked_end = marked_range.end.min(line_end_offset.0);
-            if marked_start < marked_end {
-                let start_column = u32::try_from(marked_start - line_start_offset.0)
-                    .expect("marked range start column should fit in u32");
-                let end_column = u32::try_from(marked_end - line_start_offset.0)
-                    .expect("marked range end column should fit in u32");
-                let (mut display_start, mut display_end) = if masked {
-                    let start_column = (start_column as usize).min(line_text.len());
-                    let end_column = (end_column as usize).min(line_text.len());
-                    (
-                        line_text.get(..start_column).unwrap_or("").chars().count(),
-                        line_text.get(..end_column).unwrap_or("").chars().count(),
-                    )
-                } else {
-                    (
-                        display_snapshot
-                            .point_to_display_point(
-                                text::Point::new(row.0, start_column),
-                                text::Bias::Left,
-                            )
-                            .column() as usize,
-                        display_snapshot
-                            .point_to_display_point(
-                                text::Point::new(row.0, end_column),
-                                text::Bias::Right,
-                            )
-                            .column() as usize,
-                    )
-                };
-                if !masked {
-                    display_start = display_start.saturating_sub(line_display_column_start);
-                    display_end = display_end.saturating_sub(line_display_column_start);
-                }
-                display_start = display_start.min(expanded_len);
-                display_end = display_end.min(expanded_len);
-
-                if display_end > display_start {
-                    let range = display_start..display_end;
-                    let mut offset = 0;
-                    let mut underlined_runs = Vec::with_capacity(runs.len() + 2);
-                    for run in runs {
-                        let run_start = offset;
-                        let run_end = offset + run.len;
-                        offset = run_end;
-
-                        if run_end <= range.start || run_start >= range.end {
-                            underlined_runs.push(run);
-                            continue;
-                        }
-
-                        if run_start < range.start {
-                            underlined_runs.push(TextRun {
-                                len: range.start - run_start,
-                                ..run.clone()
-                            });
-                        }
-
-                        let underline_start = cmp::max(run_start, range.start);
-                        let underline_end = cmp::min(run_end, range.end);
-                        if underline_start < underline_end {
-                            underlined_runs.push(TextRun {
-                                len: underline_end - underline_start,
-                                underline: Some(UnderlineStyle {
-                                    color: Some(run.color),
-                                    thickness: gpui::px(1.0),
-                                    wavy: false,
-                                }),
-                                ..run.clone()
-                            });
-                        }
-
-                        if underline_end < run_end {
-                            underlined_runs.push(TextRun {
-                                len: run_end - underline_end,
-                                ..run
-                            });
-                        }
-                    }
-                    runs = underlined_runs;
-                }
-            }
         }
 
         let shaped_line = window

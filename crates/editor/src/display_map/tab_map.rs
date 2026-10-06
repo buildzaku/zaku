@@ -1,10 +1,10 @@
 use std::{cmp, mem, num::NonZeroU32, ops::Range};
 use text::{Bias, Point};
 
-use language::{HighlightId, LanguageAwareStyling};
+use language::{Chunk, LanguageAwareStyling};
 use multi_buffer::{MultiBufferOffset, MultiBufferRow, MultiBufferSnapshot};
 
-use super::raw_chunks::RawChunks;
+use super::{TextHighlights, raw_chunks::RawChunks};
 
 const MAX_EXPANSION_COLUMN: u32 = 256;
 const SPACES: &[u8; text::Chunk::MASK_BITS] = &[b' '; text::Chunk::MASK_BITS];
@@ -15,15 +15,6 @@ fn spaces(len: u32) -> &'static str {
 
     // SAFETY: `SPACES` is ASCII-only; any sub-slice is valid UTF-8.
     unsafe { std::str::from_utf8_unchecked(spaces) }
-}
-
-#[derive(Debug, Clone, Default)]
-pub(super) struct Chunk<'a> {
-    pub text: &'a str,
-    pub syntax_highlight_id: Option<HighlightId>,
-    pub chars: u128,
-    pub tabs: u128,
-    pub newlines: u128,
 }
 
 /// Keeps track of hard tabs in a text buffer.
@@ -230,11 +221,12 @@ impl TabSnapshot {
         }
     }
 
-    pub(super) fn chunks(
-        &self,
+    pub(super) fn chunks<'a>(
+        &'a self,
         range: Range<TabPoint>,
         language_aware: LanguageAwareStyling,
-    ) -> TabChunks<'_> {
+        text_highlights: Option<&'a TextHighlights>,
+    ) -> TabChunks<'a> {
         let (input_start, expanded_char_column, to_next_stop) =
             self.tab_point_to_buffer_point(range.start, Bias::Left);
         let input_column = input_start.column;
@@ -253,7 +245,12 @@ impl TabSnapshot {
         };
 
         TabChunks {
-            raw_chunks: self.raw_chunks(input_start..input_end, language_aware),
+            raw_chunks: RawChunks::new(
+                input_start..input_end,
+                &self.buffer_snapshot,
+                language_aware,
+                text_highlights,
+            ),
             input_column,
             column: expanded_char_column,
             max_expansion_column: self.max_expansion_column,
@@ -334,7 +331,7 @@ impl TabSnapshot {
         range: Range<MultiBufferOffset>,
         language_aware: LanguageAwareStyling,
     ) -> RawChunks<'_> {
-        RawChunks::new(range, &self.buffer_snapshot, language_aware)
+        RawChunks::new(range, &self.buffer_snapshot, language_aware, None)
     }
 
     fn expand_tabs<'a, I>(&self, mut cursor: TabStopCursor<'a, I>, column: u32) -> u32
@@ -875,6 +872,7 @@ mod tests {
                     tree_sitter: false,
                     diagnostics: false,
                 },
+                None,
             )
             .map(|chunk| chunk.text)
             .collect()
@@ -900,6 +898,7 @@ mod tests {
                             tree_sitter: false,
                             diagnostics: false,
                         },
+                        None,
                     )
                     .map(|chunk| chunk.text)
                     .collect::<String>(),
