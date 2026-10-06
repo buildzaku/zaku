@@ -194,10 +194,12 @@ mod tests {
 
     use gpui::App;
     use indoc::indoc;
+    use rand::{RngExt, rngs::StdRng};
     use std::{collections::HashMap, sync::Arc};
+    use text::Bias;
 
     use multi_buffer::MultiBuffer;
-    use util::test::{TextRangeMarker, marked_text_ranges_by};
+    use util::test::{RandomCharIter, TextRangeMarker, marked_text_ranges_by};
 
     fn text_highlights_for_ranges(
         buffer_snapshot: &MultiBufferSnapshot,
@@ -262,5 +264,122 @@ mod tests {
                 ("\",", None),
             ]
         );
+    }
+
+    #[gpui::test(iterations = 100)]
+    fn test_random_chunk_bitmaps(cx: &mut App, mut rng: StdRng) {
+        let len = rng.random_range(10..10000);
+        let text = RandomCharIter::new(&mut rng).take(len).collect::<String>();
+        let buffer = MultiBuffer::build_simple(&text, cx);
+        let buffer_snapshot = buffer.read(cx).snapshot(cx);
+        let buffer_text = buffer_snapshot.text();
+        let buffer_len = buffer_text.len();
+
+        let mut highlighted_ranges = Vec::new();
+        let mut previous_end = 0;
+        for _ in 0..rng.random_range(1..10) {
+            let gap = if rng.random_bool(0.3) {
+                0
+            } else {
+                rng.random_range(1..=200)
+            };
+            let start = buffer_snapshot
+                .clip_offset(
+                    MultiBufferOffset((previous_end + gap).min(buffer_len)),
+                    Bias::Left,
+                )
+                .0;
+            let end = buffer_snapshot
+                .clip_offset(
+                    MultiBufferOffset(rng.random_range(start..=buffer_len.min(start + 100))),
+                    Bias::Right,
+                )
+                .0;
+            highlighted_ranges.push(start..end);
+            previous_end = end;
+        }
+        let highlight_style = HighlightStyle {
+            color: Some(gpui::green()),
+            ..Default::default()
+        };
+        let text_highlights =
+            text_highlights_for_ranges(&buffer_snapshot, &highlighted_ranges, highlight_style);
+
+        let range_start = buffer_snapshot
+            .clip_offset(
+                MultiBufferOffset(rng.random_range(0..=buffer_len)),
+                Bias::Left,
+            )
+            .0;
+        let range_end = buffer_snapshot
+            .clip_offset(
+                MultiBufferOffset(rng.random_range(range_start..=buffer_len)),
+                Bias::Right,
+            )
+            .0;
+
+        let chunks = CustomHighlightsChunks::new(
+            MultiBufferOffset(range_start)..MultiBufferOffset(range_end),
+            LanguageAwareStyling {
+                tree_sitter: false,
+                diagnostics: false,
+            },
+            Some(&text_highlights),
+            &buffer_snapshot,
+        )
+        .collect::<Vec<_>>();
+
+        assert_eq!(
+            chunks.iter().map(|chunk| chunk.text).collect::<String>(),
+            buffer_text.get(range_start..range_end).unwrap()
+        );
+
+        let is_highlighted = |offset: usize| {
+            highlighted_ranges
+                .iter()
+                .any(|range| range.contains(&offset))
+        };
+        let mut offset = range_start;
+        for chunk in &chunks {
+            assert!(!chunk.text.is_empty());
+            assert!(chunk.text.len() <= 128);
+
+            let mut chars = 0u128;
+            let mut tabs = 0u128;
+            let mut newlines = 0u128;
+            for (index, character) in chunk.text.char_indices() {
+                chars |= 1 << index;
+                if character == '\t' {
+                    tabs |= 1 << index;
+                }
+                if character == '\n' {
+                    newlines |= 1 << index;
+                }
+            }
+            assert_eq!(chunk.chars, chars, "chars bitmap for {:?}", chunk.text);
+            assert_eq!(chunk.tabs, tabs, "tabs bitmap for {:?}", chunk.text);
+            assert_eq!(
+                chunk.newlines, newlines,
+                "newlines bitmap for {:?}",
+                chunk.text
+            );
+
+            let chunk_range = offset..offset + chunk.text.len();
+            let highlighted = is_highlighted(offset);
+            assert!(
+                chunk_range
+                    .clone()
+                    .all(|byte_offset| is_highlighted(byte_offset) == highlighted),
+                "highlight changes inside {:?}",
+                chunk.text
+            );
+            assert_eq!(
+                chunk.highlight_style,
+                highlighted.then_some(highlight_style),
+                "highlight style for {:?}",
+                chunk.text
+            );
+            offset = chunk_range.end;
+        }
     }
 }
