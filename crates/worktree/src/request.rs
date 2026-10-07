@@ -175,6 +175,8 @@ mod tests {
     use indoc::indoc;
     use pretty_assertions::assert_eq;
 
+    use path::rel_path;
+
     #[test]
     fn test_parse_request_file() {
         let request_file = parse_request_file(indoc! {r#"
@@ -461,5 +463,18 @@ mod tests {
             parse_request_file(&serialized),
             RequestFileState::Parsed(request_file)
         );
+    }
+
+    #[test]
+    fn test_is_request_path() {
+        assert!(is_request_path(rel_path("foo.toml")));
+        assert!(is_request_path(rel_path("users/bar.toml")));
+        assert!(is_request_path(rel_path("users/baz.TOML")));
+
+        assert!(!is_request_path(rel_path("README.md")));
+        assert!(!is_request_path(rel_path(".gitignore")));
+        assert!(!is_request_path(rel_path(".zaku/project.toml")));
+        assert!(!is_request_path(rel_path(".zaku/environments/dev.toml")));
+        assert!(!is_request_path(rel_path("users/.zaku/folder.toml")));
     }
 }

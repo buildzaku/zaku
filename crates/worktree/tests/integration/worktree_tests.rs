@@ -355,6 +355,75 @@ async fn test_dirs_no_longer_ignored(cx: &mut TestAppContext) {
     });
 }
 
+#[gpui::test]
+async fn test_gitignored_config_dirs_are_scanned(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            ".gitignore": indoc! {"
+                .zaku/
+                private/
+            "},
+            ".zaku": {
+                "project.toml": "",
+                "environments": {
+                    "dev.toml": "",
+                },
+            },
+            "users": {
+                ".zaku": {
+                    "folder.toml": "",
+                },
+                "foo.toml": "",
+            },
+            "private": {
+                "bar.toml": "",
+            },
+            "baz.toml": "",
+        }),
+    );
+
+    let worktree = Worktree::new(
+        temp_fs.path().join("project"),
+        true,
+        temp_fs.clone(),
+        Arc::new(AtomicUsize::new(1)),
+        true,
+        WorktreeId::from_usize(1),
+        &mut cx.to_async(),
+    )
+    .await
+    .unwrap();
+
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
+
+    worktree.read_with(cx, |worktree, _| {
+        assert_eq!(
+            worktree
+                .entries(0)
+                .map(|entry| (entry.path.as_ref(), entry.is_ignored, entry.is_request))
+                .collect::<Vec<_>>(),
+            vec![
+                (rel_path(""), false, false),
+                (rel_path(".gitignore"), false, false),
+                (rel_path(".zaku"), true, false),
+                (rel_path(".zaku/environments"), true, false),
+                (rel_path(".zaku/environments/dev.toml"), true, false),
+                (rel_path(".zaku/project.toml"), true, false),
+                (rel_path("baz.toml"), false, true),
+                (rel_path("private"), true, false),
+                (rel_path("users"), false, false),
+                (rel_path("users/.zaku"), true, false),
+                (rel_path("users/.zaku/folder.toml"), true, false),
+                (rel_path("users/foo.toml"), false, true),
+            ]
+        );
+    });
+}
+
 #[gpui::test(iterations = 10)]
 async fn test_circular_symlinks(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
