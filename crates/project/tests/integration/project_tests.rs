@@ -10,7 +10,7 @@ use project::{Project, ProjectEvent, ProjectItem, RequestBuffer, RequestBufferEv
 use util_macros::path;
 use worktree::{
     ConfigFileMeta, EnvironmentColor, EnvironmentFile, EnvironmentSection, FolderFile, ProjectFile,
-    SCHEMA_VERSION, Variable, VariablesSection, WorktreeModelHandle,
+    RequestSection, SCHEMA_VERSION, Variable, WorktreeModelHandle,
 };
 
 #[gpui::test]
@@ -152,14 +152,14 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                     [meta]
                     version = 1
 
-                    [project]
+                    [request]
                     variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
                 "#},
                 "folder.toml": indoc! {r#"
                     [meta]
                     version = 1
 
-                    [folder]
+                    [request]
                     variables = [{ name = "user_id", value = "2" }]
                 "#},
                 "environments": {
@@ -190,7 +190,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                         [meta]
                         version = 1
 
-                        [folder]
+                        [request]
                         variables = [{ name = "user_id", value = "1" }]
                     "#},
                     "environments": {
@@ -216,7 +216,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                 meta: ConfigFileMeta {
                     version: SCHEMA_VERSION,
                 },
-                project: VariablesSection {
+                request: RequestSection {
                     variables: vec![Variable {
                         name: "base_url".to_string(),
                         value: "https://api.zaku.dev".to_string(),
@@ -268,7 +268,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                 meta: ConfigFileMeta {
                     version: SCHEMA_VERSION,
                 },
-                folder: VariablesSection {
+                request: RequestSection {
                     variables: vec![Variable {
                         name: "user_id".to_string(),
                         value: "1".to_string(),
@@ -313,7 +313,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                 [meta]
                 version = 1
 
-                [folder]
+                [request]
                 variables = [{ name = "user_id", value = "3" }]
             "#},
         )
@@ -384,7 +384,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                 meta: ConfigFileMeta {
                     version: SCHEMA_VERSION,
                 },
-                folder: VariablesSection {
+                request: RequestSection {
                     variables: vec![Variable {
                         name: "user_id".to_string(),
                         value: "3".to_string(),
@@ -466,14 +466,17 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
         let project_config_store = project.project_config_store().read(cx);
 
         assert_eq!(project_config_store.project_file(), None);
-        assert_eq!(project_config_store.environments().next(), None);
+        assert_eq!(
+            project_config_store.environments().collect::<Vec<_>>(),
+            vec![]
+        );
         assert_eq!(
             project_config_store.folder_file(rel_path("users")),
             Some(&FolderFile {
                 meta: ConfigFileMeta {
                     version: SCHEMA_VERSION,
                 },
-                folder: VariablesSection {
+                request: RequestSection {
                     variables: vec![Variable {
                         name: "user_id".to_string(),
                         value: "3".to_string(),
@@ -831,6 +834,127 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_sy
         cx.update(|cx| project.read(cx).root(cx)),
         Some(project_path)
     );
+}
+
+#[gpui::test]
+async fn test_find_or_create_worktree_replaces_config_files(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(
+        path!("first"),
+        json!({
+            ".zaku": {
+                "project.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [request]
+                    variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                "#},
+                "environments": {
+                    "dev.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [environment]
+                        variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                    "#},
+                },
+            },
+        }),
+    );
+    temp_fs.insert_tree(
+        path!("second"),
+        json!({
+            ".zaku": {
+                "project.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [request]
+                    variables = [{ name = "base_url", value = "http://localhost:4321" }]
+                "#},
+            },
+        }),
+    );
+
+    let project = Project::test_new(temp_fs.clone(), &temp_fs.path().join("first"), cx).await;
+    cx.run_until_parked();
+
+    project.read_with(cx, |project, cx| {
+        let project_config_store = project.project_config_store().read(cx);
+
+        assert_eq!(
+            project_config_store.project_file(),
+            Some(&ProjectFile {
+                meta: ConfigFileMeta {
+                    version: SCHEMA_VERSION,
+                },
+                request: RequestSection {
+                    variables: vec![Variable {
+                        name: "base_url".to_string(),
+                        value: "https://api.zaku.dev".to_string(),
+                        disabled: false,
+                    }],
+                },
+            })
+        );
+        assert_eq!(
+            project_config_store.environments().collect::<Vec<_>>(),
+            vec![(
+                "dev",
+                &EnvironmentFile {
+                    meta: ConfigFileMeta {
+                        version: SCHEMA_VERSION,
+                    },
+                    environment: EnvironmentSection {
+                        color: None,
+                        variables: vec![Variable {
+                            name: "base_url".to_string(),
+                            value: "http://localhost:8000".to_string(),
+                            disabled: false,
+                        }],
+                    },
+                }
+            )]
+        );
+    });
+
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(temp_fs.path().join("second"), true, cx)
+        })
+        .await
+        .unwrap();
+    project
+        .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))
+        .await;
+    cx.run_until_parked();
+
+    project.read_with(cx, |project, cx| {
+        let project_config_store = project.project_config_store().read(cx);
+
+        assert_eq!(
+            project_config_store.project_file(),
+            Some(&ProjectFile {
+                meta: ConfigFileMeta {
+                    version: SCHEMA_VERSION,
+                },
+                request: RequestSection {
+                    variables: vec![Variable {
+                        name: "base_url".to_string(),
+                        value: "http://localhost:4321".to_string(),
+                        disabled: false,
+                    }],
+                },
+            })
+        );
+        assert_eq!(
+            project_config_store.environments().collect::<Vec<_>>(),
+            vec![]
+        );
+    });
 }
 
 #[gpui::test]

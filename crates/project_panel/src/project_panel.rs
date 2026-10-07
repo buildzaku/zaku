@@ -4110,6 +4110,40 @@ mod tests {
             ),
             cx,
         );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text(".zaku/", cx);
+            });
+        });
+        cx.run_until_parked();
+        assert_validation_state(
+            &panel,
+            ValidationState::Error("'.zaku' is a reserved name.".to_string()),
+            cx,
+        );
+        assert!(
+            panel
+                .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
+                .is_none()
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text("first/.zaku/second", cx);
+            });
+        });
+        cx.run_until_parked();
+        assert_validation_state(
+            &panel,
+            ValidationState::Error("'.zaku' is a reserved name.".to_string()),
+            cx,
+        );
+        assert!(
+            panel
+                .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
+                .is_none()
+        );
     }
 
     #[gpui::test]
@@ -4821,6 +4855,51 @@ mod tests {
                 String::from("          second"),
                 String::from("      first"),
                 String::from("  request"),
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_config_folders_are_hidden(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "project.toml": "",
+                    "environments": {
+                        "dev.toml": "",
+                    },
+                },
+                "users": {
+                    ".zaku": {
+                        "folder.toml": "",
+                    },
+                    "foo.toml": "",
+                },
+                "bar.toml": "",
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        toggle_expand_dir(&panel, "project/users", cx);
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v users  <== selected"),
+                String::from("      foo"),
+                String::from("  bar"),
             ]
         );
     }

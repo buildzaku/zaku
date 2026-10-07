@@ -6,14 +6,14 @@ use crate::SCHEMA_VERSION;
 pub struct ProjectFile {
     pub meta: ConfigFileMeta,
     #[serde(default)]
-    pub project: VariablesSection,
+    pub request: RequestSection,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FolderFile {
     pub meta: ConfigFileMeta,
     #[serde(default)]
-    pub folder: VariablesSection,
+    pub request: RequestSection,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,7 +37,7 @@ impl Default for ConfigFileMeta {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct VariablesSection {
+pub struct RequestSection {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub variables: Vec<Variable>,
 }
@@ -86,7 +86,7 @@ mod tests {
             [meta]
             version = 1
 
-            [project]
+            [request]
             variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
         "#})
         .unwrap();
@@ -96,7 +96,7 @@ mod tests {
                 meta: ConfigFileMeta {
                     version: SCHEMA_VERSION,
                 },
-                project: VariablesSection {
+                request: RequestSection {
                     variables: vec![Variable {
                         name: "base_url".to_string(),
                         value: "https://api.zaku.dev".to_string(),
@@ -120,7 +120,7 @@ mod tests {
             [meta]
             version = 1
 
-            [folder]
+            [request]
             variables = [{ name = "user_id", value = "1" }]
         "#})
         .unwrap();
@@ -130,7 +130,7 @@ mod tests {
                 meta: ConfigFileMeta {
                     version: SCHEMA_VERSION,
                 },
-                folder: VariablesSection {
+                request: RequestSection {
                     variables: vec![Variable {
                         name: "user_id".to_string(),
                         value: "1".to_string(),

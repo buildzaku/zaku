@@ -5,7 +5,7 @@ mod request;
 pub use language::DiskState;
 pub use project_config::{
     ConfigFileMeta, EnvironmentColor, EnvironmentFile, EnvironmentSection, FolderFile, ProjectFile,
-    Variable, VariablesSection, parse_config_file,
+    RequestSection, Variable, parse_config_file,
 };
 pub use request::{
     RequestFile, RequestFileBody, RequestFileBodyType, RequestFileFormField, RequestFileHeader,
