@@ -622,6 +622,36 @@ pub fn keymap_backup_file() -> &'static PathBuf {
     KEYMAP_BACKUP_FILE.get_or_init(|| config_dir().join("keymap_backup.jsonc"))
 }
 
+/// Returns the name of the `.zaku` folder within a project.
+pub fn project_config_folder_name() -> &'static str {
+    ".zaku"
+}
+
+/// Returns the relative path to the `project.toml` file within a project.
+pub fn project_config_file_relative_path() -> &'static RelPath {
+    static PROJECT_CONFIG_FILE_RELATIVE_PATH: OnceLock<&'static RelPath> = OnceLock::new();
+    PROJECT_CONFIG_FILE_RELATIVE_PATH.get_or_init(|| {
+        RelPath::unix(".zaku/project.toml").expect("project config file path should be valid")
+    })
+}
+
+/// Returns the relative path to a `folder.toml` file within a folder.
+pub fn project_folder_file_relative_path() -> &'static RelPath {
+    static PROJECT_FOLDER_FILE_RELATIVE_PATH: OnceLock<&'static RelPath> = OnceLock::new();
+    PROJECT_FOLDER_FILE_RELATIVE_PATH.get_or_init(|| {
+        RelPath::unix(".zaku/folder.toml").expect("project folder file path should be valid")
+    })
+}
+
+/// Returns the relative path to the `environments` folder within a project.
+pub fn project_environments_folder_relative_path() -> &'static RelPath {
+    static PROJECT_ENVIRONMENTS_FOLDER_RELATIVE_PATH: OnceLock<&'static RelPath> = OnceLock::new();
+    PROJECT_ENVIRONMENTS_FOLDER_RELATIVE_PATH.get_or_init(|| {
+        RelPath::unix(".zaku/environments")
+            .expect("project environments folder path should be valid")
+    })
+}
+
 /// In memory, this is identical to `Path`. On non-Windows conversions to this
 /// type are no-ops. On Windows, these conversions sanitize UNC paths by
 /// removing the `\\?\` prefix.

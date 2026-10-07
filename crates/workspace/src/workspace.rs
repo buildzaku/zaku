@@ -78,7 +78,10 @@ use session::Session;
 use crate::{
     create_project::CreateProjectModal,
     dock::{Dock, PanelButtons},
-    notifications::{DetachAndPromptErr, NotificationId, Notifications},
+    notifications::{
+        DetachAndPromptErr, NotificationId, Notifications,
+        simple_message_notification::MessageNotification,
+    },
     pane::{Pane, PaneEvent},
     status_bar::StatusBar,
 };
@@ -1251,7 +1254,7 @@ impl Workspace {
         let project = cx.new({
             let fs = app_state.fs.clone();
             let languages = app_state.languages.clone();
-            move |cx| Project::new(fs.clone(), languages.clone(), cx)
+            move |cx| Project::new(fs, languages, cx)
         });
 
         cx.new(|cx| {
@@ -2392,6 +2395,16 @@ impl Workspace {
                         pane.handle_deleted_project_item(*entry_id, window, cx);
                     });
                 }
+                ProjectEvent::Toast {
+                    notification_id,
+                    message,
+                } => workspace.show_notification(
+                    &NotificationId::named(notification_id.clone()),
+                    cx,
+                    |cx| cx.new(|cx| MessageNotification::new(message.clone(), cx)),
+                ),
+                ProjectEvent::HideToast { notification_id } => workspace
+                    .dismiss_notification(&NotificationId::named(notification_id.clone()), cx),
                 ProjectEvent::ActiveEntryChanged(_) | ProjectEvent::EntryMetadataUpdated(_) => {}
             },
         );

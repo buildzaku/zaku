@@ -339,7 +339,9 @@ impl ProjectPanel {
                     ProjectEvent::WorktreeRemoved(_) => {
                         this.update_visible_entries(None, false, false, window, cx);
                     }
-                    ProjectEvent::DeletedEntry(_, _) => {}
+                    ProjectEvent::DeletedEntry(_, _)
+                    | ProjectEvent::Toast { .. }
+                    | ProjectEvent::HideToast { .. } => {}
                     ProjectEvent::EntryMetadataUpdated(_) => {
                         cx.notify();
                     }
@@ -555,6 +557,10 @@ impl ProjectPanel {
 
                     let root_entry_id = snapshot.root_entry().map(|entry| entry.id);
                     while let Some(entry) = traversal.entry() {
+                        if entry.path.file_name() == Some(path::project_config_folder_name()) {
+                            traversal.advance_to_sibling();
+                            continue;
+                        }
                         if root_entry_id != Some(entry.id)
                             && (entry.kind.is_dir() || entry.is_request)
                         {
@@ -1635,6 +1641,13 @@ impl ProjectPanel {
             return;
         };
         let file_name = file_name.into_arc();
+        if is_reserved_entry_name(&file_name) {
+            let reserved_name = path::project_config_folder_name();
+            edit_state.validation_state =
+                ValidationState::Error(format!("'{reserved_name}' is a reserved name."));
+            cx.notify();
+            return;
+        }
 
         if let Some(worktree) = self.project.read(cx).worktree_for_id(worktree_id, cx)
             && let Some(entry) = worktree.read(cx).entry_for_id(entry_id).cloned()
@@ -1711,6 +1724,9 @@ impl ProjectPanel {
         let file_name = RelPath::new(Path::new(file_name.as_str()), path_style)
             .ok()?
             .into_arc();
+        if is_reserved_entry_name(&file_name) {
+            return None;
+        }
         let worktree = self.project.read(cx).worktree_for_id(worktree_id, cx)?;
         let entry = worktree.read(cx).entry_for_id(edit_state.entry_id)?.clone();
 
@@ -3248,6 +3264,12 @@ fn is_missing_entry_name(file_name: &str, is_dir: bool, path_style: PathStyle) -
     };
 
     file_stem.trim().is_empty()
+}
+
+fn is_reserved_entry_name(file_name: &RelPath) -> bool {
+    file_name
+        .components()
+        .any(|component| component == path::project_config_folder_name())
 }
 
 fn file_name_for_new_entry(file_name: &str, is_dir: bool, path_style: PathStyle) -> String {

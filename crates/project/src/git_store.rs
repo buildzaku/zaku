@@ -5,7 +5,7 @@ use futures::{FutureExt, StreamExt, channel::mpsc, future, stream::FuturesOrdere
 use gpui::{
     App, AppContext, AsyncApp, Context, Entity, EventEmitter, SharedString, Subscription, Task,
 };
-use std::{ops, path::Path, sync::Arc};
+use std::{mem, ops, path::Path, sync::Arc};
 use sum_tree::{Bias, Edit, SumTree};
 
 use collections::{BTreeSet, HashMap, HashSet, VecDeque};
@@ -606,7 +606,7 @@ impl GitStore {
             }
 
             for paths in paths_by_git_repo.values_mut() {
-                *paths = Self::coalesce_repo_paths(std::mem::take(paths));
+                *paths = Self::coalesce_repo_paths(mem::take(paths));
             }
 
             paths_by_git_repo
@@ -772,7 +772,7 @@ impl Repository {
                 let (prev_statuses, changed_paths) = this.update(cx, |this, _| {
                     (
                         this.snapshot.statuses_by_path.clone(),
-                        std::mem::take(&mut this.paths_needing_status_update),
+                        mem::take(&mut this.paths_needing_status_update),
                     )
                 });
 

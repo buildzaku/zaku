@@ -16,6 +16,7 @@ use std::{
 };
 use std::{
     io::{self, Write},
+    mem,
     path::{Path, PathBuf},
     pin::Pin,
     sync::{
@@ -789,7 +790,7 @@ impl Fs for NativeFs {
 
                 async move {
                     executor.timer(latency).await;
-                    let paths = std::mem::take(&mut *pending_paths.lock());
+                    let paths = mem::take(&mut *pending_paths.lock());
                     (!paths.is_empty()).then_some(paths)
                 }
             }

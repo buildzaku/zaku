@@ -3,7 +3,7 @@ use anyhow::anyhow;
 use std::cmp::Ordering;
 use std::{
     cmp::Reverse,
-    fmt,
+    fmt, mem,
     ops::{ControlFlow, Deref, DerefMut, Range},
     sync::{Arc, LazyLock, mpsc},
     time::{Duration, Instant},
@@ -76,9 +76,7 @@ impl<'a> SyntaxMapCaptures<'a> {
             // SAFETY: `QueryCaptures` stores the cursor pointer and the layer keeps
             // `query_cursor` alive until after `captures` is dropped.
             let cursor = unsafe {
-                std::mem::transmute::<&mut QueryCursor, &'static mut QueryCursor>(
-                    &mut *query_cursor,
-                )
+                mem::transmute::<&mut QueryCursor, &'static mut QueryCursor>(&mut *query_cursor)
             };
 
             cursor.set_byte_range(range.clone());
@@ -541,7 +539,7 @@ impl Drop for SyntaxSnapshot {
                 BufferId::new(1).expect("buffer id should be nonzero"),
             ),
         });
-        let layers = std::mem::replace(&mut self.layers, empty_layers);
+        let layers = mem::replace(&mut self.layers, empty_layers);
         if DROP_TX.send(layers).is_err() {
             log::debug!("Failed to drop syntax snapshot on background thread");
         }

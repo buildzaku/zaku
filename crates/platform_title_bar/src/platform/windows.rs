@@ -1,5 +1,7 @@
 use gpui::{App, Hsla, IntoElement, Pixels, RenderOnce, Window, WindowControlArea, prelude::*};
 #[cfg(target_os = "windows")]
+use std::mem;
+#[cfg(target_os = "windows")]
 use windows::{Wdk::System::SystemServices, Win32::System::SystemInformation::OSVERSIONINFOW};
 
 use ui::ActiveTheme;
@@ -22,7 +24,7 @@ impl WindowsWindowControls {
     #[cfg(target_os = "windows")]
     fn get_font() -> &'static str {
         let mut version = OSVERSIONINFOW::default();
-        version.dwOSVersionInfoSize = u32::try_from(std::mem::size_of_val(&version))
+        version.dwOSVersionInfoSize = u32::try_from(mem::size_of_val(&version))
             .expect("OSVERSIONINFOW size should fit in u32");
 
         // SAFETY: RtlGetVersion writes to the provided output buffer, and `version`
