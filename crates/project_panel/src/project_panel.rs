@@ -1013,7 +1013,7 @@ impl ProjectPanel {
         let source_worktree = source_worktree.read(cx);
         let source_entry = source_worktree.entry_for_id(source.0)?;
         let clipboard_entry_file_name = source_entry.path.file_name()?.to_string();
-        new_path.push(RelPath::unix(&clipboard_entry_file_name).ok()?);
+        new_path.push(RelPath::from_unix_str(&clipboard_entry_file_name).ok()?);
 
         let (extension, file_name_without_extension) = if source_entry.is_file() {
             (
@@ -1047,7 +1047,7 @@ impl ProjectPanel {
                     new_file_name.push_str(extension);
                 }
 
-                new_path.push(RelPath::unix(&new_file_name).ok()?);
+                new_path.push(RelPath::from_unix_str(&new_file_name).ok()?);
                 disambiguation_range = Some(0..(file_name_len + disambiguation_len));
                 index += 1;
             }
@@ -1889,9 +1889,10 @@ impl ProjectPanel {
             entry: Entry {
                 id: Self::NEW_ENTRY_ID,
                 kind: new_entry_kind,
-                path: parent_entry
-                    .path
-                    .join(RelPath::unix("\0").expect("new entry placeholder path should be valid")),
+                path: parent_entry.path.join(
+                    RelPath::from_unix_str("\0")
+                        .expect("new entry placeholder path should be valid"),
+                ),
                 inode: 0,
                 mtime: parent_entry.mtime,
                 canonical_path: parent_entry.canonical_path.clone(),

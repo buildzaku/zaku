@@ -111,7 +111,7 @@ impl Worktree {
                 let file_name = file_name
                     .to_str()
                     .context("worktree root name should be valid utf-8")?;
-                RelPath::unix(file_name)
+                RelPath::from_unix_str(file_name)
                     .context("failed to parse worktree root name")
                     .map(Arc::<RelPath>::from)?
             }
@@ -527,7 +527,7 @@ impl Worktree {
                 let file_name = file_name
                     .to_str()
                     .expect("worktree root name should be valid utf-8");
-                RelPath::unix(file_name)
+                RelPath::from_unix_str(file_name)
                     .expect("worktree root name should be a valid relative path")
                     .into()
             }
@@ -1327,7 +1327,7 @@ impl WorktreeModelHandle for Entity<Worktree> {
                 worktree.read_with(cx, |worktree, _| {
                     worktree
                         .entry_for_path(
-                            RelPath::unix(file_name)
+                            RelPath::from_unix_str(file_name)
                                 .expect("test file name should be a valid relative path"),
                         )
                         .is_some()
@@ -1349,7 +1349,7 @@ impl WorktreeModelHandle for Entity<Worktree> {
                 worktree.read_with(cx, |worktree, _| {
                     worktree
                         .entry_for_path(
-                            RelPath::unix(file_name)
+                            RelPath::from_unix_str(file_name)
                                 .expect("test file name should be a valid relative path"),
                         )
                         .is_none()
@@ -2454,7 +2454,7 @@ impl BackgroundScanner {
             };
             let Some(child_path) = child_name
                 .to_str()
-                .and_then(|name| Some(job.path.join(RelPath::unix(name).ok()?)))
+                .and_then(|name| Some(job.path.join(RelPath::from_unix_str(name).ok()?)))
             else {
                 continue;
             };
@@ -2804,7 +2804,7 @@ impl BackgroundScanner {
                     }
 
                     let ignore_path = parent_path.join(
-                        RelPath::unix(GITIGNORE)
+                        RelPath::from_unix_str(GITIGNORE)
                             .expect("gitignore path should be a valid relative path"),
                     );
                     if snapshot.snapshot.entry_for_path(&ignore_path).is_none() {

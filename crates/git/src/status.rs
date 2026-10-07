@@ -446,7 +446,7 @@ impl FromStr for GitStatus {
                     .and_then(|bytes| <[u8; 2]>::try_from(bytes).ok())?;
                 let status = FileStatus::from_bytes(status_bytes).log_err()?;
                 // Git status always reports repo paths with slash separators.
-                let path = RepoPath::from_rel_path(RelPath::unix(path).log_err()?);
+                let path = RepoPath::from_rel_path(RelPath::from_unix_str(path).log_err()?);
                 Some((path, status))
             })
             .collect::<Vec<_>>();

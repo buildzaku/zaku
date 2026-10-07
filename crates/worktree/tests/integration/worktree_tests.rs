@@ -564,36 +564,36 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
         );
         assert_eq!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir2").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir2").unwrap())
                 .unwrap()
                 .kind,
             EntryKind::UnloadedDir
         );
         assert!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir2").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir2").unwrap())
                 .unwrap()
                 .is_external
         );
         assert_eq!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3").unwrap())
                 .unwrap()
                 .kind,
             EntryKind::UnloadedDir
         );
         assert!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3").unwrap())
                 .unwrap()
                 .is_external
         );
     });
 
     cx.update(|cx| {
-        worktree
-            .read(cx)
-            .refresh_entries_for_paths(vec![Arc::from(RelPath::unix("deps/dep-dir3").unwrap())])
+        worktree.read(cx).refresh_entries_for_paths(vec![Arc::from(
+            RelPath::from_unix_str("deps/dep-dir3").unwrap(),
+        )])
     })
     .await
     .unwrap();
@@ -619,14 +619,14 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
         );
         assert_eq!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3/src").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3/src").unwrap())
                 .unwrap()
                 .kind,
             EntryKind::UnloadedDir
         );
         assert!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3/src").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3/src").unwrap())
                 .unwrap()
                 .is_external
         );
@@ -635,24 +635,24 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
         mem::take(&mut *worktree_updates.lock()),
         &[
             (
-                Arc::from(RelPath::unix("deps/dep-dir3").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3").unwrap()),
                 PathChange::Loaded,
             ),
             (
-                Arc::from(RelPath::unix("deps/dep-dir3/deps").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3/deps").unwrap()),
                 PathChange::Loaded,
             ),
             (
-                Arc::from(RelPath::unix("deps/dep-dir3/src").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3/src").unwrap()),
                 PathChange::Loaded,
             ),
         ]
     );
 
     cx.update(|cx| {
-        worktree
-            .read(cx)
-            .refresh_entries_for_paths(vec![Arc::from(RelPath::unix("deps/dep-dir3/src").unwrap())])
+        worktree.read(cx).refresh_entries_for_paths(vec![Arc::from(
+            RelPath::from_unix_str("deps/dep-dir3/src").unwrap(),
+        )])
     })
     .await
     .unwrap();
@@ -680,20 +680,20 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
         );
         assert_eq!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3/src").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3/src").unwrap())
                 .unwrap()
                 .kind,
             EntryKind::Dir
         );
         assert!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3/src/e.toml").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3/src/e.toml").unwrap())
                 .unwrap()
                 .is_external
         );
         assert!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3/src/f.toml").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3/src/f.toml").unwrap())
                 .unwrap()
                 .is_external
         );
@@ -702,15 +702,15 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
         mem::take(&mut *worktree_updates.lock()),
         &[
             (
-                Arc::from(RelPath::unix("deps/dep-dir3/src").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3/src").unwrap()),
                 PathChange::Loaded,
             ),
             (
-                Arc::from(RelPath::unix("deps/dep-dir3/src/e.toml").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3/src/e.toml").unwrap()),
                 PathChange::Loaded,
             ),
             (
-                Arc::from(RelPath::unix("deps/dep-dir3/src/f.toml").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3/src/f.toml").unwrap()),
                 PathChange::Loaded,
             ),
         ]
@@ -848,9 +848,9 @@ async fn test_refresh_entries_for_paths_creates_ancestors(cx: &mut TestAppContex
     });
 
     let refresh = cx.update(|cx| {
-        worktree
-            .read(cx)
-            .refresh_entries_for_paths(vec![Arc::from(RelPath::unix("a/b/c/deep.toml").unwrap())])
+        worktree.read(cx).refresh_entries_for_paths(vec![Arc::from(
+            RelPath::from_unix_str("a/b/c/deep.toml").unwrap(),
+        )])
     });
     refresh.await.unwrap();
 

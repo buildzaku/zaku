@@ -631,7 +631,8 @@ pub fn project_config_folder_name() -> &'static str {
 pub fn project_config_file_relative_path() -> &'static RelPath {
     static PROJECT_CONFIG_FILE_RELATIVE_PATH: OnceLock<&'static RelPath> = OnceLock::new();
     PROJECT_CONFIG_FILE_RELATIVE_PATH.get_or_init(|| {
-        RelPath::unix(".zaku/project.toml").expect("project config file path should be valid")
+        RelPath::from_unix_str(".zaku/project.toml")
+            .expect("project config file path should be valid")
     })
 }
 
@@ -639,7 +640,8 @@ pub fn project_config_file_relative_path() -> &'static RelPath {
 pub fn project_folder_file_relative_path() -> &'static RelPath {
     static PROJECT_FOLDER_FILE_RELATIVE_PATH: OnceLock<&'static RelPath> = OnceLock::new();
     PROJECT_FOLDER_FILE_RELATIVE_PATH.get_or_init(|| {
-        RelPath::unix(".zaku/folder.toml").expect("project folder file path should be valid")
+        RelPath::from_unix_str(".zaku/folder.toml")
+            .expect("project folder file path should be valid")
     })
 }
 
@@ -647,7 +649,7 @@ pub fn project_folder_file_relative_path() -> &'static RelPath {
 pub fn project_environments_folder_relative_path() -> &'static RelPath {
     static PROJECT_ENVIRONMENTS_FOLDER_RELATIVE_PATH: OnceLock<&'static RelPath> = OnceLock::new();
     PROJECT_ENVIRONMENTS_FOLDER_RELATIVE_PATH.get_or_init(|| {
-        RelPath::unix(".zaku/environments")
+        RelPath::from_unix_str(".zaku/environments")
             .expect("project environments folder path should be valid")
     })
 }
@@ -802,7 +804,7 @@ mod tests {
     use super::*;
 
     fn rel_path_entry(path: &'static str, is_file: bool) -> (&'static RelPath, bool) {
-        (RelPath::unix(path).unwrap(), is_file)
+        (RelPath::from_unix_str(path).unwrap(), is_file)
     }
 
     fn sorted_rel_paths(
@@ -1571,19 +1573,19 @@ mod tests {
                 PathStyle::Posix,
                 "/a/b/c",
                 "/a/b",
-                Some(RelPath::unix("c").unwrap().into_arc()),
+                Some(RelPath::from_unix_str("c").unwrap().into_arc()),
             ),
             (
                 PathStyle::Posix,
                 "/a/b/c",
                 "/a/b/",
-                Some(RelPath::unix("c").unwrap().into_arc()),
+                Some(RelPath::from_unix_str("c").unwrap().into_arc()),
             ),
             (
                 PathStyle::Posix,
                 "/a/b/c",
                 "/",
-                Some(RelPath::unix("a/b/c").unwrap().into_arc()),
+                Some(RelPath::from_unix_str("a/b/c").unwrap().into_arc()),
             ),
             (PathStyle::Posix, "/a/b/c", "", None),
             (PathStyle::Posix, "/a/b//c", "/a/b/", None),
@@ -1592,25 +1594,25 @@ mod tests {
                 PathStyle::Posix,
                 "/a/b/c",
                 "/a/b/c",
-                Some(RelPath::unix("").unwrap().into_arc()),
+                Some(RelPath::from_unix_str("").unwrap().into_arc()),
             ),
             (
                 PathStyle::Windows,
                 "C:\\a\\b\\c",
                 "C:\\a\\b",
-                Some(RelPath::unix("c").unwrap().into_arc()),
+                Some(RelPath::from_unix_str("c").unwrap().into_arc()),
             ),
             (
                 PathStyle::Windows,
                 "C:\\a\\b\\c",
                 "C:\\a\\b\\",
-                Some(RelPath::unix("c").unwrap().into_arc()),
+                Some(RelPath::from_unix_str("c").unwrap().into_arc()),
             ),
             (
                 PathStyle::Windows,
                 "C:\\a\\b\\c",
                 "C:\\",
-                Some(RelPath::unix("a/b/c").unwrap().into_arc()),
+                Some(RelPath::from_unix_str("a/b/c").unwrap().into_arc()),
             ),
             (PathStyle::Windows, "C:\\a\\b\\c", "", None),
             (PathStyle::Windows, "C:\\a\\b\\\\c", "C:\\a\\b\\", None),
@@ -1619,19 +1621,19 @@ mod tests {
                 PathStyle::Windows,
                 "C:\\a\\b/c",
                 "C:\\a\\b",
-                Some(RelPath::unix("c").unwrap().into_arc()),
+                Some(RelPath::from_unix_str("c").unwrap().into_arc()),
             ),
             (
                 PathStyle::Windows,
                 "C:\\a\\b/c",
                 "C:\\a\\b\\",
-                Some(RelPath::unix("c").unwrap().into_arc()),
+                Some(RelPath::from_unix_str("c").unwrap().into_arc()),
             ),
             (
                 PathStyle::Windows,
                 "C:\\a\\b/c",
                 "C:\\a\\b/",
-                Some(RelPath::unix("c").unwrap().into_arc()),
+                Some(RelPath::from_unix_str("c").unwrap().into_arc()),
             ),
         ];
         let actual = expected.clone().map(|(style, child, parent, _)| {
