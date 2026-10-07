@@ -20,7 +20,7 @@ path = "tests/integration/project_tests.rs"
 required-features = ["test"]
 
 [features]
-test = ["gpui/test-support", "language/test"]
+test = ["gpui/test-support", "language/test", "worktree/test"]
 
 [dependencies]
 anyhow = { workspace = true }

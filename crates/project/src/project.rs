@@ -271,8 +271,8 @@ impl Project {
             Self::on_request_buffer_store_event(event, cx);
         })
         .detach();
-        cx.subscribe(&project_config_store, |this, _, event, cx| {
-            this.on_project_config_store_event(event, cx);
+        cx.subscribe(&project_config_store, |_, _, event, cx| {
+            Self::on_project_config_store_event(event, cx);
         })
         .detach();
         let maintain_buffer_languages = Self::maintain_buffer_languages(languages.clone(), cx);
@@ -477,26 +477,16 @@ impl Project {
         })
     }
 
-    fn on_project_config_store_event(
-        &mut self,
-        event: &ProjectConfigStoreEvent,
-        cx: &mut Context<Self>,
-    ) {
+    fn on_project_config_store_event(event: &ProjectConfigStoreEvent, cx: &mut Context<Self>) {
         match event {
             ProjectConfigStoreEvent::ConfigFileUpdated(result) => match result {
                 Ok(path) => cx.emit(ProjectEvent::HideToast {
                     notification_id: format!("config-file-{path:?}").into(),
                 }),
-                Err(InvalidConfigFileError { path, message }) => {
-                    let path_style = self.path_style(cx);
-                    cx.emit(ProjectEvent::Toast {
-                        notification_id: format!("config-file-{path:?}").into(),
-                        message: format!(
-                            "Failed to parse config file {}:\n{message}",
-                            path.display(path_style)
-                        ),
-                    });
-                }
+                Err(InvalidConfigFileError { path, message }) => cx.emit(ProjectEvent::Toast {
+                    notification_id: format!("config-file-{path:?}").into(),
+                    message: message.clone(),
+                }),
             },
         }
     }

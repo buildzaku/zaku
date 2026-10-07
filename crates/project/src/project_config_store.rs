@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use collections::{BTreeMap, HashMap};
 use fs::Fs;
-use path::RelPath;
+use path::{PathStyle, RelPath};
 use util::ResultExt;
 use worktree::{
     EnvironmentFile, FolderFile, PathChange, ProjectFile, UpdatedEntriesSet, Worktree, WorktreeId,
@@ -181,6 +181,11 @@ impl ProjectConfigStore {
         contents: Option<&str>,
         cx: &mut Context<Self>,
     ) {
+        let config_file_kind = match &kind {
+            ConfigFileKind::Project => "project",
+            ConfigFileKind::Environment(_) => "environment",
+            ConfigFileKind::Folder(_) => "folder",
+        };
         let update_result = match (kind, contents) {
             (ConfigFileKind::Project, Some(contents)) => {
                 worktree::parse_config_file(contents).map(|project_file| {
@@ -213,11 +218,12 @@ impl ProjectConfigStore {
         let result = match update_result {
             Ok(()) => Ok(path),
             Err(error) => {
-                log::error!("Failed to parse config file {path:?}: {error:#}");
-                Err(InvalidConfigFileError {
-                    path,
-                    message: error.to_string(),
-                })
+                let message = format!(
+                    "Failed to parse {config_file_kind} config file {}:\n{error}",
+                    path.display(PathStyle::local())
+                );
+                log::error!("{message}");
+                Err(InvalidConfigFileError { path, message })
             }
         };
         cx.emit(ProjectConfigStoreEvent::ConfigFileUpdated(result));
