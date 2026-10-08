@@ -4,9 +4,10 @@ use language::LanguageRegistry;
 use serde_json::{Value, json};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
+use collections::BTreeMap;
 use fs::{Fs, RemoveOptions, TempFs};
 use path::{PathStyle, RelPath, rel_path};
-use project::{Project, ProjectEvent, ProjectItem, RequestBuffer, RequestBufferEvent};
+use project::{Project, ProjectEvent, ProjectItem, ProjectPath, RequestBuffer, RequestBufferEvent};
 use util_macros::path;
 use worktree::{
     ConfigFileMeta, EnvironmentColor, EnvironmentFile, EnvironmentSection, FolderFile, ProjectFile,
@@ -574,11 +575,11 @@ async fn test_invalid_config_file(cx: &mut TestAppContext) {
     });
     let (notification_id, message) = toast_events.borrow().last().cloned().unwrap();
     assert_eq!(
-        message.unwrap().lines().next().unwrap(),
-        format!(
-            "Failed to parse environment config file {}:",
+        message,
+        Some(format!(
+            "Failed to parse environment config file {}:\nunclosed table, expected `]` at line 1 column 13",
             rel_path(".zaku/environments/prod.toml").display(PathStyle::local())
-        )
+        ))
     );
 
     temp_fs
@@ -633,6 +634,134 @@ async fn test_invalid_config_file(cx: &mut TestAppContext) {
         );
     });
     assert_eq!(toast_events.borrow().last(), Some(&(notification_id, None)));
+}
+
+#[gpui::test]
+async fn test_request_variables(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(
+        path!("project"),
+        json!({
+            ".zaku": {
+                "project.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [request]
+                    variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                "#},
+                "environments": {
+                    "dev.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [environment]
+                        variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                    "#},
+                },
+            },
+            "users": {
+                ".zaku": {
+                    "folder.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [request]
+                        variables = [{ name = "user_id", value = "1" }]
+                    "#},
+                },
+                "admins": {
+                    ".zaku": {
+                        "folder.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [request]
+                            variables = [
+                              { name = "user_id", value = "2" },
+                              { name = "base_url", value = "http://localhost:3000", disabled = true }
+                            ]
+                        "#},
+                    },
+                    "baz.toml": "",
+                },
+                "bar.toml": "",
+            },
+        }),
+    );
+
+    let project_path = temp_fs.path().join(path!("project"));
+    let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+    let root_worktree = project.update(cx, |project, cx| project.root_worktree(cx).unwrap());
+    let worktree_id = root_worktree.read_with(cx, |worktree, _| worktree.id());
+    cx.run_until_parked();
+
+    project.read_with(cx, |project, cx| {
+        assert_eq!(
+            project
+                .project_config_store()
+                .read(cx)
+                .variables_for_request(&ProjectPath {
+                    worktree_id,
+                    path: Arc::from(rel_path("users/bar.toml")),
+                })
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str()))
+                .collect::<BTreeMap<_, _>>(),
+            BTreeMap::from_iter([("base_url", "https://api.zaku.dev"), ("user_id", "1")])
+        );
+    });
+
+    project.update(cx, |project, cx| {
+        project
+            .project_config_store()
+            .update(cx, |project_config_store, cx| {
+                project_config_store.activate_environment(Some("dev".to_string()), cx);
+            });
+    });
+    project.read_with(cx, |project, cx| {
+        assert_eq!(
+            project
+                .project_config_store()
+                .read(cx)
+                .variables_for_request(&ProjectPath {
+                    worktree_id,
+                    path: Arc::from(rel_path("users/admins/baz.toml")),
+                })
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str()))
+                .collect::<BTreeMap<_, _>>(),
+            BTreeMap::from_iter([("base_url", "http://localhost:8000"), ("user_id", "2")])
+        );
+    });
+
+    temp_fs
+        .remove_file(
+            &project_path.join(path!(".zaku/environments/dev.toml")),
+            RemoveOptions::default(),
+        )
+        .await
+        .unwrap();
+    root_worktree.flush_fs_events(cx).await;
+    cx.run_until_parked();
+
+    project.read_with(cx, |project, cx| {
+        assert_eq!(
+            project
+                .project_config_store()
+                .read(cx)
+                .variables_for_request(&ProjectPath {
+                    worktree_id,
+                    path: Arc::from(rel_path("users/admins/baz.toml")),
+                })
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str()))
+                .collect::<BTreeMap<_, _>>(),
+            BTreeMap::from_iter([("base_url", "https://api.zaku.dev"), ("user_id", "2")])
+        );
+    });
 }
 
 #[gpui::test]

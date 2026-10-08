@@ -256,4 +256,83 @@ mod tests {
         .unwrap();
         assert_eq!(environment_file, EnvironmentFile::default());
     }
+
+    #[test]
+    fn test_parse_config_file_reports_error_location() {
+        let error = parse_config_file::<ProjectFile>(indoc! {r#"
+            [meta]
+            version = 1
+
+            [request]
+            variables = [{ name = "city", value = "Zürich", disabled = "true" }]
+        "#})
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            r#"invalid type: string "true", expected a boolean at line 5 column 60"#
+        );
+
+        let error = parse_config_file::<ProjectFile>("").unwrap_err();
+        assert_eq!(error.to_string(), "missing field `meta` at line 1 column 1");
+    }
+
+    #[test]
+    fn test_substitute_variables_in_str() {
+        let variables = [
+            ("host", "api.zaku.dev"),
+            ("base_url", "https://{{host}}"),
+            ("user_id", "1"),
+            ("open_braces", "{{"),
+            ("foo", "{{foo}}"),
+            ("bar", "{{baz}}"),
+            ("baz", "{{bar}}"),
+        ]
+        .into_iter()
+        .map(|(name, value)| (name.to_string(), value.to_string()))
+        .collect::<HashMap<_, _>>();
+
+        assert_eq!(
+            substitute_variables_in_str("{{base_url}}/users/{{user_id}}", &variables),
+            "https://api.zaku.dev/users/1"
+        );
+        assert_eq!(
+            substitute_variables_in_str("{{base_url}}/hosts/{{host}}", &variables),
+            "https://api.zaku.dev/hosts/api.zaku.dev"
+        );
+
+        assert_eq!(
+            substitute_variables_in_str("{{foo}}", &variables),
+            "{{foo}}"
+        );
+        assert_eq!(
+            substitute_variables_in_str("{{bar}}", &variables),
+            "{{bar}}"
+        );
+        assert_eq!(
+            substitute_variables_in_str("Bearer {{token}}", &variables),
+            "Bearer {{token}}"
+        );
+        assert_eq!(
+            substitute_variables_in_str("{{ host }}", &variables),
+            "{{ host }}"
+        );
+
+        assert_eq!(
+            substitute_variables_in_str("https://{{host", &variables),
+            "https://{{host"
+        );
+        assert_eq!(
+            substitute_variables_in_str("{{host}/{{user_id}}", &variables),
+            "{{host}/1"
+        );
+        assert_eq!(
+            substitute_variables_in_str("{{}}/{{host}}", &variables),
+            "{{}}/api.zaku.dev"
+        );
+
+        assert_eq!(
+            substitute_variables_in_str("{{open_braces}}host}}", &variables),
+            "{{host}}"
+        );
+    }
 }
