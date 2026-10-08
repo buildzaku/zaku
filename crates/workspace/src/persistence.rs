@@ -412,7 +412,7 @@ impl WorkspaceDb {
             }
         }
 
-        let _ = futures::future::join_all(delete_tasks).await;
+        futures::future::join_all(delete_tasks).await;
 
         Ok(existing_workspaces)
     }
@@ -536,14 +536,14 @@ impl WorkspaceDb {
     }
 
     query! {
-        pub(crate) async fn environment(workspace_id: WorkspaceId) -> anyhow::Result<Option<String>> {
+        pub(crate) async fn active_environment(workspace_id: WorkspaceId) -> anyhow::Result<Option<String>> {
             SELECT name
             FROM environment
             WHERE workspace_id = ?
         }
     }
 
-    pub async fn set_environment(
+    pub async fn set_active_environment(
         &self,
         workspace_id: WorkspaceId,
         name: Option<String>,
@@ -1524,5 +1524,71 @@ mod tests {
 
         let serialized_workspace = workspace_db.workspace_for_path(&location).unwrap();
         assert_eq!(serialized_workspace.docks, docks);
+    }
+
+    #[gpui::test]
+    async fn test_environment_serialization(_cx: &mut TestAppContext) {
+        let workspace_db = WorkspaceDb::test_open("test_environment_serialization").await;
+        let first_workspace_id = workspace_db.next_id().await.unwrap();
+        let second_workspace_id = workspace_db.next_id().await.unwrap();
+
+        workspace_db
+            .set_active_environment(first_workspace_id, Some("dev".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(
+            workspace_db
+                .active_environment(first_workspace_id)
+                .await
+                .unwrap(),
+            Some("dev".to_string())
+        );
+
+        workspace_db
+            .set_active_environment(first_workspace_id, Some("prod".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(
+            workspace_db
+                .active_environment(first_workspace_id)
+                .await
+                .unwrap(),
+            Some("prod".to_string())
+        );
+
+        workspace_db
+            .set_active_environment(second_workspace_id, Some("dev".to_string()))
+            .await
+            .unwrap();
+        workspace_db
+            .set_active_environment(first_workspace_id, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            workspace_db
+                .active_environment(first_workspace_id)
+                .await
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            workspace_db
+                .active_environment(second_workspace_id)
+                .await
+                .unwrap(),
+            Some("dev".to_string())
+        );
+
+        workspace_db
+            .delete_workspace_by_id(second_workspace_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            workspace_db
+                .active_environment(second_workspace_id)
+                .await
+                .unwrap(),
+            None
+        );
     }
 }

@@ -282,9 +282,11 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
         {
             let workspace_db = WorkspaceDb::global(cx);
             let name = name.clone();
-            cx.background_spawn(
-                async move { workspace_db.set_environment(workspace_id, name).await },
-            )
+            cx.background_spawn(async move {
+                workspace_db
+                    .set_active_environment(workspace_id, name)
+                    .await
+            })
             .detach_and_log_err(cx);
         }
         cx.emit(DismissEvent);

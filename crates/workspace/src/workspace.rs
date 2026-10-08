@@ -1437,7 +1437,7 @@ impl Workspace {
             };
 
             if let Some(environment) = workspace_db
-                .environment(workspace_id)
+                .active_environment(workspace_id)
                 .await
                 .log_err()
                 .flatten()
@@ -4744,6 +4744,54 @@ mod tests {
                 .unwrap(),
             WindowBounds::Windowed(saved_workspace_bounds)
         );
+    }
+
+    #[gpui::test]
+    async fn test_environment_restore_saved_workspace(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+        let project_path = temp_fs.path().join(path!("project"));
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: workspace_id,
+                location: project_path.clone(),
+                center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
+                window_bounds: None,
+                display: None,
+                session_id: None,
+                window_id: None,
+            })
+            .await;
+        workspace_db
+            .set_active_environment(workspace_id, Some("dev".to_string()))
+            .await
+            .unwrap();
+
+        let result = cx
+            .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
+            .await
+            .unwrap();
+
+        result.workspace.read_with(cx, |workspace, cx| {
+            assert_eq!(
+                workspace
+                    .project()
+                    .read(cx)
+                    .project_config_store()
+                    .read(cx)
+                    .active_environment(),
+                Some("dev")
+            );
+        });
     }
 
     #[gpui::test]

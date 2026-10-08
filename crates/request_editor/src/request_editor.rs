@@ -2309,6 +2309,134 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_send_request_with_variables(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, mut rx) = oneshot::channel();
+        let tx = Mutex::new(Some(tx));
+
+        let http_client = FakeHttpClient::create(move |request| {
+            assert_eq!(request.uri().host(), Some("api.zaku.dev"));
+            assert_eq!(request.uri().path(), "/search");
+            assert_eq!(
+                request.uri().query(),
+                Some("query=hello+world&filter%5Bstatus%5D=active")
+            );
+            assert_eq!(
+                request
+                    .headers()
+                    .get("Content-Type")
+                    .and_then(|value| value.to_str().ok()),
+                Some("application/json")
+            );
+            assert_eq!(
+                request
+                    .headers()
+                    .get("Authorization")
+                    .and_then(|value| value.to_str().ok()),
+                Some("Bearer test-token")
+            );
+            let tx = tx.lock().take().unwrap();
+
+            async move {
+                let mut body = request.into_body();
+                let mut data = String::new();
+                body.read_to_string(&mut data).await.unwrap();
+                assert_eq!(
+                    data,
+                    indoc! {r#"
+                        {
+                          "user_id": "1"
+                        }"#}
+                );
+                tx.send(()).unwrap();
+
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(AsyncBody::empty())
+                    .unwrap())
+            }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "project.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [request]
+                        variables = [
+                          { name = "base_url", value = "https://api.zaku.dev" },
+                          { name = "query", value = "hello world" },
+                          { name = "filter_field", value = "status" },
+                          { name = "filter_value", value = "active" },
+                          { name = "token", value = "test-token" },
+                          { name = "user_id", value = "1" }
+                        ]
+                    "#},
+                },
+                "foo": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "POST"
+                        url = "{{base_url}}/search"
+                        params = [
+                          { name = "query", value = "{{query}}" },
+                          { name = "filter[{{filter_field}}]", value = "{{filter_value}}" }
+                        ]
+                        headers = [
+                          { name = "Content-Type", value = "application/json" },
+                          { name = "Authorization", value = "Bearer {{token}}" }
+                        ]
+                        body = {
+                          type = "json",
+                          data = """
+                        {
+                          "user_id": "{{user_id}}"
+                        }"""
+                        }
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        cx.run_until_parked();
+        let (workspace, _, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("foo/request.toml")),
+        };
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(rx.try_recv().unwrap(), Some(()));
+    }
+
+    #[gpui::test]
     async fn test_send_request_form_url_encoded(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
@@ -2349,6 +2477,18 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
+                ".zaku": {
+                    "project.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [request]
+                        variables = [
+                          { name = "city", value = "é" },
+                          { name = "reserved", value = "+&=%20" }
+                        ]
+                    "#},
+                },
                 "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
@@ -2371,8 +2511,8 @@ mod tests {
                             },
                             { name = "", value = "bar" },
                             { name = "baz", value = "\t " },
-                            { name = "é", value = "\t東京" },
-                            { name = "qux", value = "+&=%20" },
+                            { name = "{{city}}", value = "\t東京" },
+                            { name = "qux", value = "{{reserved}}" },
                             { name = "qux", value = "" }
                           ]
                         }
@@ -2384,6 +2524,7 @@ mod tests {
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
         let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        cx.run_until_parked();
         let (workspace, _, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
