@@ -93,13 +93,16 @@ resources = { workspace = true }
 
 [dev-dependencies]
 client = { workspace = true, features = ["test"] }
+environment_selector = { workspace = true, features = ["test"] }
 fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
 http_client = { workspace = true, features = ["test"] }
 parking_lot = { workspace = true }
 path = { workspace = true, features = ["test"] }
+picker = { workspace = true }
 project = { workspace = true, features = ["test"] }
 recent_projects = { workspace = true, features = ["test"] }
 response_panel = { workspace = true, features = ["test"] }
+util_macros = { workspace = true }
 workspace = { workspace = true, features = ["test"] }
 worktree = { workspace = true, features = ["test"] }

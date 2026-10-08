@@ -7,15 +7,18 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use db::{AppDatabase, kv::KeyValueStore};
-use fs::{Fs, TempFs};
+use environment_selector::EnvironmentSelector;
+use fs::{Fs, RemoveOptions, TempFs};
 use http_client::{AsyncBody, FakeHttpClient, Response, StatusCode};
 use path::rel_path;
+use picker::PickerDelegate;
 use project::ProjectPath;
 use recent_projects::RecentProjects;
 use response_panel::ResponsePanel;
 use session::Session;
 use settings::SettingsStore;
 use theme::LoadThemes;
+use util_macros::path;
 use workspace::{AppState, ItemHandle, OpenMode, OpenResult, Root, Workspace, WorkspaceDb};
 use worktree::{Worktree, WorktreeModelHandle};
 
@@ -32,6 +35,7 @@ fn init_test(app_state: Arc<AppState>, app_db: AppDatabase, cx: &mut TestAppCont
         request_editor::init(cx);
         response_panel::init(cx);
         recent_projects::init(cx);
+        environment_selector::init(cx);
         zaku::init(cx);
     });
 }
@@ -271,6 +275,175 @@ async fn test_open_recent_projects_action_in_new_window(cx: &mut TestAppContext)
             assert!(workspace.active_modal::<RecentProjects>(cx).is_none());
         })
         .unwrap();
+}
+
+#[gpui::test]
+async fn test_environment_selector(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            ".zaku": {
+                "environments": {
+                    "dev.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [environment]
+                        color = "success"
+                        variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                    "#},
+                    "staging-9.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [environment]
+                        color = "accent"
+                        variables = [{ name = "base_url", value = "https://staging-9.api.zaku.dev" }]
+                    "#},
+                    "staging-10.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [environment]
+                        color = "info"
+                        variables = [{ name = "base_url", value = "https://staging-10.api.zaku.dev" }]
+                    "#},
+                },
+            },
+        }),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let (open_result, worktree) = open_workspace(project_path.clone(), app_state.clone(), cx).await;
+    cx.run_until_parked();
+    open_result.workspace.update(cx, |workspace, cx| {
+        workspace
+            .project()
+            .read(cx)
+            .project_config_store()
+            .clone()
+            .update(cx, |project_config_store, cx| {
+                project_config_store.activate_environment(Some("dev".to_string()), cx);
+            });
+    });
+
+    cx.dispatch_action(
+        open_result.window.into(),
+        actions::environment_selector::Toggle,
+    );
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<EnvironmentSelector>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+    picker.read_with(cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_environments(),
+            vec![
+                (None, false),
+                (Some("dev".to_string()), false),
+                (Some("staging-9".to_string()), false),
+                (Some("staging-10".to_string()), false),
+            ]
+        );
+        assert_eq!(picker.delegate.selected_index(), 1);
+    });
+
+    cx.dispatch_action(
+        open_result.window.into(),
+        actions::environment_selector::Toggle,
+    );
+    temp_fs
+        .remove_file(
+            &project_path.join(path!(".zaku/environments/dev.toml")),
+            RemoveOptions::default(),
+        )
+        .await
+        .unwrap();
+    worktree.flush_fs_events(cx).await;
+    cx.run_until_parked();
+
+    cx.dispatch_action(
+        open_result.window.into(),
+        actions::environment_selector::Toggle,
+    );
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<EnvironmentSelector>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+    picker.read_with(cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_environments(),
+            vec![
+                (Some("dev".to_string()), true),
+                (None, false),
+                (Some("staging-9".to_string()), false),
+                (Some("staging-10".to_string()), false),
+            ]
+        );
+        assert_eq!(picker.delegate.selected_index(), 0);
+    });
+
+    cx.simulate_input(open_result.window.into(), "staging-10");
+    cx.dispatch_action(open_result.window.into(), actions::menu::Confirm);
+    cx.run_until_parked();
+
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert_eq!(
+            workspace
+                .project()
+                .read(cx)
+                .project_config_store()
+                .read(cx)
+                .active_environment(),
+            Some("staging-10")
+        );
+        assert!(workspace.active_modal::<EnvironmentSelector>(cx).is_none());
+    });
+
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+        })
+        .unwrap()
+        .await;
+    open_result
+        .window
+        .update(cx, |_, window, _| window.remove_window())
+        .unwrap();
+    cx.run_until_parked();
+
+    let (reopened_result, _) = open_workspace(project_path, app_state, cx).await;
+    reopened_result.workspace.read_with(cx, |workspace, cx| {
+        assert_eq!(
+            workspace
+                .project()
+                .read(cx)
+                .project_config_store()
+                .read(cx)
+                .active_environment(),
+            Some("staging-10")
+        );
+    });
 }
 
 #[gpui::test]

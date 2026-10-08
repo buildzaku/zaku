@@ -37,7 +37,7 @@ pub fn environment_icon(environment_color: Option<EnvironmentColor>, text_color:
 }
 
 pub struct EnvironmentSelector {
-    picker: Entity<Picker<EnvironmentSelectorDelegate>>,
+    pub picker: Entity<Picker<EnvironmentSelectorDelegate>>,
     _dismiss_subscriptions: Vec<Subscription>,
 }
 
@@ -179,6 +179,15 @@ impl EnvironmentSelectorDelegate {
             matches: Vec::new(),
             selected_index: 0,
         }
+    }
+
+    #[cfg(any(test, feature = "test"))]
+    pub fn matched_environments(&self) -> Vec<(Option<String>, bool)> {
+        self.matches
+            .iter()
+            .filter_map(|string_match| self.environments.get(string_match.candidate_id))
+            .map(|environment| (environment.name.clone(), environment.is_missing))
+            .collect()
     }
 }
 
