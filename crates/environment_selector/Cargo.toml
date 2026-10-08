@@ -1,5 +1,5 @@
 [package]
-name = "title_bar"
+name = "environment_selector"
 version.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -8,21 +8,18 @@ rust-version.workspace = true
 publish.workspace = true
 
 [lib]
-name = "title_bar"
-path = "src/title_bar.rs"
+name = "environment_selector"
+path = "src/environment_selector.rs"
 
 [lints]
 workspace = true
 
 [dependencies]
 actions = { workspace = true }
-environment_selector = { workspace = true }
+fuzzy_nucleo = { workspace = true }
 gpui = { workspace = true }
 path = { workspace = true }
-platform_title_bar = { workspace = true }
+picker = { workspace = true }
 project = { workspace = true }
-recent_projects = { workspace = true }
-smallvec = { workspace = true }
 ui = { workspace = true }
-util = { workspace = true }
 workspace = { workspace = true }

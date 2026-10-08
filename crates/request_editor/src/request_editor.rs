@@ -1136,8 +1136,19 @@ impl RequestEditor {
             return;
         };
 
+        let variables = self
+            .project_path(cx)
+            .map(|request_path| {
+                self.project
+                    .read(cx)
+                    .project_config_store()
+                    .read(cx)
+                    .variables_for_request(&request_path)
+            })
+            .unwrap_or_default();
         let request_method = request.http.method.clone();
-        let request_url = request.http.url.read(cx).value(cx);
+        let request_url =
+            project::substitute_variables_in_str(&request.http.url.read(cx).value(cx), &variables);
         let request_params = request
             .http
             .params
@@ -1147,12 +1158,18 @@ impl RequestEditor {
                     return None;
                 }
 
-                let name = param.key.read(cx).text(cx).trim().to_string();
+                let name =
+                    project::substitute_variables_in_str(&param.key.read(cx).text(cx), &variables)
+                        .trim()
+                        .to_string();
                 if name.is_empty() {
                     return None;
                 }
 
-                let value = param.value.read(cx).text(cx);
+                let value = project::substitute_variables_in_str(
+                    &param.value.read(cx).text(cx),
+                    &variables,
+                );
                 Some((name, value))
             })
             .collect::<Vec<_>>();
@@ -1163,12 +1180,16 @@ impl RequestEditor {
                 continue;
             }
 
-            let name = header.key.read(cx).text(cx).trim().to_string();
+            let name =
+                project::substitute_variables_in_str(&header.key.read(cx).text(cx), &variables)
+                    .trim()
+                    .to_string();
             if name.is_empty() {
                 continue;
             }
 
-            let value = header.value.read(cx).text(cx);
+            let value =
+                project::substitute_variables_in_str(&header.value.read(cx).text(cx), &variables);
             if name.eq_ignore_ascii_case("content-type") {
                 content_type = Some((name, value));
             } else {
@@ -1185,7 +1206,7 @@ impl RequestEditor {
                 .http
                 .body
                 .as_ref()
-                .map(|body| body.data(cx))
+                .map(|body| project::substitute_variables_in_str(&body.data(cx), &variables))
                 .filter(|body| !body.is_empty()),
             Some(RequestBodyType::FormUrlEncoded) => {
                 content_type.get_or_insert_with(|| {
@@ -1199,7 +1220,18 @@ impl RequestEditor {
                     .form_url_encoded
                     .iter()
                     .filter(|row| !row.disabled)
-                    .map(|row| (row.key.read(cx).text(cx), row.value.read(cx).text(cx)));
+                    .map(|row| {
+                        (
+                            project::substitute_variables_in_str(
+                                &row.key.read(cx).text(cx),
+                                &variables,
+                            ),
+                            project::substitute_variables_in_str(
+                                &row.value.read(cx).text(cx),
+                                &variables,
+                            ),
+                        )
+                    });
 
                 Some(
                     url::form_urlencoded::Serializer::new(String::new())

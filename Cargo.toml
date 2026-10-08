@@ -11,6 +11,7 @@ members = [
   "crates/crash_diagnostics",
   "crates/db",
   "crates/editor",
+  "crates/environment_selector",
   "crates/fs",
   "crates/git",
   "crates/grammars",
@@ -256,6 +257,7 @@ command_palette_hooks = { path = "crates/command_palette_hooks" }
 crash_diagnostics = { path = "crates/crash_diagnostics" }
 db = { path = "crates/db" }
 editor = { path = "crates/editor" }
+environment_selector = { path = "crates/environment_selector" }
 fs = { path = "crates/fs" }
 git = { path = "crates/git" }
 grammars = { path = "crates/grammars" }

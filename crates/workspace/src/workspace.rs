@@ -1436,6 +1436,21 @@ impl Workspace {
                 workspace_db.next_id().await?
             };
 
+            if let Some(environment) = workspace_db
+                .environment(workspace_id)
+                .await
+                .log_err()
+                .flatten()
+            {
+                project.update(cx, |project, cx| {
+                    project
+                        .project_config_store()
+                        .update(cx, |project_config_store, cx| {
+                            project_config_store.activate_environment(Some(environment), cx);
+                        });
+                });
+            }
+
             let (window, workspace) = if let Some(window) = window_to_replace {
                 let workspace = window.update(cx, |root: &mut Root, window, cx| {
                     let session_id = app_state.session.read(cx).id().to_string();

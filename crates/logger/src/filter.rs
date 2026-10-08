@@ -230,7 +230,7 @@ impl ScopeMap {
         }
 
         items.sort_by(|left, right| left.0.cmp(&right.0));
-        modules.sort_by(|(left_name, _), (right_name, _)| left_name.cmp(right_name));
+        modules.sort_by(|(left, _), (right, _)| left.cmp(right));
 
         let mut this = Self {
             entries: Vec::with_capacity(items.len() * SCOPE_DEPTH_MAX),

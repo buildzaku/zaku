@@ -10,10 +10,11 @@ pub use git_store::{
 };
 pub use request_buffer::{RequestBuffer, RequestBufferEvent};
 pub use worktree::{
-    Entry, EntryKind, File, ProjectEntryId, RequestFile, RequestFileBody, RequestFileBodyType,
-    RequestFileFormField, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
-    RequestFileState, Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet, UpdatedGitRepository,
-    Worktree, WorktreeId, request_method_short_name,
+    Entry, EntryKind, EnvironmentColor, File, ProjectEntryId, RequestFile, RequestFileBody,
+    RequestFileBodyType, RequestFileFormField, RequestFileHeader, RequestFileHttp, RequestFileMeta,
+    RequestFileParam, RequestFileState, Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet,
+    UpdatedGitRepository, Worktree, WorktreeId, request_method_short_name,
+    substitute_variables_in_str,
 };
 
 use anyhow::anyhow;
@@ -488,6 +489,8 @@ impl Project {
                     message: message.clone(),
                 }),
             },
+            ProjectConfigStoreEvent::ActiveEnvironmentChanged
+            | ProjectConfigStoreEvent::ConfigFilesLoaded => {}
         }
     }
 

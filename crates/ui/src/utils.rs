@@ -36,5 +36,6 @@ pub fn traffic_light_padding(title_bar_height: Pixels, cx: &App) -> Pixels {
     let traffic_light_width = gpui::px(60.0);
     let (x_inset, _) = traffic_light_inset(title_bar_height, cx);
 
-    traffic_light_width + x_inset * 2.0
+    // Window border eats 1px of the left inset, so trim the same from the right.
+    traffic_light_width + x_inset * 2.0 - gpui::px(1.0)
 }

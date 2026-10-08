@@ -9,15 +9,19 @@ use gpui::{
 use smallvec::SmallVec;
 use std::ffi::OsStr;
 
+use environment_selector::EnvironmentSelector;
+use path::PathStyle;
 use project::{
     Project,
     git_store::{GitStoreEvent, RepositoryEvent},
+    project_config_store::ProjectConfigStoreEvent,
     repo_identity_path,
 };
 use recent_projects::RecentProjects;
 use ui::{
-    ActiveTheme, Button, Color, DynamicSpacing, Icon, IconAsset, IconSize, PlatformStyle,
-    PopoverMenu, SelectableButton, Svg, SvgAsset, Text, TextCommon, TextSize, Tooltip,
+    ActiveTheme, ButtonLike, Color, Divider, DividerColor, DynamicSpacing, Icon, IconAsset,
+    IconSize, PlatformStyle, PopoverMenu, PopoverMenuHandle, SelectableButton, Svg, SvgAsset, Text,
+    TextCommon, TextSize, Tooltip,
 };
 use workspace::Workspace;
 
@@ -25,6 +29,7 @@ use crate::application_menu::ApplicationMenu;
 
 const MAX_PROJECT_NAME_LENGTH: usize = 40;
 const MAX_BRANCH_NAME_LENGTH: usize = 40;
+const MAX_ENVIRONMENT_NAME_LENGTH: usize = 40;
 const MAX_SHORT_SHA_LENGTH: usize = 8;
 
 pub fn init(cx: &mut App) {
@@ -44,8 +49,11 @@ pub struct TitleBar {
     project: Option<Entity<Project>>,
     workspace: Option<WeakEntity<Workspace>>,
     application_menu: Option<Entity<ApplicationMenu>>,
+    recent_projects_handle: PopoverMenuHandle<RecentProjects>,
+    environment_selector_handle: PopoverMenuHandle<EnvironmentSelector>,
     _workspace_subscription: Option<Subscription>,
     _git_store_subscription: Option<Subscription>,
+    _project_config_store_subscription: Option<Subscription>,
     _button_layout_subscription: Subscription,
 }
 
@@ -60,6 +68,9 @@ impl TitleBar {
         let git_store = project
             .as_ref()
             .map(|project| project.read(cx).git_store().clone());
+        let project_config_store = project
+            .as_ref()
+            .map(|project| project.read(cx).project_config_store().clone());
         let workspace = workspace.map(Workspace::weak_handle);
         let application_menu = Some(cx.new(|cx| ApplicationMenu::new(window, cx)));
         let workspace_subscription = workspace
@@ -75,6 +86,12 @@ impl TitleBar {
                 _ => {}
             })
         });
+        let project_config_store_subscription = project_config_store.map(|project_config_store| {
+            cx.subscribe(
+                &project_config_store,
+                |_, _, _: &ProjectConfigStoreEvent, cx| cx.notify(),
+            )
+        });
         let button_layout_subscription =
             cx.observe_button_layout_changed(window, |_, _, cx| cx.notify());
         let platform_titlebar = cx.new(|cx| PlatformTitleBar::new(id, cx));
@@ -84,8 +101,11 @@ impl TitleBar {
             project,
             workspace,
             application_menu,
+            recent_projects_handle: PopoverMenuHandle::default(),
+            environment_selector_handle: PopoverMenuHandle::default(),
             _workspace_subscription: workspace_subscription,
             _git_store_subscription: git_store_subscription,
+            _project_config_store_subscription: project_config_store_subscription,
             _button_layout_subscription: button_layout_subscription,
         }
     }
@@ -97,7 +117,13 @@ impl TitleBar {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let workspace = self.workspace.clone();
-        let is_project_selected = name.is_some();
+        let text_color = if self.recent_projects_handle.is_deployed() {
+            Color::Accent
+        } else if name.is_some() {
+            Color::Default
+        } else {
+            Color::Muted
+        };
         let display_name = if let Some(name) = name {
             util::truncate_and_trailoff(&name, MAX_PROJECT_NAME_LENGTH)
         } else {
@@ -109,22 +135,24 @@ impl TitleBar {
             .menu(move |window, cx| Some(RecentProjects::popover(workspace.clone()?, window, cx)))
             .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
             .trigger_with_tooltip(
-                Button::new(
-                    "project-name-trigger",
-                    ui::utils::replace_control_characters(&display_name).into_owned(),
-                )
-                .text_size(TextSize::Small)
-                .height(IconSize::Small.square(window, cx))
-                .tab_index(0)
-                .color(if is_project_selected {
-                    Color::Default
-                } else {
-                    Color::Muted
-                })
-                .selected_background(selected_background),
+                ButtonLike::new("project-name-trigger")
+                    .height(IconSize::Small.square(window, cx))
+                    .tab_index(0)
+                    .selected_background(selected_background)
+                    .child(
+                        gpui::div().px(DynamicSpacing::Base02.rems(cx)).child(
+                            Text::new(
+                                ui::utils::replace_control_characters(&display_name).into_owned(),
+                            )
+                            .size(TextSize::Small)
+                            .color(text_color)
+                            .single_line(),
+                        ),
+                    ),
                 |_, cx| Tooltip::for_action("Recent Projects", &actions::projects::OpenRecent, cx),
             )
             .anchor(Anchor::TopLeft)
+            .with_handle(self.recent_projects_handle.clone())
     }
 
     fn render_branch(
@@ -158,6 +186,7 @@ impl TitleBar {
                 .flex()
                 .items_center()
                 .gap_1()
+                .pl(DynamicSpacing::Base06.rems(cx))
                 .child(
                     Icon::new(IconAsset::GitBranch)
                         .size(IconSize::XSmall)
@@ -172,6 +201,105 @@ impl TitleBar {
                 )
                 .into_any_element(),
         )
+    }
+
+    fn render_environment(
+        &self,
+        project: &Entity<Project>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let workspace = self.workspace.clone();
+        let project = project.clone();
+        let project_config_store = project.read(cx).project_config_store().read(cx);
+        let active_environment = project_config_store.active_environment();
+        let environment_file =
+            active_environment.and_then(|name| project_config_store.environment_file(name));
+        let environment_color =
+            environment_file.and_then(|environment_file| environment_file.environment.color);
+        let is_active_environment_missing = project_config_store.is_active_environment_missing();
+        let missing_environment_message = active_environment
+            .filter(|_| is_active_environment_missing)
+            .map(|name| {
+                format!(
+                    "{}{}{name}.toml not found",
+                    path::project_environments_folder_relative_path().display(PathStyle::local()),
+                    PathStyle::local().primary_separator()
+                )
+            });
+        let text_color = if self.environment_selector_handle.is_deployed() {
+            Color::Accent
+        } else if is_active_environment_missing {
+            Color::Warning
+        } else if environment_file.is_some() {
+            Color::Default
+        } else {
+            Color::Muted
+        };
+        let display_name = util::truncate_and_trailoff(
+            active_environment.unwrap_or("No Environment"),
+            MAX_ENVIRONMENT_NAME_LENGTH,
+        );
+        let selected_background = cx.theme().colors().ghost_element_hover;
+
+        PopoverMenu::new("environment-selector-popover")
+            .menu(move |window, cx| {
+                Some(EnvironmentSelector::popover(
+                    workspace.clone()?,
+                    project.clone(),
+                    window,
+                    cx,
+                ))
+            })
+            .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
+            .trigger_with_tooltip(
+                ButtonLike::new("environment-trigger")
+                    .height(IconSize::Small.square(window, cx))
+                    .tab_index(0)
+                    .selected_background(selected_background)
+                    .child(
+                        gpui::div()
+                            .flex()
+                            .items_center()
+                            .gap(DynamicSpacing::Base04.rems(cx))
+                            .px(DynamicSpacing::Base02.rems(cx))
+                            .child(if is_active_environment_missing {
+                                Icon::new(IconAsset::Warning)
+                                    .size(IconSize::XSmall)
+                                    .color(text_color)
+                            } else {
+                                environment_selector::environment_icon(
+                                    environment_color,
+                                    text_color,
+                                )
+                            })
+                            .child(
+                                Text::new(
+                                    ui::utils::replace_control_characters(&display_name)
+                                        .into_owned(),
+                                )
+                                .size(TextSize::Small)
+                                .color(text_color)
+                                .single_line(),
+                            ),
+                    ),
+                move |_, cx| match &missing_environment_message {
+                    Some(message) => Tooltip::with_meta(
+                        "Environments",
+                        Some(&actions::environment_selector::Toggle),
+                        message.clone(),
+                        cx,
+                    ),
+                    None => Tooltip::for_action(
+                        "Environments",
+                        &actions::environment_selector::Toggle,
+                        cx,
+                    ),
+                },
+            )
+            .anchor(Anchor::TopLeft)
+            .with_handle(self.environment_selector_handle.clone())
+            .into_any_element()
     }
 }
 
@@ -219,6 +347,12 @@ impl Render for TitleBar {
         let branch = repository
             .as_ref()
             .and_then(|repository| self.render_branch(repository, cx));
+        let environment = self
+            .project
+            .as_ref()
+            .filter(|project| project.read(cx).root_worktree(cx).is_some())
+            .map(|project| self.render_environment(project, window, cx));
+        let show_divider = self.workspace.is_some() && (branch.is_some() || environment.is_some());
         let menu_controls_on_left = match platform_style {
             PlatformStyle::Linux => {
                 let supported_controls = window.window_controls();
@@ -254,11 +388,15 @@ impl Render for TitleBar {
                 gpui::div()
                     .flex()
                     .items_center()
-                    .gap_2p5()
+                    .gap_1p5()
                     .when(self.workspace.is_some(), |this| {
                         this.child(self.render_project_name(project_name, window, cx))
                     })
-                    .when_some(branch, |this, branch| this.child(branch))
+                    .when(show_divider, |this| {
+                        this.child(Divider::vertical().color(DividerColor::Border))
+                    })
+                    .children(branch)
+                    .children(environment)
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
             )
             .into_any_element();

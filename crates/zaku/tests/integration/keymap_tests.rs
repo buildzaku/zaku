@@ -302,6 +302,7 @@ fn test_action_namespaces(cx: &mut TestAppContext) {
                 "action".to_string(),
                 "command_palette".to_string(),
                 "editor".to_string(),
+                "environment_selector".to_string(),
                 "git".to_string(),
                 "menu".to_string(),
                 "pane".to_string(),

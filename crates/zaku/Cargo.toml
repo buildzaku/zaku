@@ -43,6 +43,7 @@ command_palette = { workspace = true }
 crash_diagnostics = { workspace = true }
 db = { workspace = true }
 editor = { workspace = true }
+environment_selector = { workspace = true }
 fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }

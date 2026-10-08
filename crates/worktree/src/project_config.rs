@@ -1,4 +1,6 @@
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use std::{collections::HashMap, hash::BuildHasher};
 
 use crate::SCHEMA_VERSION;
 
@@ -70,7 +72,68 @@ pub enum EnvironmentColor {
 }
 
 pub fn parse_config_file<T: DeserializeOwned>(contents: &str) -> anyhow::Result<T> {
-    Ok(toml::from_str(contents)?)
+    toml::from_str(contents).map_err(|error| {
+        let message = error.message();
+        // Display includes a source snippet; a single line reads better in toasts and logs.
+        match error.span().and_then(|span| contents.get(..span.start)) {
+            Some(contents_before_error) => {
+                let line = contents_before_error.matches('\n').count() + 1;
+                let column = contents_before_error
+                    .chars()
+                    .rev()
+                    .take_while(|character| *character != '\n')
+                    .count()
+                    + 1;
+                anyhow!("{message} at line {line} column {column}")
+            }
+            None => anyhow!("{message}"),
+        }
+    })
+}
+
+pub fn substitute_variables_in_str(
+    text: &str,
+    variables: &HashMap<String, String, impl BuildHasher>,
+) -> String {
+    fn inner<'a>(
+        text: &str,
+        variables: &'a HashMap<String, String, impl BuildHasher>,
+        resolving_names: &mut Vec<&'a str>,
+    ) -> String {
+        let mut substituted_text = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some((before_braces, after_braces)) = rest.split_once("{{") {
+            substituted_text.push_str(before_braces);
+            let Some((name, remainder)) = after_braces
+                .split_once('}')
+                .and_then(|(name, after_name)| Some((name, after_name.strip_prefix('}')?)))
+                .filter(|(name, _)| !name.is_empty())
+            else {
+                substituted_text.push_str("{{");
+                rest = after_braces;
+                continue;
+            };
+
+            match variables.get_key_value(name) {
+                // Self-referencing variables stay literal instead of recursing forever.
+                Some((name, value)) if !resolving_names.contains(&name.as_str()) => {
+                    resolving_names.push(name);
+                    substituted_text.push_str(&inner(value, variables, resolving_names));
+                    resolving_names.pop();
+                }
+                _ => {
+                    substituted_text.push_str("{{");
+                    substituted_text.push_str(name);
+                    substituted_text.push_str("}}");
+                }
+            }
+            rest = remainder;
+        }
+        substituted_text.push_str(rest);
+        substituted_text
+    }
+
+    inner(text, variables, &mut Vec::new())
 }
 
 #[cfg(test)]

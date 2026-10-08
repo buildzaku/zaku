@@ -2020,6 +2020,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "environment_selector"
+version = "26.1.0-dev"
+dependencies = [
+ "actions",
+ "fuzzy_nucleo",
+ "gpui",
+ "path 26.1.0-dev",
+ "picker",
+ "project",
+ "ui",
+ "workspace",
+]
+
+[[package]]
 name = "equator"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7979,7 +7993,9 @@ name = "title_bar"
 version = "26.1.0-dev"
 dependencies = [
  "actions",
+ "environment_selector",
  "gpui",
+ "path 26.1.0-dev",
  "platform_title_bar",
  "project",
  "recent_projects",
@@ -10283,6 +10299,7 @@ dependencies = [
  "crash_diagnostics",
  "db",
  "editor",
+ "environment_selector",
  "fs",
  "futures",
  "gpui",
