@@ -412,7 +412,7 @@ impl WorkspaceDb {
             }
         }
 
-        let _ = futures::future::join_all(delete_tasks).await;
+        futures::future::join_all(delete_tasks).await;
 
         Ok(existing_workspaces)
     }
@@ -533,6 +533,42 @@ impl WorkspaceDb {
         pub(crate) async fn clear_recent_workspaces() -> anyhow::Result<()> {
             DELETE FROM workspace
         }
+    }
+
+    query! {
+        pub(crate) async fn active_environment(workspace_id: WorkspaceId) -> anyhow::Result<Option<String>> {
+            SELECT name
+            FROM environment
+            WHERE workspace_id = ?
+        }
+    }
+
+    pub async fn set_active_environment(
+        &self,
+        workspace_id: WorkspaceId,
+        name: Option<String>,
+    ) -> anyhow::Result<()> {
+        self.write(move |connection| match name {
+            Some(name) => connection
+                .exec_bound(sql!(
+                    INSERT INTO environment(workspace_id, name)
+                    VALUES (?1, ?2)
+                    ON CONFLICT(workspace_id)
+                    DO UPDATE SET name = excluded.name
+                ))
+                .context("failed to prepare environment upsert query")
+                .and_then(|mut stmt| stmt((workspace_id, name)))
+                .context("failed to upsert environment"),
+            None => connection
+                .exec_bound(sql!(
+                    DELETE FROM environment
+                    WHERE workspace_id = ?
+                ))
+                .context("failed to prepare environment deletion query")
+                .and_then(|mut stmt| stmt(workspace_id))
+                .context("failed to delete environment"),
+        })
+        .await
     }
 
     async fn workspace_path_is_restorable(
@@ -710,59 +746,71 @@ impl WorkspaceDb {
 
 impl Domain for WorkspaceDb {
     const NAME: &str = stringify!(WorkspaceDb);
-    const MIGRATIONS: &[&str] = &[sql!(
-        CREATE TABLE IF NOT EXISTS workspace(
-            id INTEGER PRIMARY KEY,
-            location BLOB UNIQUE,
-            window_state TEXT,
-            window_x REAL,
-            window_y REAL,
-            window_width REAL,
-            window_height REAL,
-            display BLOB,
-            left_dock_open INTEGER NOT NULL,
-            left_dock_active_panel TEXT,
-            left_dock_auto_hidden INTEGER NOT NULL,
-            bottom_dock_open INTEGER NOT NULL,
-            bottom_dock_active_panel TEXT,
-            bottom_dock_auto_hidden INTEGER NOT NULL,
-            session_id TEXT,
-            window_id INTEGER,
-            activation_order INTEGER NOT NULL DEFAULT 0,
-            timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ) STRICT;
+    const MIGRATIONS: &[&str] = &[
+        sql!(
+            CREATE TABLE IF NOT EXISTS workspace(
+                id INTEGER PRIMARY KEY,
+                location BLOB UNIQUE,
+                window_state TEXT,
+                window_x REAL,
+                window_y REAL,
+                window_width REAL,
+                window_height REAL,
+                display BLOB,
+                left_dock_open INTEGER NOT NULL,
+                left_dock_active_panel TEXT,
+                left_dock_auto_hidden INTEGER NOT NULL,
+                bottom_dock_open INTEGER NOT NULL,
+                bottom_dock_active_panel TEXT,
+                bottom_dock_auto_hidden INTEGER NOT NULL,
+                session_id TEXT,
+                window_id INTEGER,
+                activation_order INTEGER NOT NULL DEFAULT 0,
+                timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) STRICT;
 
-        CREATE TABLE IF NOT EXISTS pane(
-            id INTEGER PRIMARY KEY,
-            workspace_id INTEGER NOT NULL UNIQUE,
-            active INTEGER NOT NULL,
-            FOREIGN KEY(workspace_id) REFERENCES workspace(id)
-            ON DELETE CASCADE
-            ON UPDATE CASCADE
-        ) STRICT;
+            CREATE TABLE IF NOT EXISTS pane(
+                id INTEGER PRIMARY KEY,
+                workspace_id INTEGER NOT NULL UNIQUE,
+                active INTEGER NOT NULL,
+                FOREIGN KEY(workspace_id) REFERENCES workspace(id)
+                ON DELETE CASCADE
+                ON UPDATE CASCADE
+            ) STRICT;
 
-        CREATE TABLE IF NOT EXISTS item(
-            id INTEGER NOT NULL,
-            workspace_id INTEGER NOT NULL,
-            pane_id INTEGER NOT NULL,
-            kind TEXT NOT NULL,
-            position INTEGER NOT NULL,
-            active INTEGER NOT NULL,
-            preview INTEGER NOT NULL,
-            FOREIGN KEY(workspace_id) REFERENCES workspace(id)
-            ON DELETE CASCADE
-            ON UPDATE CASCADE,
-            FOREIGN KEY(pane_id) REFERENCES pane(id)
-            ON DELETE CASCADE,
-            PRIMARY KEY(id, workspace_id)
-        ) STRICT;
+            CREATE TABLE IF NOT EXISTS item(
+                id INTEGER NOT NULL,
+                workspace_id INTEGER NOT NULL,
+                pane_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                active INTEGER NOT NULL,
+                preview INTEGER NOT NULL,
+                FOREIGN KEY(workspace_id) REFERENCES workspace(id)
+                ON DELETE CASCADE
+                ON UPDATE CASCADE,
+                FOREIGN KEY(pane_id) REFERENCES pane(id)
+                ON DELETE CASCADE,
+                PRIMARY KEY(id, workspace_id)
+            ) STRICT;
 
-        CREATE INDEX IF NOT EXISTS workspace_activation_order_idx
-        ON workspace(activation_order DESC);
+            CREATE INDEX IF NOT EXISTS workspace_activation_order_idx
+            ON workspace(activation_order DESC);
 
-        CREATE INDEX IF NOT EXISTS workspace_timestamp_idx
-        ON workspace(timestamp DESC);
-    )];
+            CREATE INDEX IF NOT EXISTS workspace_timestamp_idx
+            ON workspace(timestamp DESC);
+        ),
+        sql!(
+            CREATE TABLE IF NOT EXISTS environment(
+                id INTEGER PRIMARY KEY,
+                workspace_id INTEGER NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                FOREIGN KEY(workspace_id) REFERENCES workspace(id)
+                ON DELETE CASCADE
+                ON UPDATE CASCADE
+            ) STRICT;
+        ),
+    ];
 }
 
 db::static_connection!(WorkspaceDb, []);
@@ -980,7 +1028,7 @@ mod tests {
                 ".gitignore": indoc! {"
                     .DS_Store
                 "},
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -1476,5 +1524,71 @@ mod tests {
 
         let serialized_workspace = workspace_db.workspace_for_path(&location).unwrap();
         assert_eq!(serialized_workspace.docks, docks);
+    }
+
+    #[gpui::test]
+    async fn test_environment_serialization(_cx: &mut TestAppContext) {
+        let workspace_db = WorkspaceDb::test_open("test_environment_serialization").await;
+        let first_workspace_id = workspace_db.next_id().await.unwrap();
+        let second_workspace_id = workspace_db.next_id().await.unwrap();
+
+        workspace_db
+            .set_active_environment(first_workspace_id, Some("dev".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(
+            workspace_db
+                .active_environment(first_workspace_id)
+                .await
+                .unwrap(),
+            Some("dev".to_string())
+        );
+
+        workspace_db
+            .set_active_environment(first_workspace_id, Some("prod".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(
+            workspace_db
+                .active_environment(first_workspace_id)
+                .await
+                .unwrap(),
+            Some("prod".to_string())
+        );
+
+        workspace_db
+            .set_active_environment(second_workspace_id, Some("dev".to_string()))
+            .await
+            .unwrap();
+        workspace_db
+            .set_active_environment(first_workspace_id, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            workspace_db
+                .active_environment(first_workspace_id)
+                .await
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            workspace_db
+                .active_environment(second_workspace_id)
+                .await
+                .unwrap(),
+            Some("dev".to_string())
+        );
+
+        workspace_db
+            .delete_workspace_by_id(second_workspace_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            workspace_db
+                .active_environment(second_workspace_id)
+                .await
+                .unwrap(),
+            None
+        );
     }
 }

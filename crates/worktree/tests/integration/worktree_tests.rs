@@ -355,6 +355,75 @@ async fn test_dirs_no_longer_ignored(cx: &mut TestAppContext) {
     });
 }
 
+#[gpui::test]
+async fn test_gitignored_config_dirs_are_scanned(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            ".gitignore": indoc! {"
+                .zaku/
+                private/
+            "},
+            ".zaku": {
+                "project.toml": "",
+                "environments": {
+                    "dev.toml": "",
+                },
+            },
+            "users": {
+                ".zaku": {
+                    "folder.toml": "",
+                },
+                "foo.toml": "",
+            },
+            "private": {
+                "bar.toml": "",
+            },
+            "baz.toml": "",
+        }),
+    );
+
+    let worktree = Worktree::new(
+        temp_fs.path().join("project"),
+        true,
+        temp_fs.clone(),
+        Arc::new(AtomicUsize::new(1)),
+        true,
+        WorktreeId::from_usize(1),
+        &mut cx.to_async(),
+    )
+    .await
+    .unwrap();
+
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
+
+    worktree.read_with(cx, |worktree, _| {
+        assert_eq!(
+            worktree
+                .entries(0)
+                .map(|entry| (entry.path.as_ref(), entry.is_ignored, entry.is_request))
+                .collect::<Vec<_>>(),
+            vec![
+                (rel_path(""), false, false),
+                (rel_path(".gitignore"), false, false),
+                (rel_path(".zaku"), true, false),
+                (rel_path(".zaku/environments"), true, false),
+                (rel_path(".zaku/environments/dev.toml"), true, false),
+                (rel_path(".zaku/project.toml"), true, false),
+                (rel_path("baz.toml"), false, true),
+                (rel_path("private"), true, false),
+                (rel_path("users"), false, false),
+                (rel_path("users/.zaku"), true, false),
+                (rel_path("users/.zaku/folder.toml"), true, false),
+                (rel_path("users/foo.toml"), false, true),
+            ]
+        );
+    });
+}
+
 #[gpui::test(iterations = 10)]
 async fn test_circular_symlinks(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
@@ -564,36 +633,36 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
         );
         assert_eq!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir2").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir2").unwrap())
                 .unwrap()
                 .kind,
             EntryKind::UnloadedDir
         );
         assert!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir2").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir2").unwrap())
                 .unwrap()
                 .is_external
         );
         assert_eq!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3").unwrap())
                 .unwrap()
                 .kind,
             EntryKind::UnloadedDir
         );
         assert!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3").unwrap())
                 .unwrap()
                 .is_external
         );
     });
 
     cx.update(|cx| {
-        worktree
-            .read(cx)
-            .refresh_entries_for_paths(vec![Arc::from(RelPath::unix("deps/dep-dir3").unwrap())])
+        worktree.read(cx).refresh_entries_for_paths(vec![Arc::from(
+            RelPath::from_unix_str("deps/dep-dir3").unwrap(),
+        )])
     })
     .await
     .unwrap();
@@ -619,14 +688,14 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
         );
         assert_eq!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3/src").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3/src").unwrap())
                 .unwrap()
                 .kind,
             EntryKind::UnloadedDir
         );
         assert!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3/src").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3/src").unwrap())
                 .unwrap()
                 .is_external
         );
@@ -635,24 +704,24 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
         mem::take(&mut *worktree_updates.lock()),
         &[
             (
-                Arc::from(RelPath::unix("deps/dep-dir3").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3").unwrap()),
                 PathChange::Loaded,
             ),
             (
-                Arc::from(RelPath::unix("deps/dep-dir3/deps").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3/deps").unwrap()),
                 PathChange::Loaded,
             ),
             (
-                Arc::from(RelPath::unix("deps/dep-dir3/src").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3/src").unwrap()),
                 PathChange::Loaded,
             ),
         ]
     );
 
     cx.update(|cx| {
-        worktree
-            .read(cx)
-            .refresh_entries_for_paths(vec![Arc::from(RelPath::unix("deps/dep-dir3/src").unwrap())])
+        worktree.read(cx).refresh_entries_for_paths(vec![Arc::from(
+            RelPath::from_unix_str("deps/dep-dir3/src").unwrap(),
+        )])
     })
     .await
     .unwrap();
@@ -680,20 +749,20 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
         );
         assert_eq!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3/src").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3/src").unwrap())
                 .unwrap()
                 .kind,
             EntryKind::Dir
         );
         assert!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3/src/e.toml").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3/src/e.toml").unwrap())
                 .unwrap()
                 .is_external
         );
         assert!(
             worktree
-                .entry_for_path(RelPath::unix("deps/dep-dir3/src/f.toml").unwrap())
+                .entry_for_path(RelPath::from_unix_str("deps/dep-dir3/src/f.toml").unwrap())
                 .unwrap()
                 .is_external
         );
@@ -702,15 +771,15 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
         mem::take(&mut *worktree_updates.lock()),
         &[
             (
-                Arc::from(RelPath::unix("deps/dep-dir3/src").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3/src").unwrap()),
                 PathChange::Loaded,
             ),
             (
-                Arc::from(RelPath::unix("deps/dep-dir3/src/e.toml").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3/src/e.toml").unwrap()),
                 PathChange::Loaded,
             ),
             (
-                Arc::from(RelPath::unix("deps/dep-dir3/src/f.toml").unwrap()),
+                Arc::from(RelPath::from_unix_str("deps/dep-dir3/src/f.toml").unwrap()),
                 PathChange::Loaded,
             ),
         ]
@@ -848,9 +917,9 @@ async fn test_refresh_entries_for_paths_creates_ancestors(cx: &mut TestAppContex
     });
 
     let refresh = cx.update(|cx| {
-        worktree
-            .read(cx)
-            .refresh_entries_for_paths(vec![Arc::from(RelPath::unix("a/b/c/deep.toml").unwrap())])
+        worktree.read(cx).refresh_entries_for_paths(vec![Arc::from(
+            RelPath::from_unix_str("a/b/c/deep.toml").unwrap(),
+        )])
     });
     refresh.await.unwrap();
 

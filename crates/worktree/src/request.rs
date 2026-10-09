@@ -1,14 +1,8 @@
-use anyhow::{Context, anyhow};
 use serde::{Deserialize, Serialize};
-use std::mem;
-use tombi_config::{LineWidth, TomlVersion, format::FormatRules};
-use tombi_formatter::{FormatOptions, Formatter};
-use tombi_schema_store::SchemaStore;
-use toml_edit::{Item, Table};
 
-use util::ResultExt;
+use path::RelPath;
 
-pub const REQUEST_FILE_VERSION: u32 = 1;
+use crate::SCHEMA_VERSION;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequestFileState {
@@ -30,7 +24,7 @@ pub struct RequestFileMeta {
 impl Default for RequestFileMeta {
     fn default() -> Self {
         Self {
-            version: REQUEST_FILE_VERSION,
+            version: SCHEMA_VERSION,
         }
     }
 }
@@ -144,64 +138,19 @@ impl RequestFileBodyType {
     }
 }
 
-pub async fn serialize_request_file(request_file: &RequestFile) -> anyhow::Result<String> {
-    let mut document = toml_edit::ser::to_document(request_file)?;
-    promote_to_table(document.as_table_mut(), "meta")
-        .context("Failed to serialize request meta")?;
-    promote_to_table(document.as_table_mut(), "http")
-        .context("Failed to serialize request http")?;
-    let contents = document.to_string();
-    let options = FormatOptions {
-        rules: Some(FormatRules {
-            line_width: Some(LineWidth::try_from(100).expect("line width should be non-zero")),
-            ..Default::default()
-        }),
-    };
-    let schema_store = SchemaStore::new_with_options(tombi_schema_store::Options {
-        strict: None,
-        offline: Some(true),
-        cache: Some(tombi_cache::Options {
-            no_cache: Some(true),
-            cache_ttl: None,
-        }),
-    });
-
-    Ok(
-        Formatter::new(TomlVersion::V1_1_0, &options, None, &schema_store)
-            .format(&contents)
-            .await
-            .map_err(|diagnostics| anyhow!("failed to format request file: {diagnostics:?}"))
-            .log_err()
-            .unwrap_or(contents),
-    )
-}
-
-fn promote_to_table(parent: &mut Table, key: &str) -> anyhow::Result<()> {
-    let Some(item) = parent.get_mut(key) else {
-        return Ok(());
-    };
-    if item.is_table() {
-        return Ok(());
-    }
-
-    let original_item = mem::take(item);
-    let table = match original_item.into_table() {
-        Ok(table) => table,
-        Err(original_item) => {
-            let item_type = original_item.type_name();
-            *item = original_item;
-            return Err(anyhow!("expected {key} to be table, got {item_type}"));
-        }
-    };
-    *item = Item::Table(table);
-    Ok(())
-}
-
 pub fn parse_request_file(contents: &str) -> RequestFileState {
     match toml::from_str::<RequestFile>(contents) {
         Ok(request_file) => RequestFileState::Parsed(request_file),
         Err(error) => RequestFileState::Invalid(error.to_string()),
     }
+}
+
+pub fn is_request_path(path: &RelPath) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
+        && !path
+            .components()
+            .any(|component| component == path::project_config_folder_name())
 }
 
 pub fn request_method_short_name(method: &str) -> String {
@@ -225,6 +174,8 @@ mod tests {
 
     use indoc::indoc;
     use pretty_assertions::assert_eq;
+
+    use path::rel_path;
 
     #[test]
     fn test_parse_request_file() {
@@ -250,7 +201,7 @@ mod tests {
             request_file,
             RequestFileState::Parsed(RequestFile {
                 meta: RequestFileMeta {
-                    version: REQUEST_FILE_VERSION,
+                    version: SCHEMA_VERSION,
                 },
                 http: RequestFileHttp {
                     method: "POST".to_string(),
@@ -300,7 +251,7 @@ mod tests {
     async fn test_serialize_request_file() {
         let request_file = RequestFile {
             meta: RequestFileMeta {
-                version: REQUEST_FILE_VERSION,
+                version: SCHEMA_VERSION,
             },
             http: RequestFileHttp {
                 method: "POST".to_string(),
@@ -344,7 +295,7 @@ mod tests {
             },
         };
 
-        let serialized = serialize_request_file(&request_file).await.unwrap();
+        let serialized = crate::to_pretty_toml(&request_file).await.unwrap();
         let expected = indoc! {r#"
             [meta]
             version = 1
@@ -381,7 +332,7 @@ mod tests {
     async fn test_form_url_encoded_round_trip() {
         let request_file = RequestFile {
             meta: RequestFileMeta {
-                version: REQUEST_FILE_VERSION,
+                version: SCHEMA_VERSION,
             },
             http: RequestFileHttp {
                 method: "POST".to_string(),
@@ -445,7 +396,7 @@ mod tests {
             },
         };
 
-        let serialized = serialize_request_file(&request_file).await.unwrap();
+        let serialized = crate::to_pretty_toml(&request_file).await.unwrap();
         let expected = indoc! {r#"
             [meta]
             version = 1
@@ -485,7 +436,7 @@ mod tests {
 
         let request_file = RequestFile {
             meta: RequestFileMeta {
-                version: REQUEST_FILE_VERSION,
+                version: SCHEMA_VERSION,
             },
             http: RequestFileHttp {
                 method: "POST".to_string(),
@@ -496,7 +447,7 @@ mod tests {
             },
         };
 
-        let serialized = serialize_request_file(&request_file).await.unwrap();
+        let serialized = crate::to_pretty_toml(&request_file).await.unwrap();
         let expected = indoc! {r#"
             [meta]
             version = 1
@@ -512,5 +463,18 @@ mod tests {
             parse_request_file(&serialized),
             RequestFileState::Parsed(request_file)
         );
+    }
+
+    #[test]
+    fn test_is_request_path() {
+        assert!(is_request_path(rel_path("foo.toml")));
+        assert!(is_request_path(rel_path("users/bar.toml")));
+        assert!(is_request_path(rel_path("users/baz.TOML")));
+
+        assert!(!is_request_path(rel_path("README.md")));
+        assert!(!is_request_path(rel_path(".gitignore")));
+        assert!(!is_request_path(rel_path(".zaku/project.toml")));
+        assert!(!is_request_path(rel_path(".zaku/environments/dev.toml")));
+        assert!(!is_request_path(rel_path("users/.zaku/folder.toml")));
     }
 }

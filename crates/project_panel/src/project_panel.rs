@@ -339,7 +339,9 @@ impl ProjectPanel {
                     ProjectEvent::WorktreeRemoved(_) => {
                         this.update_visible_entries(None, false, false, window, cx);
                     }
-                    ProjectEvent::DeletedEntry(_, _) => {}
+                    ProjectEvent::DeletedEntry(_, _)
+                    | ProjectEvent::Toast { .. }
+                    | ProjectEvent::HideToast { .. } => {}
                     ProjectEvent::EntryMetadataUpdated(_) => {
                         cx.notify();
                     }
@@ -555,6 +557,10 @@ impl ProjectPanel {
 
                     let root_entry_id = snapshot.root_entry().map(|entry| entry.id);
                     while let Some(entry) = traversal.entry() {
+                        if entry.path.file_name() == Some(path::project_config_folder_name()) {
+                            traversal.advance_to_sibling();
+                            continue;
+                        }
                         if root_entry_id != Some(entry.id)
                             && (entry.kind.is_dir() || entry.is_request)
                         {
@@ -910,10 +916,7 @@ impl ProjectPanel {
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
                 .action("New Request", Box::new(actions::project_panel::NewFile))
-                .action(
-                    "New Collection",
-                    Box::new(actions::project_panel::NewDirectory),
-                )
+                .action("New Folder", Box::new(actions::project_panel::NewDirectory))
                 .separator()
                 .action(
                     ui::utils::reveal_in_file_manager_title(),
@@ -1010,7 +1013,7 @@ impl ProjectPanel {
         let source_worktree = source_worktree.read(cx);
         let source_entry = source_worktree.entry_for_id(source.0)?;
         let clipboard_entry_file_name = source_entry.path.file_name()?.to_string();
-        new_path.push(RelPath::unix(&clipboard_entry_file_name).ok()?);
+        new_path.push(RelPath::from_unix_str(&clipboard_entry_file_name).ok()?);
 
         let (extension, file_name_without_extension) = if source_entry.is_file() {
             (
@@ -1044,7 +1047,7 @@ impl ProjectPanel {
                     new_file_name.push_str(extension);
                 }
 
-                new_path.push(RelPath::unix(&new_file_name).ok()?);
+                new_path.push(RelPath::from_unix_str(&new_file_name).ok()?);
                 disambiguation_range = Some(0..(file_name_len + disambiguation_len));
                 index += 1;
             }
@@ -1638,6 +1641,13 @@ impl ProjectPanel {
             return;
         };
         let file_name = file_name.into_arc();
+        if is_reserved_entry_name(&file_name) {
+            let reserved_name = path::project_config_folder_name();
+            edit_state.validation_state =
+                ValidationState::Error(format!("'{reserved_name}' is a reserved name."));
+            cx.notify();
+            return;
+        }
 
         if let Some(worktree) = self.project.read(cx).worktree_for_id(worktree_id, cx)
             && let Some(entry) = worktree.read(cx).entry_for_id(entry_id).cloned()
@@ -1714,6 +1724,9 @@ impl ProjectPanel {
         let file_name = RelPath::new(Path::new(file_name.as_str()), path_style)
             .ok()?
             .into_arc();
+        if is_reserved_entry_name(&file_name) {
+            return None;
+        }
         let worktree = self.project.read(cx).worktree_for_id(worktree_id, cx)?;
         let entry = worktree.read(cx).entry_for_id(edit_state.entry_id)?.clone();
 
@@ -1876,9 +1889,10 @@ impl ProjectPanel {
             entry: Entry {
                 id: Self::NEW_ENTRY_ID,
                 kind: new_entry_kind,
-                path: parent_entry
-                    .path
-                    .join(RelPath::unix("\0").expect("new entry placeholder path should be valid")),
+                path: parent_entry.path.join(
+                    RelPath::from_unix_str("\0")
+                        .expect("new entry placeholder path should be valid"),
+                ),
                 inode: 0,
                 mtime: parent_entry.mtime,
                 canonical_path: parent_entry.canonical_path.clone(),
@@ -2388,12 +2402,12 @@ impl ProjectPanel {
                             })),
                     )
                     .child(
-                        IconButton::new("project-panel-new-collection", IconAsset::FolderPlus)
+                        IconButton::new("project-panel-new-folder", IconAsset::FolderPlus)
                             .shape(IconButtonShape::Square)
                             .icon_size(IconSize::Medium)
                             .icon_color(Color::Muted)
                             .tooltip(Tooltip::for_action_title_in(
-                                "New Collection",
+                                "New Folder",
                                 &actions::project_panel::NewDirectory,
                                 &focus_handle,
                             ))
@@ -3253,6 +3267,12 @@ fn is_missing_entry_name(file_name: &str, is_dir: bool, path_style: PathStyle) -
     file_stem.trim().is_empty()
 }
 
+fn is_reserved_entry_name(file_name: &RelPath) -> bool {
+    file_name
+        .components()
+        .any(|component| component == path::project_config_folder_name())
+}
+
 fn file_name_for_new_entry(file_name: &str, is_dir: bool, path_style: PathStyle) -> String {
     if is_dir {
         return file_name.to_string();
@@ -3534,7 +3554,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {},
+                "folder": {},
                 "existing.toml": "",
             }),
         );
@@ -3556,7 +3576,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("> collection"),
+                String::from("> folder"),
                 String::from("  [EDITOR: '']  <== selected"),
                 String::from("  existing"),
             ]
@@ -3576,7 +3596,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("> collection"),
+                String::from("> folder"),
                 String::from("  existing"),
                 String::from("  New request  <== selected  <== marked"),
             ]
@@ -3633,7 +3653,7 @@ mod tests {
         panel
             .update_in(cx, |panel, window, cx| {
                 panel.file_name_editor.update(cx, |editor, cx| {
-                    editor.set_text("New collection", cx);
+                    editor.set_text("New folder", cx);
                 });
                 panel.confirm_edit(true, window, cx).unwrap()
             })
@@ -3644,13 +3664,13 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v New collection  <== selected"),
+                String::from("v New folder  <== selected"),
                 String::from("  existing"),
             ]
         );
 
         let metadata = temp_fs
-            .metadata("project/New collection".as_ref())
+            .metadata("project/New folder".as_ref())
             .await
             .unwrap()
             .unwrap();
@@ -3776,7 +3796,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "first.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -3813,8 +3833,8 @@ mod tests {
 
         cx.run_until_parked();
 
-        toggle_expand_dir(&panel, "project/collection", cx);
-        select_path(&panel, "project/collection/first.toml", cx);
+        toggle_expand_dir(&panel, "project/folder", cx);
+        select_path(&panel, "project/folder/first.toml", cx);
         panel.update_in(cx, |panel, window, cx| {
             panel.open(&actions::project_panel::Open, window, cx);
         });
@@ -3822,7 +3842,7 @@ mod tests {
             pane.active_item()
                 .and_then(|item| item.project_path(cx))
                 .is_some_and(|project_path| {
-                    project_path.path.as_ref() == rel_path("collection/first.toml")
+                    project_path.path.as_ref() == rel_path("folder/first.toml")
                 })
         })
         .await;
@@ -3830,19 +3850,19 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      first  <== selected  <== marked"),
                 String::from("      second"),
                 String::from("      third"),
             ]
         );
 
-        ensure_single_file_is_opened(&workspace, "collection/first.toml", cx);
+        ensure_single_file_is_opened(&workspace, "folder/first.toml", cx);
         workspace.update_in(cx, |workspace, _, cx| {
             assert!(workspace.active_item_as::<RequestEditor>(cx).is_some());
         });
 
-        select_path(&panel, "project/collection/second.toml", cx);
+        select_path(&panel, "project/folder/second.toml", cx);
         panel.update_in(cx, |panel, window, cx| {
             panel.open(&actions::project_panel::Open, window, cx);
         });
@@ -3850,7 +3870,7 @@ mod tests {
             pane.active_item()
                 .and_then(|item| item.project_path(cx))
                 .is_some_and(|project_path| {
-                    project_path.path.as_ref() == rel_path("collection/second.toml")
+                    project_path.path.as_ref() == rel_path("folder/second.toml")
                 })
         })
         .await;
@@ -3858,14 +3878,14 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      first"),
                 String::from("      second  <== selected  <== marked"),
                 String::from("      third"),
             ]
         );
 
-        ensure_single_file_is_opened(&workspace, "collection/second.toml", cx);
+        ensure_single_file_is_opened(&workspace, "folder/second.toml", cx);
         workspace.update_in(cx, |workspace, _, cx| {
             assert!(workspace.active_item_as::<RequestEditor>(cx).is_some());
         });
@@ -3882,7 +3902,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "nested": {
                         "first.toml": "",
                     },
@@ -3903,14 +3923,14 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            &["> collection", "> other"]
+            &["> folder", "> other"]
         );
 
         let first_entry = panel.update(cx, |panel, cx| {
             let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
             worktree
                 .read(cx)
-                .entry_for_path(rel_path("collection/nested/first.toml"))
+                .entry_for_path(rel_path("folder/nested/first.toml"))
                 .unwrap()
                 .id
         });
@@ -3933,7 +3953,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             &[
-                "v collection",
+                "v folder",
                 "    v nested",
                 "          first  <== selected  <== marked",
                 "      second",
@@ -3952,7 +3972,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             &[
-                "v collection",
+                "v folder",
                 "    v nested",
                 "          first",
                 "      second",
@@ -4090,6 +4110,40 @@ mod tests {
             ),
             cx,
         );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text(".zaku/", cx);
+            });
+        });
+        cx.run_until_parked();
+        assert_validation_state(
+            &panel,
+            ValidationState::Error("'.zaku' is a reserved name.".to_string()),
+            cx,
+        );
+        assert!(
+            panel
+                .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
+                .is_none()
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text("first/.zaku/second", cx);
+            });
+        });
+        cx.run_until_parked();
+        assert_validation_state(
+            &panel,
+            ValidationState::Error("'.zaku' is a reserved name.".to_string()),
+            cx,
+        );
+        assert!(
+            panel
+                .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
+                .is_none()
+        );
     }
 
     #[gpui::test]
@@ -4216,7 +4270,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {},
+                "folder": {},
                 "other": {},
                 "first.toml": "",
                 "second.toml": "",
@@ -4235,7 +4289,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("> collection"),
+                String::from("> folder"),
                 String::from("> other"),
                 String::from("  first  <== marked"),
                 String::from("  second  <== selected  <== marked"),
@@ -4246,7 +4300,7 @@ mod tests {
             panel.cut(&actions::project_panel::Cut, window, cx);
         });
 
-        select_path(&panel, "project/collection", cx);
+        select_path(&panel, "project/folder", cx);
         panel.update_in(cx, |panel, window, cx| {
             panel.paste(&actions::project_panel::Paste, window, cx);
             panel.update_visible_entries(None, false, false, window, cx);
@@ -4261,8 +4315,8 @@ mod tests {
                         .any(|entry| entry.path.as_ref() == rel_path(path))
                 };
 
-                contains_path("collection/first.toml")
-                    && contains_path("collection/second.toml")
+                contains_path("folder/first.toml")
+                    && contains_path("folder/second.toml")
                     && !contains_path("first.toml")
                     && !contains_path("second.toml")
             })
@@ -4272,7 +4326,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      first  <== marked"),
                 String::from("      second  <== selected  <== marked"),
                 String::from("> other"),
@@ -4306,7 +4360,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      first"),
                 String::from("      second"),
                 String::from("v other"),
@@ -4327,7 +4381,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "first.toml": "",
                     "second.toml": "",
                 },
@@ -4340,8 +4394,8 @@ mod tests {
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
-        toggle_expand_dir(&panel, "project/collection", cx);
-        select_path(&panel, "project/collection/first.toml", cx);
+        toggle_expand_dir(&panel, "project/folder", cx);
+        select_path(&panel, "project/folder/first.toml", cx);
         panel.update_in(cx, |panel, window, cx| {
             panel.duplicate(&actions::project_panel::Duplicate, window, cx);
         });
@@ -4361,9 +4415,9 @@ mod tests {
                     .as_ref()
                     .is_some_and(|edit_state| edit_state.processing_file_name.is_none())
                     && panel.file_name_editor.read(cx).text(cx) == "first copy"
-                    && contains_path("collection/first.toml")
-                    && contains_path("collection/first copy.toml")
-                    && contains_path("collection/second.toml")
+                    && contains_path("folder/first.toml")
+                    && contains_path("folder/first copy.toml")
+                    && contains_path("folder/second.toml")
             })
             .await;
         cx.run_until_parked();
@@ -4371,7 +4425,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      first"),
                 String::from("      [EDITOR: 'first copy']  <== selected  <== marked"),
                 String::from("      second"),
@@ -4390,7 +4444,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "first.toml": "",
                     "second.toml": "",
                 },
@@ -4403,8 +4457,8 @@ mod tests {
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
-        toggle_expand_dir(&panel, "project/collection", cx);
-        select_path(&panel, "project/collection/first.toml", cx);
+        toggle_expand_dir(&panel, "project/folder", cx);
+        select_path(&panel, "project/folder/first.toml", cx);
         panel.update_in(cx, |panel, window, cx| {
             panel.rename(&actions::project_panel::Rename, window, cx);
         });
@@ -4416,7 +4470,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      [EDITOR: 'first']  <== selected"),
                 String::from("      second"),
             ]
@@ -4451,7 +4505,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      [PROCESSING: 'renamed']  <== selected"),
                 String::from("      second"),
             ]
@@ -4462,7 +4516,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      renamed  <== selected"),
                 String::from("      second"),
             ]
@@ -4480,7 +4534,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "first.toml": "",
                     "second.toml": "",
                     "third.toml": "",
@@ -4494,12 +4548,12 @@ mod tests {
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
-        toggle_expand_dir(&panel, "project/collection", cx);
-        select_path(&panel, "project/collection/first.toml", cx);
+        toggle_expand_dir(&panel, "project/folder", cx);
+        select_path(&panel, "project/folder/first.toml", cx);
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      first  <== selected"),
                 String::from("      second"),
                 String::from("      third"),
@@ -4516,7 +4570,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      [EDITOR: 'first']  <== selected"),
                 String::from("      second"),
                 String::from("      third"),
@@ -4544,7 +4598,7 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      first  <== selected"),
                 String::from("      second"),
                 String::from("      third"),
@@ -4564,7 +4618,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "first.toml": "",
                     "second.toml": "",
                     "third.toml": "",
@@ -4578,13 +4632,13 @@ mod tests {
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
-        toggle_expand_dir(&panel, "project/collection", cx);
-        select_path_with_mark(&panel, "project/collection/first.toml", cx);
-        select_path_with_mark(&panel, "project/collection/second.toml", cx);
+        toggle_expand_dir(&panel, "project/folder", cx);
+        select_path_with_mark(&panel, "project/folder/first.toml", cx);
+        select_path_with_mark(&panel, "project/folder/second.toml", cx);
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      first  <== marked"),
                 String::from("      second  <== selected  <== marked"),
                 String::from("      third"),
@@ -4608,36 +4662,36 @@ mod tests {
                         .any(|entry| entry.path.as_ref() == rel_path(path))
                 };
 
-                contains_path("collection/third.toml")
-                    && !contains_path("collection/first.toml")
-                    && !contains_path("collection/second.toml")
+                contains_path("folder/third.toml")
+                    && !contains_path("folder/first.toml")
+                    && !contains_path("folder/second.toml")
             })
             .await;
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("      third  <== selected"),
             ]
         );
         assert!(
             temp_fs
-                .metadata("project/collection/first.toml".as_ref())
+                .metadata("project/folder/first.toml".as_ref())
                 .await
                 .unwrap()
                 .is_none()
         );
         assert!(
             temp_fs
-                .metadata("project/collection/second.toml".as_ref())
+                .metadata("project/folder/second.toml".as_ref())
                 .await
                 .unwrap()
                 .is_none()
         );
         assert!(
             temp_fs
-                .metadata("project/collection/third.toml".as_ref())
+                .metadata("project/folder/third.toml".as_ref())
                 .await
                 .unwrap()
                 .is_some()
@@ -4655,7 +4709,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "first.toml": "",
                     "second.toml": "",
                 },
@@ -4684,12 +4738,12 @@ mod tests {
         .await;
         assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 1);
 
-        select_path_with_mark(&panel, "project/collection", cx);
+        select_path_with_mark(&panel, "project/folder", cx);
         select_path_with_mark(&panel, "project/other.toml", cx);
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("> collection  <== marked"),
+                String::from("> folder  <== marked"),
                 String::from("  other  <== selected  <== marked"),
                 String::from("  third"),
             ]
@@ -4721,7 +4775,7 @@ mod tests {
         assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 0);
         assert!(
             temp_fs
-                .metadata("project/collection".as_ref())
+                .metadata("project/folder".as_ref())
                 .await
                 .unwrap()
                 .is_none()
@@ -4755,7 +4809,7 @@ mod tests {
             json!({
                 ".gitignore": "",
                 "README.md": "",
-                "collection": {
+                "folder": {
                     "first.toml": "",
                     "nested": {
                         "config.json": "{}",
@@ -4781,26 +4835,71 @@ mod tests {
             let worktree = worktree.read(cx);
             let settings = worktree.entry_for_path(rel_path("settings.jsonc")).unwrap();
             let script = worktree
-                .entry_for_path(rel_path("collection/scripts/index.js"))
+                .entry_for_path(rel_path("folder/scripts/index.js"))
                 .unwrap();
 
             !settings.is_request && !script.is_request
         });
         assert!(non_request_files_are_indexed);
 
-        toggle_expand_dir(&panel, "project/collection", cx);
-        toggle_expand_dir(&panel, "project/collection/nested", cx);
-        toggle_expand_dir(&panel, "project/collection/scripts", cx);
+        toggle_expand_dir(&panel, "project/folder", cx);
+        toggle_expand_dir(&panel, "project/folder/nested", cx);
+        toggle_expand_dir(&panel, "project/folder/scripts", cx);
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v collection"),
+                String::from("v folder"),
                 String::from("    v nested"),
                 String::from("    v scripts  <== selected"),
                 String::from("          second"),
                 String::from("      first"),
                 String::from("  request"),
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_config_folders_are_hidden(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "project.toml": "",
+                    "environments": {
+                        "dev.toml": "",
+                    },
+                },
+                "users": {
+                    ".zaku": {
+                        "folder.toml": "",
+                    },
+                    "foo.toml": "",
+                },
+                "bar.toml": "",
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        toggle_expand_dir(&panel, "project/users", cx);
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v users  <== selected"),
+                String::from("      foo"),
+                String::from("  bar"),
             ]
         );
     }

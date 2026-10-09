@@ -19,7 +19,7 @@ pub struct RepoPath(Arc<RelPath>);
 
 impl RepoPath {
     pub fn new<S: AsRef<str> + ?Sized>(path: &S) -> anyhow::Result<Self> {
-        let rel_path = RelPath::unix(path.as_ref())?;
+        let rel_path = RelPath::from_unix_str(path.as_ref())?;
         Ok(Self::from_rel_path(rel_path))
     }
 

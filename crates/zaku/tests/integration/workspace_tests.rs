@@ -7,15 +7,18 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use db::{AppDatabase, kv::KeyValueStore};
-use fs::{Fs, TempFs};
+use environment_selector::EnvironmentSelector;
+use fs::{Fs, RemoveOptions, TempFs};
 use http_client::{AsyncBody, FakeHttpClient, Response, StatusCode};
 use path::rel_path;
+use picker::PickerDelegate;
 use project::ProjectPath;
 use recent_projects::RecentProjects;
 use response_panel::ResponsePanel;
 use session::Session;
 use settings::SettingsStore;
 use theme::LoadThemes;
+use util_macros::path;
 use workspace::{AppState, ItemHandle, OpenMode, OpenResult, Root, Workspace, WorkspaceDb};
 use worktree::{Worktree, WorktreeModelHandle};
 
@@ -32,6 +35,7 @@ fn init_test(app_state: Arc<AppState>, app_db: AppDatabase, cx: &mut TestAppCont
         request_editor::init(cx);
         response_panel::init(cx);
         recent_projects::init(cx);
+        environment_selector::init(cx);
         zaku::init(cx);
     });
 }
@@ -274,6 +278,175 @@ async fn test_open_recent_projects_action_in_new_window(cx: &mut TestAppContext)
 }
 
 #[gpui::test]
+async fn test_environment_selector(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            ".zaku": {
+                "environments": {
+                    "dev.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [environment]
+                        color = "green"
+                        variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                    "#},
+                    "staging-9.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [environment]
+                        color = "blue"
+                        variables = [{ name = "base_url", value = "https://staging-9.api.zaku.dev" }]
+                    "#},
+                    "staging-10.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [environment]
+                        color = "purple"
+                        variables = [{ name = "base_url", value = "https://staging-10.api.zaku.dev" }]
+                    "#},
+                },
+            },
+        }),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let (open_result, worktree) = open_workspace(project_path.clone(), app_state.clone(), cx).await;
+    cx.run_until_parked();
+    open_result.workspace.update(cx, |workspace, cx| {
+        workspace
+            .project()
+            .read(cx)
+            .project_config_store()
+            .clone()
+            .update(cx, |project_config_store, cx| {
+                project_config_store.activate_environment(Some("dev".to_string()), cx);
+            });
+    });
+
+    cx.dispatch_action(
+        open_result.window.into(),
+        actions::environment_selector::Toggle,
+    );
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<EnvironmentSelector>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+    picker.read_with(cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_environments(),
+            vec![
+                (None, false),
+                (Some("dev".to_string()), false),
+                (Some("staging-9".to_string()), false),
+                (Some("staging-10".to_string()), false),
+            ]
+        );
+        assert_eq!(picker.delegate.selected_index(), 1);
+    });
+
+    cx.dispatch_action(
+        open_result.window.into(),
+        actions::environment_selector::Toggle,
+    );
+    temp_fs
+        .remove_file(
+            &project_path.join(path!(".zaku/environments/dev.toml")),
+            RemoveOptions::default(),
+        )
+        .await
+        .unwrap();
+    worktree.flush_fs_events(cx).await;
+    cx.run_until_parked();
+
+    cx.dispatch_action(
+        open_result.window.into(),
+        actions::environment_selector::Toggle,
+    );
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<EnvironmentSelector>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+    picker.read_with(cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_environments(),
+            vec![
+                (Some("dev".to_string()), true),
+                (None, false),
+                (Some("staging-9".to_string()), false),
+                (Some("staging-10".to_string()), false),
+            ]
+        );
+        assert_eq!(picker.delegate.selected_index(), 0);
+    });
+
+    cx.simulate_input(open_result.window.into(), "staging-10");
+    cx.dispatch_action(open_result.window.into(), actions::menu::Confirm);
+    cx.run_until_parked();
+
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert_eq!(
+            workspace
+                .project()
+                .read(cx)
+                .project_config_store()
+                .read(cx)
+                .active_environment(),
+            Some("staging-10")
+        );
+        assert!(workspace.active_modal::<EnvironmentSelector>(cx).is_none());
+    });
+
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+        })
+        .unwrap()
+        .await;
+    open_result
+        .window
+        .update(cx, |_, window, _| window.remove_window())
+        .unwrap();
+    cx.run_until_parked();
+
+    let (reopened_result, _) = open_workspace(project_path, app_state, cx).await;
+    reopened_result.workspace.read_with(cx, |workspace, cx| {
+        assert_eq!(
+            workspace
+                .project()
+                .read(cx)
+                .project_config_store()
+                .read(cx)
+                .active_environment(),
+            Some("staging-10")
+        );
+    });
+}
+
+#[gpui::test]
 async fn test_reload_restores_project_windows_and_tabs(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
@@ -298,7 +471,7 @@ async fn test_reload_restores_project_windows_and_tabs(cx: &mut TestAppContext) 
         temp_fs.insert_tree(
             project,
             json!({
-                "collection": {
+                "folder": {
                     format!("{request}.toml"): formatdoc! {r#"
                         [meta]
                         version = 1
@@ -323,8 +496,8 @@ async fn test_reload_restores_project_windows_and_tabs(cx: &mut TestAppContext) 
         let project_path = temp_fs.path().join(project);
         let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
         let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
-        let request_path = format!("collection/{request}.toml");
-        let preview_path = format!("collection/{preview_request}.toml");
+        let request_path = format!("folder/{request}.toml");
+        let preview_path = format!("folder/{preview_request}.toml");
 
         open_path(
             open_result.window,
@@ -428,20 +601,20 @@ async fn test_reload_restores_project_windows_and_tabs(cx: &mut TestAppContext) 
             (
                 temp_fs.path().join("first"),
                 vec![
-                    rel_path("collection/request1.toml").into(),
+                    rel_path("folder/request1.toml").into(),
                     rel_path("settings.jsonc").into(),
-                    rel_path("collection/preview1.toml").into(),
+                    rel_path("folder/preview1.toml").into(),
                 ],
-                rel_path("collection/preview1.toml").into(),
+                rel_path("folder/preview1.toml").into(),
             ),
             (
                 temp_fs.path().join("second"),
                 vec![
-                    rel_path("collection/request2.toml").into(),
+                    rel_path("folder/request2.toml").into(),
                     rel_path("keymap.jsonc").into(),
-                    rel_path("collection/preview2.toml").into(),
+                    rel_path("folder/preview2.toml").into(),
                 ],
-                rel_path("collection/preview2.toml").into(),
+                rel_path("folder/preview2.toml").into(),
             ),
         ]
     );
@@ -468,7 +641,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
         temp_fs.insert_tree(
             project_path,
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -628,7 +801,7 @@ async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
     temp_fs.insert_tree(
         "project",
         json!({
-            "collection": {
+            "folder": {
                 "request.toml": indoc! {r#"
                     [meta]
                     version = 1
@@ -647,7 +820,7 @@ async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
 
     open_path(
         open_result.window,
-        ProjectPath::from((worktree_id, rel_path("collection/request.toml"))),
+        ProjectPath::from((worktree_id, rel_path("folder/request.toml"))),
         cx,
     )
     .await;
@@ -716,7 +889,7 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
     temp_fs.insert_tree(
         "project",
         json!({
-            "collection": {
+            "folder": {
                 "first.toml": indoc! {r#"
                     [meta]
                     version = 1
@@ -747,7 +920,7 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
 
     open_path(
         open_result.window,
-        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        ProjectPath::from((worktree_id, rel_path("folder/first.toml"))),
         cx,
     )
     .await;
@@ -756,7 +929,7 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
 
     open_path(
         open_result.window,
-        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        ProjectPath::from((worktree_id, rel_path("folder/second.toml"))),
         cx,
     )
     .await;
@@ -797,7 +970,7 @@ async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) 
         "second response"
     );
 
-    activate_item_for_path(open_result.window, "collection/first.toml", cx);
+    activate_item_for_path(open_result.window, "folder/first.toml", cx);
 
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
@@ -831,7 +1004,7 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
     temp_fs.insert_tree(
         "project",
         json!({
-            "collection": {
+            "folder": {
                 "first.toml": indoc! {r#"
                     [meta]
                     version = 1
@@ -865,7 +1038,7 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
 
     let first_item = open_path_preview(
         open_result.window,
-        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        ProjectPath::from((worktree_id, rel_path("folder/first.toml"))),
         cx,
     )
     .await;
@@ -875,7 +1048,7 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
 
     open_path_preview(
         open_result.window,
-        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        ProjectPath::from((worktree_id, rel_path("folder/second.toml"))),
         cx,
     )
     .await;
@@ -919,7 +1092,7 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
         "second response"
     );
 
-    activate_item_for_path(open_result.window, "collection/first.toml", cx);
+    activate_item_for_path(open_result.window, "folder/first.toml", cx);
 
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
@@ -973,7 +1146,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     temp_fs.insert_tree(
         "project",
         json!({
-            "collection": {
+            "folder": {
                 "first.toml": indoc! {r#"
                     [meta]
                     version = 1
@@ -1004,7 +1177,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
 
     open_path(
         open_result.window,
-        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        ProjectPath::from((worktree_id, rel_path("folder/first.toml"))),
         cx,
     )
     .await;
@@ -1080,7 +1253,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
 
     open_path(
         open_result.window,
-        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        ProjectPath::from((worktree_id, rel_path("folder/second.toml"))),
         cx,
     )
     .await;
@@ -1137,7 +1310,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
         second_cookies_scroll_offset.offset_in_item,
     );
 
-    activate_item_for_path(open_result.window, "collection/first.toml", cx);
+    activate_item_for_path(open_result.window, "folder/first.toml", cx);
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1177,7 +1350,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
         first_cookies_scroll_offset.offset_in_item,
     );
 
-    activate_item_for_path(open_result.window, "collection/second.toml", cx);
+    activate_item_for_path(open_result.window, "folder/second.toml", cx);
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1248,7 +1421,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
     temp_fs.insert_tree(
         "project",
         json!({
-            "collection": {
+            "folder": {
                 "first.toml": indoc! {r#"
                     [meta]
                     version = 1
@@ -1282,13 +1455,13 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
     .await;
     open_path(
         open_result.window,
-        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        ProjectPath::from((worktree_id, rel_path("folder/first.toml"))),
         cx,
     )
     .await;
     open_path(
         open_result.window,
-        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        ProjectPath::from((worktree_id, rel_path("folder/second.toml"))),
         cx,
     )
     .await;
@@ -1350,7 +1523,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         workspace.is_panel_open::<ResponsePanel>(cx)
     }));
 
-    activate_item_for_path(open_result.window, "collection/second.toml", cx);
+    activate_item_for_path(open_result.window, "folder/second.toml", cx);
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1379,7 +1552,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         response_panel.has_response_context()
     }));
 
-    activate_item_for_path(open_result.window, "collection/second.toml", cx);
+    activate_item_for_path(open_result.window, "folder/second.toml", cx);
 
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
@@ -1401,7 +1574,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         response_panel.has_response_context()
     }));
 
-    activate_item_for_path(open_result.window, "collection/first.toml", cx);
+    activate_item_for_path(open_result.window, "folder/first.toml", cx);
 
     assert!(
         response_panel.read_with(cx, |response_panel, cx| {
@@ -1421,7 +1594,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         "first response"
     );
 
-    activate_item_for_path(open_result.window, "collection/second.toml", cx);
+    activate_item_for_path(open_result.window, "folder/second.toml", cx);
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1456,7 +1629,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
     temp_fs.insert_tree(
         "project",
         json!({
-            "collection": {
+            "folder": {
                 "valid.toml": indoc! {r#"
                     [meta]
                     version = 1
@@ -1482,9 +1655,8 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         .workspace
         .read_with(cx, |workspace, _| workspace.pane().clone());
 
-    let valid_request_path = ProjectPath::from((worktree_id, rel_path("collection/valid.toml")));
-    let invalid_request_path =
-        ProjectPath::from((worktree_id, rel_path("collection/invalid.toml")));
+    let valid_request_path = ProjectPath::from((worktree_id, rel_path("folder/valid.toml")));
+    let invalid_request_path = ProjectPath::from((worktree_id, rel_path("folder/invalid.toml")));
     let settings_path = ProjectPath::from((worktree_id, rel_path("settings.jsonc")));
 
     open_path(open_result.window, valid_request_path.clone(), cx).await;
@@ -1569,7 +1741,7 @@ async fn test_trash_delete_with_active_pane_item(cx: &mut TestAppContext) {
     temp_fs.insert_tree(
         "project",
         json!({
-            "collection": {
+            "folder": {
                 "first.toml": indoc! {r#"
                     [meta]
                     version = 1
@@ -1594,14 +1766,14 @@ async fn test_trash_delete_with_active_pane_item(cx: &mut TestAppContext) {
     let project_path = temp_fs.path().join("project");
     let (open_result, worktree) = open_workspace(project_path, app_state, cx).await;
     let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
-    let first_request_path = ProjectPath::from((worktree_id, rel_path("collection/first.toml")));
-    let second_request_path = ProjectPath::from((worktree_id, rel_path("collection/second.toml")));
+    let first_request_path = ProjectPath::from((worktree_id, rel_path("folder/first.toml")));
+    let second_request_path = ProjectPath::from((worktree_id, rel_path("folder/second.toml")));
     let settings_path = ProjectPath::from((worktree_id, rel_path("settings.jsonc")));
 
     open_path(open_result.window, first_request_path.clone(), cx).await;
     open_path(open_result.window, second_request_path.clone(), cx).await;
     open_path(open_result.window, settings_path.clone(), cx).await;
-    activate_item_for_path(open_result.window, "collection/first.toml", cx);
+    activate_item_for_path(open_result.window, "folder/first.toml", cx);
 
     let pane = open_result
         .workspace
@@ -1636,7 +1808,7 @@ async fn test_trash_delete_with_active_pane_item(cx: &mut TestAppContext) {
     );
     assert!(
         temp_fs
-            .metadata("project/collection/first.toml".as_ref())
+            .metadata("project/folder/first.toml".as_ref())
             .await
             .unwrap()
             .is_none()
@@ -1661,7 +1833,7 @@ async fn test_trash_delete_with_active_pane_item(cx: &mut TestAppContext) {
     );
     assert!(
         temp_fs
-            .metadata("project/collection/second.toml".as_ref())
+            .metadata("project/folder/second.toml".as_ref())
             .await
             .unwrap()
             .is_none()

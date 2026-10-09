@@ -125,7 +125,7 @@ pub fn os_version() -> String {
     #[cfg(target_os = "windows")]
     {
         let mut info = OSVERSIONINFOW::default();
-        info.dwOSVersionInfoSize = u32::try_from(std::mem::size_of_val(&info))
+        info.dwOSVersionInfoSize = u32::try_from(mem::size_of_val(&info))
             .expect("operating system version information size should fit in u32");
 
         // SAFETY: RtlGetVersion writes to the provided output buffer, and `info`

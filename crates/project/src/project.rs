@@ -1,5 +1,6 @@
 pub mod buffer_store;
 pub mod git_store;
+pub mod project_config_store;
 pub mod request_buffer_store;
 pub mod worktree_store;
 
@@ -9,19 +10,19 @@ pub use git_store::{
 };
 pub use request_buffer::{RequestBuffer, RequestBufferEvent};
 pub use worktree::{
-    Entry, EntryKind, File, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,
+    Entry, EntryKind, EnvironmentColor, File, ProjectEntryId, RequestFile, RequestFileBody,
     RequestFileBodyType, RequestFileFormField, RequestFileHeader, RequestFileHttp, RequestFileMeta,
     RequestFileParam, RequestFileState, Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet,
     UpdatedGitRepository, Worktree, WorktreeId, request_method_short_name,
+    substitute_variables_in_str,
 };
 
 use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
 #[cfg(any(test, feature = "test"))]
 use gpui::TestAppContext;
-use gpui::{App, AppContext, Context, Entity, EventEmitter, Task, TaskExt};
+use gpui::{App, AppContext, Context, Entity, EventEmitter, SharedString, Task, TaskExt};
 use std::{
-    future::Future,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -36,6 +37,7 @@ use util::ResultExt;
 use crate::{
     buffer_store::{BufferStore, BufferStoreEvent, is_not_found_error},
     git_store::GitStore,
+    project_config_store::{InvalidConfigFileError, ProjectConfigStore, ProjectConfigStoreEvent},
     request_buffer_store::{RequestBufferStore, RequestBufferStoreEvent},
     worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent},
 };
@@ -150,12 +152,7 @@ impl ProjectItem for RequestBuffer {
         path: &ProjectPath,
         cx: &mut App,
     ) -> Option<Task<anyhow::Result<Entity<Self>>>> {
-        let is_request = path
-            .path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
-
-        if !is_request {
+        if !worktree::is_request_path(&path.path) {
             return None;
         }
 
@@ -218,6 +215,13 @@ pub enum ProjectEvent {
     WorktreeUpdatedEntries(WorktreeId, UpdatedEntriesSet),
     DeletedEntry(WorktreeId, ProjectEntryId),
     EntryMetadataUpdated(ProjectEntryId),
+    Toast {
+        notification_id: SharedString,
+        message: String,
+    },
+    HideToast {
+        notification_id: SharedString,
+    },
 }
 
 pub struct Project {
@@ -225,6 +229,7 @@ pub struct Project {
     buffer_store: Entity<BufferStore>,
     request_buffer_store: Entity<RequestBufferStore>,
     git_store: Entity<GitStore>,
+    project_config_store: Entity<ProjectConfigStore>,
     languages: Arc<LanguageRegistry>,
     active_entry: Option<ProjectEntryId>,
     metadata_by_entry_id: HashMap<ProjectEntryId, EntryMetadataState>,
@@ -235,7 +240,7 @@ impl Project {
     pub fn new(fs: Arc<dyn Fs>, languages: Arc<LanguageRegistry>, cx: &mut Context<Self>) -> Self {
         let worktree_store = cx.new({
             let fs = fs.clone();
-            move |cx| WorktreeStore::new(fs.clone(), WorktreeIdCounter::get(cx))
+            move |cx| WorktreeStore::new(fs, WorktreeIdCounter::get(cx))
         });
         let buffer_store = cx.new({
             let worktree_store = worktree_store.clone();
@@ -243,11 +248,16 @@ impl Project {
         });
         let request_buffer_store = cx.new({
             let worktree_store = worktree_store.clone();
-            move |cx| RequestBufferStore::new(worktree_store.clone(), cx)
+            move |cx| RequestBufferStore::new(worktree_store, cx)
         });
         let git_store = cx.new({
             let worktree_store = worktree_store.clone();
-            move |cx| GitStore::new(worktree_store.clone(), fs.clone(), cx)
+            let fs = fs.clone();
+            move |cx| GitStore::new(worktree_store, fs, cx)
+        });
+        let project_config_store = cx.new({
+            let worktree_store = worktree_store.clone();
+            move |cx| ProjectConfigStore::new(&worktree_store, fs, cx)
         });
         cx.subscribe(&worktree_store, |this, _, event, cx| {
             this.on_worktree_store_event(event, cx);
@@ -261,6 +271,10 @@ impl Project {
             Self::on_request_buffer_store_event(event, cx);
         })
         .detach();
+        cx.subscribe(&project_config_store, |_, _, event, cx| {
+            Self::on_project_config_store_event(event, cx);
+        })
+        .detach();
         let maintain_buffer_languages = Self::maintain_buffer_languages(languages.clone(), cx);
 
         Self {
@@ -268,6 +282,7 @@ impl Project {
             buffer_store,
             request_buffer_store,
             git_store,
+            project_config_store,
             languages,
             active_entry: None,
             metadata_by_entry_id: HashMap::default(),
@@ -281,7 +296,7 @@ impl Project {
         abs_path: PathBuf,
         cx: &mut App,
     ) -> Task<anyhow::Result<Entity<Self>>> {
-        let project = cx.new(move |cx| Self::new(fs.clone(), languages.clone(), cx));
+        let project = cx.new(move |cx| Self::new(fs, languages, cx));
         let open_task = project.update(cx, |project, cx| {
             project.find_or_create_worktree(abs_path, true, cx)
         });
@@ -303,7 +318,7 @@ impl Project {
             cx.new({
                 let fs = fs.clone();
                 let languages = languages.clone();
-                move |cx| Self::new(fs.clone(), languages.clone(), cx)
+                move |cx| Self::new(fs, languages, cx)
             })
         });
 
@@ -462,6 +477,22 @@ impl Project {
         })
     }
 
+    fn on_project_config_store_event(event: &ProjectConfigStoreEvent, cx: &mut Context<Self>) {
+        match event {
+            ProjectConfigStoreEvent::ConfigFileUpdated(result) => match result {
+                Ok(path) => cx.emit(ProjectEvent::HideToast {
+                    notification_id: format!("config-file-{path:?}").into(),
+                }),
+                Err(InvalidConfigFileError { path, message }) => cx.emit(ProjectEvent::Toast {
+                    notification_id: format!("config-file-{path:?}").into(),
+                    message: message.clone(),
+                }),
+            },
+            ProjectConfigStoreEvent::ActiveEnvironmentChanged
+            | ProjectConfigStoreEvent::ConfigFilesLoaded => {}
+        }
+    }
+
     fn on_request_buffer_store_event(event: &RequestBufferStoreEvent, cx: &mut Context<Self>) {
         match event {
             RequestBufferStoreEvent::BufferAdded(buffer) => {
@@ -551,6 +582,10 @@ impl Project {
 
     pub fn git_store(&self) -> &Entity<GitStore> {
         &self.git_store
+    }
+
+    pub fn project_config_store(&self) -> &Entity<ProjectConfigStore> {
+        &self.project_config_store
     }
 
     #[inline]
@@ -772,7 +807,7 @@ impl Project {
         }
 
         let content_task = cx.background_spawn(async move {
-            let contents = worktree::serialize_request_file(&RequestFile::default()).await?;
+            let contents = worktree::to_pretty_toml(&RequestFile::default()).await?;
             anyhow::Ok(contents.into_bytes())
         });
 

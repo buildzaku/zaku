@@ -1,11 +1,16 @@
 mod ignore;
+mod project_config;
 mod request;
 
 pub use language::DiskState;
+pub use project_config::{
+    ConfigFileMeta, EnvironmentColor, EnvironmentFile, EnvironmentSection, FolderFile, ProjectFile,
+    RequestSection, Variable, parse_config_file, substitute_variables_in_str,
+};
 pub use request::{
-    REQUEST_FILE_VERSION, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileFormField,
-    RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState,
-    parse_request_file, request_method_short_name, serialize_request_file,
+    RequestFile, RequestFileBody, RequestFileBodyType, RequestFileFormField, RequestFileHeader,
+    RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState, is_request_path,
+    parse_request_file, request_method_short_name,
 };
 pub use settings::WorktreeId;
 
@@ -20,13 +25,13 @@ use gpui::TestAppContext;
 use gpui::{
     App, AppContext, AsyncApp, BackgroundExecutor, Context, Entity, EventEmitter, Priority, Task,
 };
+use serde::Serialize;
 use smallvec::{SmallVec, smallvec};
 use smol::channel;
 use std::{
     cmp::Ordering,
     ffi::OsStr,
-    fmt,
-    future::Future,
+    fmt, mem,
     ops::{Deref, DerefMut, Range},
     path::{Path, PathBuf},
     pin::Pin,
@@ -41,6 +46,10 @@ use sum_tree::{
     Bias, ContextLessSummary, Dimension, Dimensions, Edit, SeekTarget, SumTree, TreeMap,
 };
 use tokio::sync::{oneshot, watch};
+use tombi_config::{LineWidth, TomlVersion, format::FormatRules};
+use tombi_formatter::{FormatOptions, Formatter};
+use tombi_schema_store::SchemaStore;
+use toml_edit::{Item, Table};
 
 #[cfg(feature = "test")]
 use collections::BTreeSet;
@@ -61,6 +70,7 @@ use util::ResultExt;
 use crate::ignore::{IgnoreKind, IgnoreStack};
 
 pub const FS_WATCH_LATENCY: Duration = Duration::from_millis(100);
+pub const SCHEMA_VERSION: u32 = 1;
 
 pub struct Worktree {
     snapshot: WorktreeSnapshot,
@@ -99,7 +109,7 @@ impl Worktree {
                 let file_name = file_name
                     .to_str()
                     .context("worktree root name should be valid utf-8")?;
-                RelPath::unix(file_name)
+                RelPath::from_unix_str(file_name)
                     .context("failed to parse worktree root name")
                     .map(Arc::<RelPath>::from)?
             }
@@ -197,7 +207,7 @@ impl Worktree {
         let fs = self.fs().clone();
         let abs_path = self.absolutize(&path);
         let write_task = cx.background_spawn(async move {
-            let contents = request::serialize_request_file(&request_file).await?;
+            let contents = to_pretty_toml(&request_file).await?;
             fs.write(&abs_path, contents.as_bytes()).await
         });
 
@@ -515,7 +525,7 @@ impl Worktree {
                 let file_name = file_name
                     .to_str()
                     .expect("worktree root name should be valid utf-8");
-                RelPath::unix(file_name)
+                RelPath::from_unix_str(file_name)
                     .expect("worktree root name should be a valid relative path")
                     .into()
             }
@@ -1315,7 +1325,7 @@ impl WorktreeModelHandle for Entity<Worktree> {
                 worktree.read_with(cx, |worktree, _| {
                     worktree
                         .entry_for_path(
-                            RelPath::unix(file_name)
+                            RelPath::from_unix_str(file_name)
                                 .expect("test file name should be a valid relative path"),
                         )
                         .is_some()
@@ -1337,7 +1347,7 @@ impl WorktreeModelHandle for Entity<Worktree> {
                 worktree.read_with(cx, |worktree, _| {
                     worktree
                         .entry_for_path(
-                            RelPath::unix(file_name)
+                            RelPath::from_unix_str(file_name)
                                 .expect("test file name should be a valid relative path"),
                         )
                         .is_none()
@@ -1890,7 +1900,7 @@ impl BackgroundScanner {
             }
         }
 
-        !std::mem::take(&mut self.state.lock().await.paths_to_scan).is_empty()
+        !mem::take(&mut self.state.lock().await.paths_to_scan).is_empty()
     }
 
     async fn process_events(&self, mut events: Vec<PathEvent>) {
@@ -1961,7 +1971,7 @@ impl BackgroundScanner {
                                 false,
                             );
                             state.snapshot.completed_scan_id = state.snapshot.scan_id;
-                            for (_, removed_entry) in std::mem::take(&mut state.removed_entries) {
+                            for (_, removed_entry) in mem::take(&mut state.removed_entries) {
                                 state.scanned_dirs.remove(&removed_entry.id);
                             }
                         }
@@ -2191,7 +2201,7 @@ impl BackgroundScanner {
         {
             let mut state = self.state.lock().await;
             state.snapshot.completed_scan_id = state.snapshot.scan_id;
-            for (_, removed_entry) in std::mem::take(&mut state.removed_entries) {
+            for (_, removed_entry) in mem::take(&mut state.removed_entries) {
                 state.scanned_dirs.remove(&removed_entry.id);
             }
         }
@@ -2295,8 +2305,7 @@ impl BackgroundScanner {
 
         let merged_event_roots = merge_event_roots(&state.changed_paths, event_roots);
         let new_snapshot = state.snapshot.clone();
-        let old_snapshot =
-            std::mem::replace(&mut state.prev_snapshot, new_snapshot.snapshot.clone());
+        let old_snapshot = mem::replace(&mut state.prev_snapshot, new_snapshot.snapshot.clone());
         let changes = build_diff(
             self.phase,
             &old_snapshot,
@@ -2443,7 +2452,7 @@ impl BackgroundScanner {
             };
             let Some(child_path) = child_name
                 .to_str()
-                .and_then(|name| Some(job.path.join(RelPath::unix(name).ok()?)))
+                .and_then(|name| Some(job.path.join(RelPath::from_unix_str(name).ok()?)))
             else {
                 continue;
             };
@@ -2561,9 +2570,7 @@ impl BackgroundScanner {
                 }
 
                 child_entry.is_ignored = ignore_stack.is_abs_path_ignored(&child_abs_path, false);
-                child_entry.is_request = child_abs_path
-                    .extension()
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
+                child_entry.is_request = request::is_request_path(&child_entry.path);
             }
 
             new_entries.push(child_entry);
@@ -2688,9 +2695,7 @@ impl BackgroundScanner {
                     fs_entry.is_ignored = ignore_stack.is_abs_path_ignored(&abs_path, is_dir);
                     fs_entry.is_external = is_external;
                     if !is_dir {
-                        fs_entry.is_request = abs_path
-                            .extension()
-                            .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
+                        fs_entry.is_request = request::is_request_path(path);
                     }
 
                     if let (Some(scan_queue_tx), true) = (&scan_queue_tx, is_dir) {
@@ -2797,7 +2802,7 @@ impl BackgroundScanner {
                     }
 
                     let ignore_path = parent_path.join(
-                        RelPath::unix(GITIGNORE)
+                        RelPath::from_unix_str(GITIGNORE)
                             .expect("gitignore path should be a valid relative path"),
                     );
                     if snapshot.snapshot.entry_for_path(&ignore_path).is_none() {
@@ -2976,6 +2981,10 @@ impl BackgroundScannerState {
 
     fn should_scan_directory(&self, entry: &Entry) -> bool {
         (self.scanning_enabled && !entry.is_external && !entry.is_ignored)
+            || entry
+                .path
+                .components()
+                .any(|component| component == path::project_config_folder_name())
             || self.scanned_dirs.contains(&entry.id)
             || self
                 .paths_to_scan
@@ -3552,6 +3561,65 @@ impl<'a> Iterator for ChildEntriesIter<'a> {
         }
         None
     }
+}
+
+pub async fn to_pretty_toml(value: &impl Serialize) -> anyhow::Result<String> {
+    let mut document = toml_edit::ser::to_document(value)?;
+    let keys = document
+        .as_table()
+        .iter()
+        .map(|(key, _)| key.to_string())
+        .collect::<Vec<_>>();
+    for key in keys {
+        promote_to_table(document.as_table_mut(), &key)
+            .with_context(|| format!("failed to promote {key} to table"))?;
+    }
+
+    let contents = document.to_string();
+    let options = FormatOptions {
+        rules: Some(FormatRules {
+            line_width: Some(LineWidth::try_from(100).expect("line width should be non-zero")),
+            ..Default::default()
+        }),
+    };
+    let schema_store = SchemaStore::new_with_options(tombi_schema_store::Options {
+        strict: None,
+        offline: Some(true),
+        cache: Some(tombi_cache::Options {
+            no_cache: Some(true),
+            cache_ttl: None,
+        }),
+    });
+
+    Ok(
+        Formatter::new(TomlVersion::V1_1_0, &options, None, &schema_store)
+            .format(&contents)
+            .await
+            .map_err(|diagnostics| anyhow!("failed to format toml: {diagnostics:?}"))
+            .log_err()
+            .unwrap_or(contents),
+    )
+}
+
+fn promote_to_table(parent: &mut Table, key: &str) -> anyhow::Result<()> {
+    let Some(item) = parent.get_mut(key) else {
+        return Ok(());
+    };
+    if item.is_table() {
+        return Ok(());
+    }
+
+    let original_item = mem::take(item);
+    let table = match original_item.into_table() {
+        Ok(table) => table,
+        Err(original_item) => {
+            let item_type = original_item.type_name();
+            *item = original_item;
+            return Err(anyhow!("expected {key} to be table, got {item_type}"));
+        }
+    };
+    *item = Item::Table(table);
+    Ok(())
 }
 
 async fn build_gitignore(abs_path: &Path, fs: &dyn Fs) -> anyhow::Result<Gitignore> {

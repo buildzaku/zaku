@@ -139,7 +139,7 @@ impl WorktreeStore {
             .find(|worktree| worktree.read(cx).contains_entry(entry_id))
     }
 
-    pub fn wait_for_initial_scan(&self) -> impl std::future::Future<Output = ()> + use<> {
+    pub fn wait_for_initial_scan(&self) -> impl Future<Output = ()> + use<> {
         let mut rx = self.initial_scan_complete.1.clone();
         async move {
             let mut done = *rx.borrow_and_update();

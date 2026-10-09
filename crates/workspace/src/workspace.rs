@@ -78,7 +78,10 @@ use session::Session;
 use crate::{
     create_project::CreateProjectModal,
     dock::{Dock, PanelButtons},
-    notifications::{DetachAndPromptErr, NotificationId, Notifications},
+    notifications::{
+        DetachAndPromptErr, NotificationId, Notifications,
+        simple_message_notification::MessageNotification,
+    },
     pane::{Pane, PaneEvent},
     status_bar::StatusBar,
 };
@@ -1251,7 +1254,7 @@ impl Workspace {
         let project = cx.new({
             let fs = app_state.fs.clone();
             let languages = app_state.languages.clone();
-            move |cx| Project::new(fs.clone(), languages.clone(), cx)
+            move |cx| Project::new(fs, languages, cx)
         });
 
         cx.new(|cx| {
@@ -1432,6 +1435,21 @@ impl Workspace {
             } else {
                 workspace_db.next_id().await?
             };
+
+            if let Some(environment) = workspace_db
+                .active_environment(workspace_id)
+                .await
+                .log_err()
+                .flatten()
+            {
+                project.update(cx, |project, cx| {
+                    project
+                        .project_config_store()
+                        .update(cx, |project_config_store, cx| {
+                            project_config_store.activate_environment(Some(environment), cx);
+                        });
+                });
+            }
 
             let (window, workspace) = if let Some(window) = window_to_replace {
                 let workspace = window.update(cx, |root: &mut Root, window, cx| {
@@ -2392,6 +2410,16 @@ impl Workspace {
                         pane.handle_deleted_project_item(*entry_id, window, cx);
                     });
                 }
+                ProjectEvent::Toast {
+                    notification_id,
+                    message,
+                } => workspace.show_notification(
+                    &NotificationId::named(notification_id.clone()),
+                    cx,
+                    |cx| cx.new(|cx| MessageNotification::new(message.clone(), cx)),
+                ),
+                ProjectEvent::HideToast { notification_id } => workspace
+                    .dismiss_notification(&NotificationId::named(notification_id.clone()), cx),
                 ProjectEvent::ActiveEntryChanged(_) | ProjectEvent::EntryMetadataUpdated(_) => {}
             },
         );
@@ -3174,7 +3202,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -3260,7 +3288,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("first"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -3271,7 +3299,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("second"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -3358,7 +3386,7 @@ mod tests {
                 ".gitignore": indoc! {"
                     .DS_Store
                 "},
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4012,7 +4040,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4075,7 +4103,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4148,7 +4176,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4222,7 +4250,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4294,7 +4322,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4405,7 +4433,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("first"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4416,7 +4444,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("second"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {"
                         [meta]
                         version = 1
@@ -4716,6 +4744,54 @@ mod tests {
                 .unwrap(),
             WindowBounds::Windowed(saved_workspace_bounds)
         );
+    }
+
+    #[gpui::test]
+    async fn test_environment_restore_saved_workspace(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+        let project_path = temp_fs.path().join(path!("project"));
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: workspace_id,
+                location: project_path.clone(),
+                center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
+                window_bounds: None,
+                display: None,
+                session_id: None,
+                window_id: None,
+            })
+            .await;
+        workspace_db
+            .set_active_environment(workspace_id, Some("dev".to_string()))
+            .await
+            .unwrap();
+
+        let result = cx
+            .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
+            .await
+            .unwrap();
+
+        result.workspace.read_with(cx, |workspace, cx| {
+            assert_eq!(
+                workspace
+                    .project()
+                    .read(cx)
+                    .project_config_store()
+                    .read(cx)
+                    .active_environment(),
+                Some("dev")
+            );
+        });
     }
 
     #[gpui::test]

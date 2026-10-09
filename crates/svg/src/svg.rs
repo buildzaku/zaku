@@ -36,6 +36,8 @@ pub enum IconAsset {
     CaretRight,
     CaretUpDown,
     Check,
+    Circle,
+    CircleDashed,
     CircleNotch,
     Close,
     Command,

@@ -394,7 +394,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -415,7 +415,7 @@ mod tests {
         let workspace_id = workspace_db.next_id().await.unwrap();
         let item_id: ItemId = 1;
         let serialized_request_editor = SerializedRequestEditor {
-            absolute_path: project_path.join(path!("collection/request.toml")),
+            absolute_path: project_path.join(path!("folder/request.toml")),
         };
 
         request_editor_db
@@ -450,7 +450,7 @@ mod tests {
             );
             assert_eq!(
                 request_editor.buffer.read(cx).file().path.as_ref(),
-                rel_path("collection/request.toml")
+                rel_path("folder/request.toml")
             );
         });
     }
@@ -466,7 +466,7 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "collection": {
+                "folder": {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -486,7 +486,7 @@ mod tests {
         let request_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(
-                    (worktree_id, rel_path("collection/request.toml")).into(),
+                    (worktree_id, rel_path("folder/request.toml")).into(),
                     None,
                     true,
                     window,
@@ -506,7 +506,7 @@ mod tests {
             assert_eq!(
                 request_editor.breadcrumbs(cx),
                 Some(vec![
-                    rel_path("collection/request.toml")
+                    rel_path("folder/request.toml")
                         .display(PathStyle::local())
                         .into_owned()
                         .into()

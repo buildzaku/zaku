@@ -76,7 +76,7 @@ impl RelPath {
     }
 
     #[track_caller]
-    pub fn unix<S: AsRef<Path> + ?Sized>(path: &S) -> anyhow::Result<&Self> {
+    pub fn from_unix_str<S: AsRef<Path> + ?Sized>(path: &S) -> anyhow::Result<&Self> {
         let path = path.as_ref();
         match Self::new(path, PathStyle::Posix)? {
             Cow::Borrowed(path) => Ok(path),
@@ -313,7 +313,7 @@ impl<'a> From<&'a RelPath> for Cow<'a, RelPath> {
 #[cfg(any(test, feature = "test"))]
 #[track_caller]
 pub fn rel_path(path: &str) -> &RelPath {
-    RelPath::unix(path).expect("test path should be relative")
+    RelPath::from_unix_str(path).expect("test path should be relative")
 }
 
 pub struct RelPathAncestors<'a>(Option<&'a str>);
@@ -481,9 +481,9 @@ mod tests {
             for rhs in test_cases.iter().skip(index + 1) {
                 assert_eq!(
                     Path::new(lhs).cmp(Path::new(rhs)),
-                    RelPath::unix(lhs)
+                    RelPath::from_unix_str(lhs)
                         .unwrap()
-                        .cmp(RelPath::unix(*rhs).unwrap())
+                        .cmp(RelPath::from_unix_str(*rhs).unwrap())
                 );
             }
         }

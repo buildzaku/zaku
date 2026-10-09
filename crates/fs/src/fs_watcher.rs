@@ -8,6 +8,7 @@ use std::ops::Bound;
 
 use std::{
     collections::{BTreeMap, HashMap},
+    mem,
     path::Path,
     sync::{Arc, OnceLock},
 };
@@ -38,7 +39,7 @@ impl Drop for FsWatcher {
         let mut registrations = BTreeMap::new();
         {
             let old = &mut self.registrations.lock();
-            std::mem::swap(&mut **old, &mut registrations);
+            mem::swap(&mut **old, &mut registrations);
         }
 
         global(|watcher| {

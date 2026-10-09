@@ -257,5 +257,12 @@ fn theme_colors(colors: &ThemeColorsContent) -> ThemeColors {
         scrollbar_thumb_hover_background: color(&colors.scrollbar_thumb_hover_background),
         scrollbar_thumb_active_background: color(&colors.scrollbar_thumb_active_background),
         scrollbar_thumb_border: color(&colors.scrollbar_thumb_border),
+
+        palette_red: color(&colors.palette_red),
+        palette_orange: color(&colors.palette_orange),
+        palette_yellow: color(&colors.palette_yellow),
+        palette_green: color(&colors.palette_green),
+        palette_blue: color(&colors.palette_blue),
+        palette_purple: color(&colors.palette_purple),
     }
 }

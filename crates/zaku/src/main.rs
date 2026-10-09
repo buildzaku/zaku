@@ -198,6 +198,7 @@ fn main() {
         zaku::init(cx);
         command_palette::init(cx);
         recent_projects::init(cx);
+        environment_selector::init(cx);
         let menus = zaku::app_menu(cx);
         cx.set_menus(menus);
         telemetry.flush_events().detach();
