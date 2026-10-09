@@ -7,6 +7,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use db::{AppDatabase, kv::KeyValueStore};
+use editor::Editor;
 use environment_selector::EnvironmentSelector;
 use fs::{Fs, RemoveOptions, TempFs};
 use http_client::{AsyncBody, FakeHttpClient, Response, StatusCode};
@@ -1838,4 +1839,219 @@ async fn test_trash_delete_with_active_pane_item(cx: &mut TestAppContext) {
             .unwrap()
             .is_none()
     );
+}
+
+#[gpui::test]
+async fn test_save_conflicting_item(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("project", json!({}));
+    temp_fs.insert_tree(
+        "settings.jsonc",
+        json!(indoc! {r#"
+            {
+              "ui": { "font_size": 14 },
+              "editor": { "font_size": 12 }
+            }
+        "#}),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let settings_path = temp_fs.path().join("settings.jsonc");
+    let (open_result, _) = open_workspace(project_path, app_state, cx).await;
+    let project = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.project().clone());
+    let (worktree, path) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(&settings_path, false, cx)
+        })
+        .await
+        .unwrap();
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let editor = open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path(ProjectPath { worktree_id, path }, None, true, window, cx)
+            })
+        })
+        .unwrap()
+        .await
+        .unwrap()
+        .downcast::<Editor>()
+        .unwrap();
+
+    let edited_settings = indoc! {r#"
+        {
+          "ui": { "font_size": 16 },
+          "editor": { "font_size": 12 }
+        }
+    "#};
+    editor.update(cx, |editor, cx| editor.set_text(edited_settings, cx));
+
+    temp_fs
+        .write(
+            &settings_path,
+            indoc! {br#"
+                {
+                  "ui": { "font_size": 14 },
+                  "editor": { "font_size": 14 }
+                }
+            "#},
+        )
+        .await
+        .unwrap();
+    wait_until(cx, |cx| cx.read(|cx| editor.has_conflict(cx))).await;
+    cx.read(|cx| assert!(editor.is_dirty(cx)));
+
+    let save_task = open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.save_active_item(actions::pane::SaveIntent::Save, window, cx)
+            })
+        })
+        .unwrap();
+    cx.run_until_parked();
+    cx.simulate_prompt_answer("Overwrite");
+    save_task.await.unwrap();
+
+    cx.read(|cx| {
+        assert!(!editor.is_dirty(cx));
+        assert!(!editor.has_conflict(cx));
+    });
+    assert_eq!(
+        temp_fs.load("settings.jsonc".as_ref()).await.unwrap(),
+        edited_settings
+    );
+}
+
+#[gpui::test]
+async fn test_close_conflicting_item(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("project", json!({}));
+    temp_fs.insert_tree(
+        "settings.jsonc",
+        json!(indoc! {r#"
+            {
+              "ui": { "font_size": 14 },
+              "editor": { "font_size": 12 }
+            }
+        "#}),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let settings_path = temp_fs.path().join("settings.jsonc");
+    let (open_result, _) = open_workspace(project_path, app_state, cx).await;
+    let project = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.project().clone());
+    let (worktree, path) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(&settings_path, false, cx)
+        })
+        .await
+        .unwrap();
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let editor = open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path(ProjectPath { worktree_id, path }, None, true, window, cx)
+            })
+        })
+        .unwrap()
+        .await
+        .unwrap()
+        .downcast::<Editor>()
+        .unwrap();
+
+    editor.update(cx, |editor, cx| {
+        editor.set_text(
+            indoc! {r#"
+                {
+                  "ui": { "font_size": 16 },
+                  "editor": { "font_size": 12 }
+                }
+            "#},
+            cx,
+        );
+    });
+
+    let disk_settings = indoc! {r#"
+        {
+          "ui": { "font_size": 14 },
+          "editor": { "font_size": 14 }
+        }
+    "#};
+    temp_fs
+        .write(&settings_path, disk_settings.as_bytes())
+        .await
+        .unwrap();
+    wait_until(cx, |cx| cx.read(|cx| editor.has_conflict(cx))).await;
+    cx.read(|cx| assert!(editor.is_dirty(cx)));
+
+    let pane = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.pane().clone());
+    let close_task = open_result
+        .window
+        .update(cx, |_, window, cx| {
+            pane.update(cx, |pane, cx| {
+                pane.close_item_by_id(
+                    editor.item_id(),
+                    actions::pane::SaveIntent::Close,
+                    window,
+                    cx,
+                )
+            })
+        })
+        .unwrap();
+    cx.run_until_parked();
+    cx.simulate_prompt_answer("Cancel");
+    close_task.await.unwrap();
+
+    assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 1);
+    cx.read(|cx| {
+        assert!(editor.is_dirty(cx));
+        assert!(editor.has_conflict(cx));
+    });
+
+    let close_task = open_result
+        .window
+        .update(cx, |_, window, cx| {
+            pane.update(cx, |pane, cx| {
+                pane.close_item_by_id(
+                    editor.item_id(),
+                    actions::pane::SaveIntent::Close,
+                    window,
+                    cx,
+                )
+            })
+        })
+        .unwrap();
+    cx.run_until_parked();
+    cx.simulate_prompt_answer("Discard Edits");
+    close_task.await.unwrap();
+
+    assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 0);
+    cx.read(|cx| {
+        assert_eq!(editor.read(cx).text(cx), disk_settings);
+        assert!(!editor.is_dirty(cx));
+        assert!(!editor.has_conflict(cx));
+    });
 }

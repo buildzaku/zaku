@@ -165,6 +165,10 @@ impl Item for Editor {
         self.capability(cx)
     }
 
+    fn has_conflict(&self, cx: &App) -> bool {
+        self.buffer.read(cx).has_conflict(cx)
+    }
+
     fn can_save(&self, cx: &App) -> bool {
         let Some(buffer) = self.buffer.read(cx).as_singleton() else {
             return false;
