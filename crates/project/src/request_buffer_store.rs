@@ -195,7 +195,7 @@ impl RequestBufferStore {
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
         let buffer = buffer.clone();
-        let (worktree, path, request_file, was_dirty) = {
+        let (worktree, path, request_file, version, was_dirty) = {
             let buffer = buffer.read(cx);
             let RequestFileState::Parsed(request_file) = buffer.request_file().clone() else {
                 return Task::ready(Err(anyhow!("Cannot save invalid request")));
@@ -204,6 +204,7 @@ impl RequestBufferStore {
                 buffer.file().worktree.clone(),
                 buffer.file().path.clone(),
                 request_file,
+                buffer.version(),
                 buffer.is_dirty(),
             )
         };
@@ -213,11 +214,12 @@ impl RequestBufferStore {
 
         cx.spawn(async move |_, cx| {
             let new_file = save_task.await?;
+            let mtime = new_file.disk_state.mtime();
             buffer.update(cx, |buffer, cx| {
                 if was_dirty {
                     buffer.file_updated(new_file, cx);
                 }
-                buffer.did_save(cx);
+                buffer.did_save(version, mtime, cx);
             });
             anyhow::Ok(())
         })

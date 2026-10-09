@@ -119,6 +119,10 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
         Capability::ReadWrite
     }
 
+    fn has_conflict(&self, _: &App) -> bool {
+        false
+    }
+
     fn can_save(&self, _cx: &App) -> bool {
         false
     }
@@ -257,6 +261,7 @@ pub trait ItemHandle: 'static + Send {
     fn to_any_view(&self) -> AnyView;
     fn is_dirty(&self, cx: &App) -> bool;
     fn capability(&self, cx: &App) -> Capability;
+    fn has_conflict(&self, cx: &App) -> bool;
     fn can_save(&self, cx: &App) -> bool;
     fn save(
         &self,
@@ -470,6 +475,10 @@ impl<T: Item> ItemHandle for Entity<T> {
 
     fn capability(&self, cx: &App) -> Capability {
         self.read(cx).capability(cx)
+    }
+
+    fn has_conflict(&self, cx: &App) -> bool {
+        self.read(cx).has_conflict(cx)
     }
 
     fn can_save(&self, cx: &App) -> bool {

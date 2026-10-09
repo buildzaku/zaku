@@ -751,6 +751,8 @@ impl Pane {
         save_intent: actions::pane::SaveIntent,
         cx: &mut AsyncWindowContext,
     ) -> anyhow::Result<bool> {
+        const CONFLICT_MESSAGE: &str = "This file has changed on disk since you started editing it. Do you want to overwrite it?";
+
         if save_intent == actions::pane::SaveIntent::Skip {
             let is_saveable_singleton = cx.update(|_, cx| {
                 item.can_save(cx) && item.buffer_kind(cx) == ItemBufferKind::Singleton
@@ -772,8 +774,9 @@ impl Pane {
             return Ok(true);
         };
 
-        let (mut is_dirty, can_save, is_singleton) = cx.update(|_, cx| {
+        let (has_conflict, mut is_dirty, can_save, is_singleton) = cx.update(|_, cx| {
             (
+                item.has_conflict(cx),
                 item.is_dirty(cx),
                 item.can_save(cx),
                 item.buffer_kind(cx) == ItemBufferKind::Singleton,
@@ -784,7 +787,29 @@ impl Pane {
             is_dirty = true;
         }
 
-        if is_dirty && can_save {
+        if has_conflict && can_save {
+            let answer = pane.update_in(cx, |pane, window, cx| {
+                pane.activate_item(item_index, true, true, window, cx);
+                window.prompt(
+                    PromptLevel::Warning,
+                    CONFLICT_MESSAGE,
+                    None,
+                    &["Overwrite", "Discard Edits", "Cancel"],
+                    cx,
+                )
+            })?;
+            match answer.await {
+                Ok(0) => {
+                    pane.update_in(cx, |_, window, cx| item.save(project, window, cx))?
+                        .await?;
+                }
+                Ok(1) => {
+                    pane.update_in(cx, |_, window, cx| item.reload(project, window, cx))?
+                        .await?;
+                }
+                _ => return Ok(false),
+            }
+        } else if is_dirty && can_save {
             if save_intent == actions::pane::SaveIntent::Close {
                 let item_id = item.item_id();
                 let answer_task = pane.update_in(cx, |pane, window, cx| {
@@ -944,7 +969,11 @@ impl Pane {
         let icon = item
             .tab_icon(window, cx)
             .map(|icon| icon.size(IconSize::Small).color(Color::Muted));
-        let is_dirty = item.is_dirty(cx);
+        let indicator_color = match (item.has_conflict(cx), item.is_dirty(cx)) {
+            (true, _) => Some(Color::Warning),
+            (_, true) => Some(Color::Accent),
+            (false, false) => None,
+        };
         let capability = item.capability(cx);
         let tab_tooltip_content = item.tab_tooltip_content(cx);
         let tab_control_group_name = format!("tab-control-{item_index}");
@@ -959,7 +988,7 @@ impl Pane {
                 pane.close_item_by_id(item_id, actions::pane::SaveIntent::Close, window, cx)
                     .detach_and_log_err(cx);
             }));
-        let tab_control = if is_dirty {
+        let tab_control = if let Some(indicator_color) = indicator_color {
             gpui::div()
                 .flex()
                 .items_center()
@@ -967,7 +996,10 @@ impl Pane {
                 .relative()
                 .size(IconSize::Small.square(window, cx))
                 .justify_center()
-                .child(render_item_indicator(tab_control_group_name.clone()))
+                .child(render_item_indicator(
+                    indicator_color,
+                    tab_control_group_name.clone(),
+                ))
                 .child(
                     gpui::div()
                         .flex()
@@ -1262,11 +1294,11 @@ impl Render for Pane {
     }
 }
 
-fn render_item_indicator(group_name: String) -> AnyElement {
+fn render_item_indicator(color: Color, group_name: String) -> AnyElement {
     gpui::div()
         .flex_none()
         .group_hover(group_name, |style| style.invisible())
-        .child(Indicator::dot().color(Color::Accent))
+        .child(Indicator::dot().color(color))
         .into_any_element()
 }
 
