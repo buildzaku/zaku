@@ -3438,6 +3438,108 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_save_conflicting_request_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "users": {
+                    "get-user.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/users/1"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap());
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("users/get-user.toml")),
+        };
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        request_editor.update_in(cx, |editor, window, cx| {
+            let RequestEditorState::Ready(request) = &mut editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            request.http.url.update(cx, |field, cx| {
+                field.set_value("https://api.zaku.dev/users/2", window, cx);
+            });
+        });
+
+        temp_fs
+            .write(
+                &project_path.join(path!("users/get-user.toml")),
+                indoc! {br#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/users/me"
+                "#},
+            )
+            .await
+            .unwrap();
+        worktree.flush_fs_events(cx).await;
+
+        request_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_dirty(cx));
+            assert!(editor.has_conflict(cx));
+        });
+
+        let save_task = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.save_active_item(actions::pane::SaveIntent::Save, window, cx)
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("Overwrite");
+        save_task.await.unwrap();
+
+        request_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+            assert!(!editor.has_conflict(cx));
+        });
+        assert_eq!(
+            temp_fs
+                .load("project/users/get-user.toml".as_ref())
+                .await
+                .unwrap(),
+            indoc! {r#"
+                [meta]
+                version = 1
+
+                [http]
+                method = "GET"
+                url = "https://api.zaku.dev/users/2"
+            "#}
+        );
+    }
+
+    #[gpui::test]
     async fn test_file_handle_changed_on_rename(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
