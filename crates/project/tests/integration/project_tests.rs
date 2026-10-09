@@ -11,7 +11,8 @@ use project::{Project, ProjectEvent, ProjectItem, ProjectPath, RequestBuffer, Re
 use util_macros::path;
 use worktree::{
     ConfigFileMeta, EnvironmentColor, EnvironmentFile, EnvironmentSection, FolderFile, ProjectFile,
-    RequestSection, SCHEMA_VERSION, Variable, WorktreeModelHandle,
+    RequestFile, RequestFileHttp, RequestFileMeta, RequestFileState, RequestSection, SCHEMA_VERSION,
+    Variable, WorktreeModelHandle,
 };
 
 #[gpui::test]

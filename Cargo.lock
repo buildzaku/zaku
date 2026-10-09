@@ -6459,6 +6459,7 @@ name = "request_buffer"
 version = "26.1.0-dev"
 dependencies = [
  "anyhow",
+ "fs",
  "gpui",
  "language",
  "util 26.1.0-dev",

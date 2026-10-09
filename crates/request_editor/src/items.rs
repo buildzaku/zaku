@@ -185,6 +185,10 @@ impl Item for RequestEditor {
         self.buffer.read(cx).is_dirty()
     }
 
+    fn has_conflict(&self, cx: &App) -> bool {
+        self.buffer.read(cx).has_conflict()
+    }
+
     fn can_save(&self, cx: &App) -> bool {
         matches!(&self.request, RequestEditorState::Ready(_)) && self.project_path(cx).is_some()
     }

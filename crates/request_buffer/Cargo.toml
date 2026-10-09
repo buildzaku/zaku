@@ -16,6 +16,7 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+fs = { workspace = true }
 gpui = { workspace = true }
 language = { workspace = true }
 util = { workspace = true }
