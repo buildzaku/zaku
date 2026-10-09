@@ -31,9 +31,7 @@ use smol::channel;
 use std::{
     cmp::Ordering,
     ffi::OsStr,
-    fmt,
-    future::Future,
-    mem,
+    fmt, mem,
     ops::{Deref, DerefMut, Range},
     path::{Path, PathBuf},
     pin::Pin,

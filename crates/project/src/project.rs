@@ -23,7 +23,6 @@ use futures::{FutureExt, StreamExt};
 use gpui::TestAppContext;
 use gpui::{App, AppContext, Context, Entity, EventEmitter, SharedString, Task, TaskExt};
 use std::{
-    future::Future,
     path::{Path, PathBuf},
     sync::Arc,
 };
