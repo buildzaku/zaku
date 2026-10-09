@@ -296,7 +296,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                         version = 1
 
                         [environment]
-                        color = "success"
+                        color = "green"
                         variables = [{ name = "base_url", value = "http://localhost:8000" }]
                     "#},
                     "staging-9.toml": indoc! {r#"
@@ -304,7 +304,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                         version = 1
 
                         [environment]
-                        color = "accent"
+                        color = "blue"
                         variables = [{ name = "base_url", value = "https://staging-9.api.zaku.dev" }]
                     "#},
                     "staging-10.toml": indoc! {r#"
@@ -312,7 +312,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                         version = 1
 
                         [environment]
-                        color = "info"
+                        color = "purple"
                         variables = [{ name = "base_url", value = "https://staging-10.api.zaku.dev" }]
                     "#},
                 },

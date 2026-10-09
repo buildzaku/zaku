@@ -63,12 +63,12 @@ pub struct Variable {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EnvironmentColor {
-    Accent,
-    Info,
-    Success,
-    Warning,
-    Error,
-    Hint,
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Blue,
+    Purple,
 }
 
 pub fn parse_config_file<T: DeserializeOwned>(contents: &str) -> anyhow::Result<T> {
@@ -218,7 +218,7 @@ mod tests {
             version = 1
 
             [environment]
-            color = "accent"
+            color = "green"
             variables = [
               { name = "base_url", value = "http://localhost:8000" },
               { name = "channel", value = "beta", disabled = true }
@@ -232,7 +232,7 @@ mod tests {
                     version: SCHEMA_VERSION,
                 },
                 environment: EnvironmentSection {
-                    color: Some(EnvironmentColor::Accent),
+                    color: Some(EnvironmentColor::Green),
                     variables: vec![
                         Variable {
                             name: "base_url".to_string(),

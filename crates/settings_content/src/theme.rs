@@ -338,6 +338,19 @@ pub struct ThemeColorsContent {
     #[serde(rename = "scrollbar.thumb.border")]
     pub scrollbar_thumb_border: Option<String>,
 
+    #[serde(rename = "palette.red")]
+    pub palette_red: Option<String>,
+    #[serde(rename = "palette.orange")]
+    pub palette_orange: Option<String>,
+    #[serde(rename = "palette.yellow")]
+    pub palette_yellow: Option<String>,
+    #[serde(rename = "palette.green")]
+    pub palette_green: Option<String>,
+    #[serde(rename = "palette.blue")]
+    pub palette_blue: Option<String>,
+    #[serde(rename = "palette.purple")]
+    pub palette_purple: Option<String>,
+
     #[serde(rename = "conflict")]
     pub conflict: Option<String>,
     #[serde(rename = "conflict.background")]

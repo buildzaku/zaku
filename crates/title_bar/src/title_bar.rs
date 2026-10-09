@@ -236,6 +236,17 @@ impl TitleBar {
         } else {
             Color::Muted
         };
+        let icon = if is_active_environment_missing {
+            Icon::new(IconAsset::Warning)
+                .size(IconSize::XSmall)
+                .color(text_color)
+        } else if active_environment.is_none() {
+            Icon::new(IconAsset::CircleDashed)
+                .size(IconSize::XSmall)
+                .color(text_color)
+        } else {
+            environment_selector::environment_icon(environment_color, text_color)
+        };
         let display_name = util::truncate_and_trailoff(
             active_environment.unwrap_or("No Environment"),
             MAX_ENVIRONMENT_NAME_LENGTH,
@@ -263,16 +274,7 @@ impl TitleBar {
                             .items_center()
                             .gap(DynamicSpacing::Base04.rems(cx))
                             .px(DynamicSpacing::Base02.rems(cx))
-                            .child(if is_active_environment_missing {
-                                Icon::new(IconAsset::Warning)
-                                    .size(IconSize::XSmall)
-                                    .color(text_color)
-                            } else {
-                                environment_selector::environment_icon(
-                                    environment_color,
-                                    text_color,
-                                )
-                            })
+                            .child(icon)
                             .child(
                                 Text::new(
                                     ui::utils::replace_control_characters(&display_name)

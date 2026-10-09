@@ -169,7 +169,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                         version = 1
 
                         [environment]
-                        color = "accent"
+                        color = "green"
                         variables = [{ name = "base_url", value = "http://localhost:8000" }]
                     "#},
                     "prod.toml": indoc! {r#"
@@ -177,7 +177,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                         version = 1
 
                         [environment]
-                        color = "error"
+                        color = "red"
                         variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
                     "#},
                     "nested": {
@@ -236,7 +236,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                             version: SCHEMA_VERSION,
                         },
                         environment: EnvironmentSection {
-                            color: Some(EnvironmentColor::Accent),
+                            color: Some(EnvironmentColor::Green),
                             variables: vec![Variable {
                                 name: "base_url".to_string(),
                                 value: "http://localhost:8000".to_string(),
@@ -252,7 +252,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                             version: SCHEMA_VERSION,
                         },
                         environment: EnvironmentSection {
-                            color: Some(EnvironmentColor::Error),
+                            color: Some(EnvironmentColor::Red),
                             variables: vec![Variable {
                                 name: "base_url".to_string(),
                                 value: "https://api.zaku.dev".to_string(),
@@ -352,7 +352,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                             version: SCHEMA_VERSION,
                         },
                         environment: EnvironmentSection {
-                            color: Some(EnvironmentColor::Error),
+                            color: Some(EnvironmentColor::Red),
                             variables: vec![Variable {
                                 name: "base_url".to_string(),
                                 value: "https://api.zaku.dev".to_string(),
@@ -421,7 +421,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                             version: SCHEMA_VERSION,
                         },
                         environment: EnvironmentSection {
-                            color: Some(EnvironmentColor::Error),
+                            color: Some(EnvironmentColor::Red),
                             variables: vec![Variable {
                                 name: "base_url".to_string(),
                                 value: "https://api.zaku.dev".to_string(),

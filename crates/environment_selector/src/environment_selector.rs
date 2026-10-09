@@ -18,21 +18,16 @@ pub fn init(cx: &mut App) {
 }
 
 pub fn environment_icon(environment_color: Option<EnvironmentColor>, text_color: Color) -> Icon {
-    let Some(environment_color) = environment_color else {
-        return Icon::new(IconAsset::CircleDashed)
-            .size(IconSize::XSmall)
-            .color(text_color);
-    };
-
     Icon::new(IconAsset::Circle)
         .size(IconSize::XSmall)
         .color(match environment_color {
-            EnvironmentColor::Accent => Color::Accent,
-            EnvironmentColor::Info => Color::Info,
-            EnvironmentColor::Success => Color::Success,
-            EnvironmentColor::Warning => Color::Warning,
-            EnvironmentColor::Error => Color::Error,
-            EnvironmentColor::Hint => Color::Hint,
+            Some(EnvironmentColor::Red) => Color::PaletteRed,
+            Some(EnvironmentColor::Orange) => Color::PaletteOrange,
+            Some(EnvironmentColor::Yellow) => Color::PaletteYellow,
+            Some(EnvironmentColor::Green) => Color::PaletteGreen,
+            Some(EnvironmentColor::Blue) => Color::PaletteBlue,
+            Some(EnvironmentColor::Purple) => Color::PalettePurple,
+            None => text_color,
         })
 }
 
@@ -322,6 +317,10 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                     Icon::new(IconAsset::Warning)
                         .size(IconSize::XSmall)
                         .color(Color::Warning)
+                } else if environment.name.is_none() {
+                    Icon::new(IconAsset::CircleDashed)
+                        .size(IconSize::XSmall)
+                        .color(Color::Default)
                 } else {
                     environment_icon(environment.color, Color::Default)
                 })

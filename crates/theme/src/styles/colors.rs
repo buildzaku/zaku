@@ -93,6 +93,13 @@ pub struct ThemeColors {
     pub scrollbar_thumb_hover_background: Hsla,
     pub scrollbar_thumb_active_background: Hsla,
     pub scrollbar_thumb_border: Hsla,
+
+    pub palette_red: Hsla,
+    pub palette_orange: Hsla,
+    pub palette_yellow: Hsla,
+    pub palette_green: Hsla,
+    pub palette_blue: Hsla,
+    pub palette_purple: Hsla,
 }
 
 impl ThemeColors {
