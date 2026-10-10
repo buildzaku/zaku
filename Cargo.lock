@@ -9056,6 +9056,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "variables_panel"
+version = "26.1.0-dev"
+dependencies = [
+ "actions",
+ "editor",
+ "environment_selector",
+ "gpui",
+ "path 26.1.0-dev",
+ "project",
+ "settings",
+ "theme",
+ "ui",
+ "util 26.1.0-dev",
+ "workspace",
+]
+
+[[package]]
 name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10341,6 +10358,7 @@ dependencies = [
  "updater",
  "util_macros 26.1.0-dev",
  "uuid",
+ "variables_panel",
  "windows 0.62.2",
  "workspace",
  "worktree",

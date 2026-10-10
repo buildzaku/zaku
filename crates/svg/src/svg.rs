@@ -67,6 +67,7 @@ pub enum IconAsset {
     Return,
     Shift,
     SquareDot,
+    SquareInset,
     SquareMinus,
     SquarePlus,
     Trash,

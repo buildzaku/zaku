@@ -17,7 +17,7 @@ use std::{
 
 use editor::{
     Editor, EditorEvent, MultiBufferOffset, SelectionEffects,
-    items::{entry_git_aware_text_color, entry_text_color},
+    items::{entry_git_aware_text_color, entry_text_color, git_status_indicator},
 };
 use git::status::GitSummary;
 use path::{PathStyle, RelPath, SortMode, SortOrder};
@@ -448,10 +448,24 @@ impl ProjectPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> anyhow::Result<()> {
-        project
+        let worktree = project
             .read(cx)
             .worktree_for_entry(entry_id, cx)
             .context("can't reveal a non-existent entry in the project panel")?;
+        if worktree
+            .read(cx)
+            .entry_for_id(entry_id)
+            .is_some_and(|entry| {
+                entry
+                    .path
+                    .components()
+                    .any(|component| component == path::project_config_folder_name())
+            })
+        {
+            self.marked_entries.clear();
+            cx.notify();
+            return Ok(());
+        }
 
         self.expand_entry(entry_id, cx);
         self.update_visible_entries(Some(entry_id), false, true, window, cx);
@@ -3213,31 +3227,6 @@ fn file_name_for_entry(snapshot: &Snapshot, entry: &Entry) -> String {
 fn file_stem_for_entry(entry: &Entry) -> &str {
     let file_name = entry.path.file_name().unwrap_or_default();
     file_name.strip_suffix(".toml").unwrap_or(file_name)
-}
-
-fn git_status_indicator(git_status: GitSummary) -> Option<(&'static str, Color)> {
-    if git_status.conflict > 0 {
-        return Some(("!", Color::Conflict));
-    }
-    if git_status.untracked > 0 {
-        return Some(("U", Color::Created));
-    }
-    if git_status.worktree.deleted > 0 {
-        return Some(("D", Color::Deleted));
-    }
-    if git_status.worktree.modified > 0 {
-        return Some(("M", Color::Modified));
-    }
-    if git_status.index.deleted > 0 {
-        return Some(("D", Color::Deleted));
-    }
-    if git_status.index.modified > 0 {
-        return Some(("M", Color::Modified));
-    }
-    if git_status.index.added > 0 {
-        return Some(("A", Color::Created));
-    }
-    None
 }
 
 fn is_missing_entry_name(file_name: &str, is_dir: bool, path_style: PathStyle) -> bool {

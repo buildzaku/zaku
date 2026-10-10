@@ -191,6 +191,7 @@ fn main() {
         reliability::init(client, cx);
         workspace::init(app_state.clone(), cx);
         project_panel::init(cx);
+        variables_panel::init(cx);
         editor::init(cx);
         request_editor::init(cx);
         response_panel::init(cx);

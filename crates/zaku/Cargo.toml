@@ -79,6 +79,7 @@ title_bar = { workspace = true }
 ui = { workspace = true }
 updater = { workspace = true }
 uuid = { workspace = true }
+variables_panel = { workspace = true }
 workspace = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]

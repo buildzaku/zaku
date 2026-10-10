@@ -58,6 +58,7 @@ members = [
   "crates/updater_windows",
   "crates/util",
   "crates/util_macros",
+  "crates/variables_panel",
   "crates/workspace",
   "crates/worktree",
   "crates/zaku"
@@ -304,6 +305,7 @@ updater = { path = "crates/updater" }
 updater_windows = { path = "crates/updater_windows" }
 util = { path = "crates/util" }
 util_macros = { path = "crates/util_macros" }
+variables_panel = { path = "crates/variables_panel" }
 workspace = { path = "crates/workspace" }
 worktree = { path = "crates/worktree" }
 
