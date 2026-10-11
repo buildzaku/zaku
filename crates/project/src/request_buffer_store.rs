@@ -209,7 +209,7 @@ impl RequestBufferStore {
             )
         };
         let save_task = worktree.update(cx, |worktree, cx| {
-            worktree.write_request_file(path, request_file, cx)
+            worktree.write_toml_file(path, request_file, cx)
         });
 
         cx.spawn(async move |_, cx| {
