@@ -1,5 +1,6 @@
 pub mod buffer_store;
 pub mod git_store;
+pub mod project_config_buffer_store;
 pub mod project_config_store;
 pub mod request_buffer_store;
 pub mod worktree_store;
@@ -8,13 +9,14 @@ pub use git_store::{
     git_traversal::{ChildEntriesGitIter, GitEntry, GitEntryRef, GitTraversal},
     repo_identity_path,
 };
+pub use project_config_buffer::{ProjectConfigBuffer, ProjectConfigBufferEvent};
 pub use request_buffer::{RequestBuffer, RequestBufferEvent};
 pub use worktree::{
-    Entry, EntryKind, EnvironmentColor, File, ProjectEntryId, RequestFile, RequestFileBody,
-    RequestFileBodyType, RequestFileFormField, RequestFileHeader, RequestFileHttp, RequestFileMeta,
-    RequestFileParam, RequestFileState, Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet,
-    UpdatedGitRepository, Worktree, WorktreeId, request_method_short_name,
-    substitute_variables_in_str,
+    ConfigFile, ConfigFileState, ConfigFileType, Entry, EntryKind, EnvironmentColor, File,
+    ProjectEntryId, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileFormField,
+    RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState,
+    Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet, UpdatedGitRepository, Variable,
+    Worktree, WorktreeId, request_method_short_name, substitute_variables_in_str,
 };
 
 use anyhow::anyhow;
@@ -37,6 +39,7 @@ use util::ResultExt;
 use crate::{
     buffer_store::{BufferStore, BufferStoreEvent, is_not_found_error},
     git_store::GitStore,
+    project_config_buffer_store::{ProjectConfigBufferStore, ProjectConfigBufferStoreEvent},
     project_config_store::{InvalidConfigFileError, ProjectConfigStore, ProjectConfigStoreEvent},
     request_buffer_store::{RequestBufferStore, RequestBufferStoreEvent},
     worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent},
@@ -176,6 +179,34 @@ impl ProjectItem for RequestBuffer {
     }
 }
 
+impl ProjectItem for ProjectConfigBuffer {
+    fn try_open(
+        project: &Entity<Project>,
+        path: &ProjectPath,
+        cx: &mut App,
+    ) -> Option<Task<anyhow::Result<Entity<Self>>>> {
+        ConfigFileType::for_path(&path.path)?;
+
+        Some(project.update(cx, |project, cx| {
+            project.open_project_config_buffer(path.clone(), cx)
+        }))
+    }
+
+    fn entry_id(&self, _cx: &App) -> Option<ProjectEntryId> {
+        self.file().project_entry_id()
+    }
+
+    fn project_path(&self, cx: &App) -> Option<ProjectPath> {
+        let file = self.file();
+
+        Some(ProjectPath::from_file(file.as_ref(), cx))
+    }
+
+    fn is_dirty(&self) -> bool {
+        ProjectConfigBuffer::is_dirty(self)
+    }
+}
+
 impl ProjectItem for Buffer {
     fn try_open(
         project: &Entity<Project>,
@@ -186,6 +217,7 @@ impl ProjectItem for Buffer {
             .read(cx)
             .entry_for_path(path, cx)
             .is_some_and(|entry| entry.is_request)
+            || ConfigFileType::for_path(&path.path).is_some()
         {
             return None;
         }
@@ -228,6 +260,7 @@ pub struct Project {
     worktree_store: Entity<WorktreeStore>,
     buffer_store: Entity<BufferStore>,
     request_buffer_store: Entity<RequestBufferStore>,
+    project_config_buffer_store: Entity<ProjectConfigBufferStore>,
     git_store: Entity<GitStore>,
     project_config_store: Entity<ProjectConfigStore>,
     languages: Arc<LanguageRegistry>,
@@ -250,6 +283,10 @@ impl Project {
             let worktree_store = worktree_store.clone();
             move |cx| RequestBufferStore::new(worktree_store, cx)
         });
+        let project_config_buffer_store = cx.new({
+            let worktree_store = worktree_store.clone();
+            move |cx| ProjectConfigBufferStore::new(worktree_store, cx)
+        });
         let git_store = cx.new({
             let worktree_store = worktree_store.clone();
             let fs = fs.clone();
@@ -271,6 +308,10 @@ impl Project {
             Self::on_request_buffer_store_event(event, cx);
         })
         .detach();
+        cx.subscribe(&project_config_buffer_store, |_, _, event, cx| {
+            Self::on_project_config_buffer_store_event(event, cx);
+        })
+        .detach();
         cx.subscribe(&project_config_store, |_, _, event, cx| {
             Self::on_project_config_store_event(event, cx);
         })
@@ -281,6 +322,7 @@ impl Project {
             worktree_store,
             buffer_store,
             request_buffer_store,
+            project_config_buffer_store,
             git_store,
             project_config_store,
             languages,
@@ -518,6 +560,41 @@ impl Project {
     ) {
         if event == RequestBufferEvent::ReloadNeeded {
             self.reload_request_buffer(buffer, cx)
+                .detach_and_log_err(cx);
+        }
+    }
+
+    fn on_project_config_buffer_store_event(
+        event: &ProjectConfigBufferStoreEvent,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            ProjectConfigBufferStoreEvent::BufferAdded(buffer) => {
+                Self::register_project_config_buffer(buffer, cx);
+            }
+            ProjectConfigBufferStoreEvent::BufferDropped(_)
+            | ProjectConfigBufferStoreEvent::BufferChangedFilePath { .. } => {}
+        }
+    }
+
+    fn register_project_config_buffer(
+        buffer: &Entity<ProjectConfigBuffer>,
+        cx: &mut Context<Self>,
+    ) {
+        cx.subscribe(buffer, |this, buffer, event, cx| {
+            this.on_project_config_buffer_event(&buffer, *event, cx);
+        })
+        .detach();
+    }
+
+    fn on_project_config_buffer_event(
+        &mut self,
+        buffer: &Entity<ProjectConfigBuffer>,
+        event: ProjectConfigBufferEvent,
+        cx: &mut Context<Self>,
+    ) {
+        if event == ProjectConfigBufferEvent::ReloadNeeded {
+            self.reload_project_config_buffer(buffer, cx)
                 .detach_and_log_err(cx);
         }
     }
@@ -967,6 +1044,34 @@ impl Project {
     ) -> Task<anyhow::Result<()>> {
         self.request_buffer_store
             .update(cx, |store, cx| store.reload_request_buffer(buffer, cx))
+    }
+
+    fn open_project_config_buffer(
+        &mut self,
+        path: ProjectPath,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<Entity<ProjectConfigBuffer>>> {
+        self.project_config_buffer_store
+            .update(cx, |store, cx| store.open_project_config_buffer(path, cx))
+    }
+
+    pub fn save_project_config_buffer(
+        &self,
+        buffer: &Entity<ProjectConfigBuffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        self.project_config_buffer_store
+            .update(cx, |store, cx| store.save_project_config_buffer(buffer, cx))
+    }
+
+    pub fn reload_project_config_buffer(
+        &self,
+        buffer: &Entity<ProjectConfigBuffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        self.project_config_buffer_store.update(cx, |store, cx| {
+            store.reload_project_config_buffer(buffer, cx)
+        })
     }
 }
 

@@ -42,6 +42,65 @@ impl ConfigFileKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigFileType {
+    Project,
+    Environment,
+}
+
+impl ConfigFileType {
+    pub fn for_path(path: &RelPath) -> Option<Self> {
+        match ConfigFileKind::for_path(path)? {
+            ConfigFileKind::Project => Some(Self::Project),
+            ConfigFileKind::Environment(_) => Some(Self::Environment),
+            ConfigFileKind::Folder(_) => None,
+        }
+    }
+
+    pub fn parse(self, contents: &str) -> ConfigFileState {
+        let config_file = match self {
+            Self::Project => parse_config_file(contents).map(ConfigFile::Project),
+            Self::Environment => parse_config_file(contents).map(ConfigFile::Environment),
+        };
+
+        match config_file {
+            Ok(config_file) => ConfigFileState::Parsed(config_file),
+            Err(error) => ConfigFileState::Invalid(error.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigFileState {
+    Parsed(ConfigFile),
+    Invalid(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum ConfigFile {
+    Project(ProjectFile),
+    Environment(EnvironmentFile),
+}
+
+impl ConfigFile {
+    pub fn variables(&self) -> &[Variable] {
+        match self {
+            Self::Project(project_file) => &project_file.request.variables,
+            Self::Environment(environment_file) => &environment_file.environment.variables,
+        }
+    }
+
+    pub fn set_variables(&mut self, variables: Vec<Variable>) {
+        match self {
+            Self::Project(project_file) => project_file.request.variables = variables,
+            Self::Environment(environment_file) => {
+                environment_file.environment.variables = variables;
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectFile {
     pub meta: ConfigFileMeta,

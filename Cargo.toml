@@ -28,6 +28,8 @@ members = [
   "crates/picker",
   "crates/platform_title_bar",
   "crates/project",
+  "crates/project_config_buffer",
+  "crates/project_config_editor",
   "crates/project_panel",
   "crates/recent_projects",
   "crates/refineable",
@@ -275,6 +277,8 @@ path = { path = "crates/path" }
 picker = { path = "crates/picker" }
 platform_title_bar = { path = "crates/platform_title_bar" }
 project = { path = "crates/project" }
+project_config_buffer = { path = "crates/project_config_buffer" }
+project_config_editor = { path = "crates/project_config_editor" }
 project_panel = { path = "crates/project_panel" }
 recent_projects = { path = "crates/recent_projects" }
 refineable = { path = "crates/refineable" }
