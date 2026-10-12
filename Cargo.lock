@@ -6491,7 +6491,6 @@ dependencies = [
  "fs",
  "gpui",
  "language",
- "util 26.1.0-dev",
  "worktree",
 ]
 
