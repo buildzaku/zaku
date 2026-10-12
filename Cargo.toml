@@ -69,7 +69,7 @@ version = "26.1.0-dev"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/buildzaku/zaku"
 edition = "2024"
-rust-version = "1.98.1"
+rust-version = "1.99.0"
 publish = false
 
 [workspace.dependencies]
