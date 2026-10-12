@@ -5937,6 +5937,7 @@ name = "project_config_editor"
 version = "26.1.0-dev"
 dependencies = [
  "anyhow",
+ "db",
  "editor",
  "environment_selector",
  "gpui",

@@ -1,4 +1,5 @@
 mod items;
+mod persistence;
 
 use gpui::{
     App, Context, Div, Entity, EventEmitter, FocusHandle, Focusable, Hsla, ScrollHandle,
@@ -20,6 +21,7 @@ use ui::{
 
 pub fn init(cx: &mut App) {
     workspace::register_project_item::<ProjectConfigEditor>(cx);
+    workspace::register_serializable_item::<ProjectConfigEditor>(cx);
 }
 
 struct VariableRow {

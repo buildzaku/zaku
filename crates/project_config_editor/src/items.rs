@@ -1,5 +1,8 @@
-use anyhow::anyhow;
-use gpui::{AnyElement, App, Context, Entity, EntityId, SharedString, Task, Window, prelude::*};
+use anyhow::{Context as _, anyhow};
+use gpui::{
+    AnyElement, App, AppContext, Context, Entity, EntityId, SharedString, Task, WeakEntity, Window,
+    prelude::*,
+};
 
 use editor::items::{entry_git_aware_text_color, entry_text_color};
 use path::PathExt;
@@ -8,10 +11,14 @@ use settings::{GitSettings, Settings};
 use ui::{Color, Icon, IconAsset, IconSize, Text, TextCommon};
 use util::truncate_and_trailoff;
 use workspace::{
-    Item, ItemBufferKind, ItemEvent, ProjectItem, TabContentParams, ToolbarItemLocation, pane::Pane,
+    Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, TabContentParams,
+    ToolbarItemLocation, Workspace, WorkspaceId, delete_unloaded_items, pane::Pane,
 };
 
-use crate::{ProjectConfigEditor, ProjectConfigEditorEvent, ProjectConfigEditorState};
+use crate::{
+    ProjectConfigEditor, ProjectConfigEditorEvent, ProjectConfigEditorState,
+    persistence::{ProjectConfigEditorDb, SerializedProjectConfigEditor},
+};
 
 const MAX_TAB_TITLE_LEN: usize = 24;
 
@@ -207,5 +214,110 @@ impl ProjectItem for ProjectConfigEditor {
         Self: Sized,
     {
         Self::for_buffer(project, item, window, cx)
+    }
+}
+
+impl SerializableItem for ProjectConfigEditor {
+    fn serialized_item_kind() -> &'static str {
+        "ProjectConfigEditor"
+    }
+
+    fn cleanup(
+        workspace_id: WorkspaceId,
+        alive_items: Vec<ItemId>,
+        _: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        delete_unloaded_items(
+            alive_items,
+            workspace_id,
+            "project_config_editor",
+            &ProjectConfigEditorDb::global(cx),
+            cx,
+        )
+    }
+
+    fn deserialize(
+        project: Entity<Project>,
+        _: WeakEntity<Workspace>,
+        workspace_id: WorkspaceId,
+        item_id: ItemId,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<Entity<Self>>> {
+        let serialized_project_config_editor = match ProjectConfigEditorDb::global(cx)
+            .load_serialized_project_config_editor(item_id, workspace_id)
+        {
+            Ok(Some(serialized_project_config_editor)) => serialized_project_config_editor,
+            Ok(None) => {
+                return Task::ready(Err(anyhow!(
+                    "Unable to deserialize project config editor: No entry in database for item_id: {item_id} and workspace_id {workspace_id:?}"
+                )));
+            }
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let path = serialized_project_config_editor.absolute_path;
+
+        let Some(project_path) = project
+            .read(cx)
+            .project_path_for_absolute_path(path.as_path(), cx)
+        else {
+            return Task::ready(Err(anyhow!(
+                "Unable to deserialize project config editor: path is not in project: {}",
+                path.display()
+            )));
+        };
+
+        let Some(open_buffer) =
+            <ProjectConfigBuffer as project::ProjectItem>::try_open(&project, &project_path, cx)
+        else {
+            return Task::ready(Err(anyhow!(
+                "Unable to deserialize project config editor: cannot open path: {}",
+                path.display()
+            )));
+        };
+
+        window.spawn(cx, async move |cx| {
+            let buffer = open_buffer.await?;
+            cx.update(|window, cx| {
+                cx.new(|cx| ProjectConfigEditor::for_buffer(project, buffer, window, cx))
+            })
+        })
+    }
+
+    fn serialize(
+        &mut self,
+        workspace: &mut Workspace,
+        item_id: ItemId,
+        _closing: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let project_path = self.project_path(cx)?;
+        let path = self.project.read(cx).absolute_path(&project_path, cx)?;
+        let workspace_id = workspace.database_id()?;
+        let project_config_editor_db = ProjectConfigEditorDb::global(cx);
+
+        Some(cx.background_spawn(async move {
+            project_config_editor_db
+                .save_serialized_project_config_editor(
+                    item_id,
+                    workspace_id,
+                    SerializedProjectConfigEditor {
+                        absolute_path: path,
+                    },
+                )
+                .await
+                .context("failed to save serialized project config editor")
+        }))
+    }
+
+    fn should_serialize(&self, event: &Self::Event) -> bool {
+        matches!(
+            event,
+            ProjectConfigEditorEvent::Saved
+                | ProjectConfigEditorEvent::DirtyChanged
+                | ProjectConfigEditorEvent::ProjectConfigBufferEdited
+                | ProjectConfigEditorEvent::FileHandleChanged
+        )
     }
 }
