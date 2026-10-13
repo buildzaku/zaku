@@ -74,7 +74,7 @@ mod tests {
         let filter = parse(input).unwrap();
 
         assert_eq!(filter.level_global, None);
-        assert_eq!(filter.directive_names, vec!["test_module".to_string()]);
+        assert_eq!(filter.directive_names, &["test_module"]);
         assert_eq!(filter.directive_levels, vec![LevelFilter::Debug]);
     }
 
@@ -84,7 +84,7 @@ mod tests {
         let filter = parse(input).unwrap();
 
         assert_eq!(filter.level_global.unwrap(), LevelFilter::Info);
-        assert_eq!(filter.directive_names, vec!["test_module".to_string()]);
+        assert_eq!(filter.directive_names, &["test_module"]);
         assert_eq!(filter.directive_levels, vec![LevelFilter::Debug]);
     }
 
@@ -94,7 +94,7 @@ mod tests {
         let filter = parse(input).unwrap();
 
         assert_eq!(filter.level_global.unwrap(), LevelFilter::Info);
-        assert_eq!(filter.directive_names, vec!["test_module".to_string()]);
+        assert_eq!(filter.directive_names, &["test_module"]);
         assert_eq!(filter.directive_levels, vec![LevelFilter::max()]);
     }
 

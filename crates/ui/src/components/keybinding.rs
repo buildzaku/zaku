@@ -487,29 +487,29 @@ mod tests {
         let keystroke = Keystroke::parse("cmd-c").unwrap();
         assert_eq!(
             keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Mac),
-            "Command-C".to_string()
+            "Command-C"
         );
         assert_eq!(
             keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Linux),
-            "Super-C".to_string()
+            "Super-C"
         );
         assert_eq!(
             keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Windows),
-            "Win-C".to_string()
+            "Win-C"
         );
 
         let keystroke = Keystroke::parse("ctrl-alt-delete").unwrap();
         assert_eq!(
             keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Mac),
-            "Control-Option-Delete".to_string()
+            "Control-Option-Delete"
         );
         assert_eq!(
             keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Linux),
-            "Ctrl-Alt-Delete".to_string()
+            "Ctrl-Alt-Delete"
         );
         assert_eq!(
             keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Windows),
-            "Ctrl-Alt-Delete".to_string()
+            "Ctrl-Alt-Delete"
         );
     }
 }
