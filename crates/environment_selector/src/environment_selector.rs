@@ -1,6 +1,6 @@
 use fuzzy_nucleo::{Case, LengthPenalty, StringMatch, StringMatchCandidate};
 use gpui::{
-    AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
+    Action, AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
     SharedString, Subscription, Task, TaskExt, WeakEntity, Window, prelude::*,
 };
 use std::{iter, sync::Arc};
@@ -8,8 +8,9 @@ use std::{iter, sync::Arc};
 use picker::{Picker, PickerDelegate};
 use project::{EnvironmentColor, Project};
 use ui::{
-    ActiveTheme, Color, DynamicSpacing, HighlightedText, Icon, IconAsset, IconSize, ListItem,
-    ListItemSpacing, ListSubHeader, Text, TextCommon, TextSize, Toggleable,
+    ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, DynamicSpacing,
+    HighlightedText, Icon, IconAsset, IconSize, KeyBinding, ListItem, ListItemSpacing,
+    ListSubHeader, Text, TextCommon, TextSize, Toggleable,
 };
 use workspace::{ModalView, Workspace, WorkspaceDb};
 
@@ -354,6 +355,48 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                 .pt(DynamicSpacing::Base04.rems(cx) * 2.0)
                 .bg(theme_colors.elevated_surface_background)
                 .child(ListSubHeader::new("Environments").inset(true))
+                .into_any_element(),
+        )
+    }
+
+    fn render_footer(&self, _: &mut Window, cx: &mut Context<Picker<Self>>) -> Option<AnyElement> {
+        let theme_colors = cx.theme().colors();
+
+        Some(
+            gpui::div()
+                .flex()
+                .items_center()
+                .justify_end()
+                .w_full()
+                .flex_none()
+                .p_1p5()
+                .border_t_1()
+                .border_color(theme_colors.border_variant)
+                .child(
+                    ButtonLike::new("manage-environments")
+                        .size(ButtonSize::Medium)
+                        .child(
+                            gpui::div()
+                                .flex()
+                                .items_center()
+                                .gap(DynamicSpacing::Base08.rems(cx))
+                                .child(Text::new("Manage Environments"))
+                                .child(
+                                    KeyBinding::for_action(
+                                        &actions::variables_panel::ToggleFocus,
+                                        cx,
+                                    )
+                                    .size(ui::rems_from_px(12.0_f32)),
+                                ),
+                        )
+                        .on_click(cx.listener(|_, _, window, cx| {
+                            window.dispatch_action(
+                                actions::variables_panel::ToggleFocus.boxed_clone(),
+                                cx,
+                            );
+                            cx.emit(DismissEvent);
+                        })),
+                )
                 .into_any_element(),
         )
     }
