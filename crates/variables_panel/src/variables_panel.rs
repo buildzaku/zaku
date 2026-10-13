@@ -576,3 +576,122 @@ impl Render for VariablesPanel {
             )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::{TestAppContext, VisualTestContext};
+    use indoc::indoc;
+    use serde_json::json;
+
+    use fs::TempFs;
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+    use util_macros::path;
+    use workspace::{AppState, build_workspace};
+
+    fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test_new(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+            workspace::init(app_state, cx);
+            crate::init(cx);
+        });
+    }
+
+    fn visible_entries_as_strings(
+        panel: &Entity<VariablesPanel>,
+        cx: &mut VisualTestContext,
+    ) -> Vec<String> {
+        panel.read_with(cx, |panel, cx| {
+            let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
+            let worktree_id = worktree.read(cx).id();
+
+            panel
+                .entries(cx)
+                .into_iter()
+                .map(|entry| {
+                    let path = entry.path();
+                    let project_path = ProjectPath {
+                        worktree_id,
+                        path: path.clone(),
+                    };
+                    let name = match entry {
+                        VariablesListEntry::ProjectVariables => {
+                            SharedString::from("Project Variables")
+                        }
+                        VariablesListEntry::Environment(environment) => environment.name,
+                    };
+                    let selected = if panel.selection.as_ref() == Some(&path) {
+                        "  <== selected"
+                    } else {
+                        ""
+                    };
+                    let marked = if panel.active_item_path.as_ref() == Some(&project_path) {
+                        "  <== marked"
+                    } else {
+                        ""
+                    };
+
+                    format!("{name}{selected}{marked}")
+                })
+                .collect()
+        })
+    }
+
+    #[gpui::test]
+    async fn test_environment_entries(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                        "staging-9.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "blue"
+                            variables = [{ name = "base_url", value = "https://staging-9.api.zaku.dev" }]
+                        "#},
+                        "staging-10.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "purple"
+                            variables = [{ name = "base_url", value = "https://staging-10.api.zaku.dev" }]
+                        "#},
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, VariablesPanel::new);
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "dev", "staging-9", "staging-10"]
+        );
+    }
+}

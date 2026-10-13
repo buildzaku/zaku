@@ -9090,13 +9090,17 @@ dependencies = [
  "actions",
  "editor",
  "environment_selector",
+ "fs",
  "gpui",
+ "indoc",
  "path 26.1.0-dev",
  "project",
+ "serde_json",
  "settings",
  "theme",
  "ui",
  "util 26.1.0-dev",
+ "util_macros 26.1.0-dev",
  "workspace",
 ]
 
