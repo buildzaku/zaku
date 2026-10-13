@@ -2527,7 +2527,7 @@ impl Workspace {
             (self.bounds.size.width - dock::RESIZE_HANDLE_SIZE).max(dock::RESIZE_HANDLE_SIZE);
         let size = size.min(max_size);
         self.left_dock.update(cx, |dock, cx| {
-            dock.resize_active_panel(Some(size), window, cx);
+            dock.resize_panel_sizes(Some(size), window, cx);
         });
     }
 
@@ -2538,7 +2538,7 @@ impl Workspace {
             .min(max_size)
             .max(MIN_RESPONSE_PANE_HEIGHT.min(max_size));
         self.bottom_dock.update(cx, |dock, cx| {
-            dock.resize_active_panel(Some(size), window, cx);
+            dock.resize_panel_sizes(Some(size), window, cx);
         });
     }
 
