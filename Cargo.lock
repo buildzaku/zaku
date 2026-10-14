@@ -5963,6 +5963,7 @@ dependencies = [
  "log",
  "path 26.1.0-dev",
  "project",
+ "project_config_editor",
  "request_editor",
  "serde_json",
  "settings",
@@ -9102,6 +9103,7 @@ dependencies = [
  "util 26.1.0-dev",
  "util_macros 26.1.0-dev",
  "workspace",
+ "worktree",
 ]
 
 [[package]]

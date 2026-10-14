@@ -585,11 +585,12 @@ mod tests {
     use indoc::indoc;
     use serde_json::json;
 
-    use fs::TempFs;
+    use fs::{Fs, RemoveOptions, TempFs};
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
     use workspace::{AppState, build_workspace};
+    use worktree::WorktreeModelHandle;
 
     fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -654,7 +655,7 @@ mod tests {
             json!({
                 ".zaku": {
                     "environments": {
-                        "dev.toml": indoc! {r#"
+                        "Dev.toml": indoc! {r#"
                             [meta]
                             version = 1
 
@@ -662,7 +663,7 @@ mod tests {
                             color = "green"
                             variables = [{ name = "base_url", value = "http://localhost:8000" }]
                         "#},
-                        "staging-9.toml": indoc! {r#"
+                        "Staging-9.toml": indoc! {r#"
                             [meta]
                             version = 1
 
@@ -670,7 +671,7 @@ mod tests {
                             color = "blue"
                             variables = [{ name = "base_url", value = "https://staging-9.api.zaku.dev" }]
                         "#},
-                        "staging-10.toml": indoc! {r#"
+                        "Staging-10.toml": indoc! {r#"
                             [meta]
                             version = 1
 
@@ -691,7 +692,133 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, cx),
-            &["Project Variables", "dev", "staging-9", "staging-10"]
+            &["Project Variables", "Dev", "Staging-9", "Staging-10"]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_select_entries(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                        "Prod.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "red"
+                            variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                        "#},
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap());
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, VariablesPanel::new);
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_next(&actions::menu::SelectNext, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables  <== selected", "Dev", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_previous(&actions::menu::SelectPrevious, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables  <== selected", "Dev", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_last(&actions::menu::SelectLast, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev", "Prod  <== selected"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_next(&actions::menu::SelectNext, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev", "Prod  <== selected"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_previous(&actions::menu::SelectPrevious, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== selected", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_first(&actions::menu::SelectFirst, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables  <== selected", "Dev", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_next(&actions::menu::SelectNext, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== selected", "Prod"]
+        );
+
+        temp_fs
+            .remove_file(
+                &project_path.join(path!(".zaku/environments/Dev.toml")),
+                RemoveOptions::default(),
+            )
+            .await
+            .unwrap();
+        worktree.flush_fs_events(cx).await;
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_previous(&actions::menu::SelectPrevious, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables  <== selected", "Prod"]
         );
     }
 }

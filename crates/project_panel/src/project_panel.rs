@@ -3320,6 +3320,7 @@ mod tests {
             crate::init(cx);
             editor::init(cx);
             request_editor::init(cx);
+            project_config_editor::init(cx);
         });
     }
 
@@ -3953,6 +3954,102 @@ mod tests {
                 "v other",
                 "      fourth  <== selected  <== marked",
             ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_autoreveal_skips_config_files(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                    },
+                },
+                "foo": {
+                    "req1.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/req1"
+                    "#},
+                    "req2.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "POST"
+                        url = "https://api.zaku.dev/req2"
+                    "#},
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        assert_eq!(visible_entries_as_strings(&panel, 0..10, cx), &["> foo"]);
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath::from((worktree_id, rel_path("foo/req1.toml"))),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            &[
+                "v foo",
+                "      req1  <== selected  <== marked",
+                "      req2",
+            ]
+        );
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath::from((worktree_id, rel_path(".zaku/environments/Dev.toml"))),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            &["v foo", "      req1  <== selected", "      req2"]
         );
     }
 
@@ -4836,7 +4933,7 @@ mod tests {
                 ".zaku": {
                     "project.toml": "",
                     "environments": {
-                        "dev.toml": "",
+                        "Dev.toml": "",
                     },
                 },
                 "users": {
