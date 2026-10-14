@@ -333,10 +333,11 @@ mod tests {
 
     use fs::TempFs;
     use path::{PathStyle, rel_path};
+    use project::Variable;
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
-    use workspace::{AppState, build_workspace};
+    use workspace::{AppState, WorkspaceDb, build_workspace};
 
     fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -347,6 +348,143 @@ mod tests {
             editor::init(cx);
             crate::init(cx);
         });
+    }
+
+    #[gpui::test]
+    async fn test_deserialize(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let project_config_editor_db = cx.update(|_, cx| ProjectConfigEditorDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let item_id: ItemId = 1;
+        let serialized_project_config_editor = SerializedProjectConfigEditor {
+            absolute_path: project_path.join(path!(".zaku/environments/Dev.toml")),
+        };
+
+        project_config_editor_db
+            .save_serialized_project_config_editor(
+                item_id,
+                workspace_id,
+                serialized_project_config_editor,
+            )
+            .await
+            .unwrap();
+
+        let weak_workspace = workspace.downgrade();
+        let project_config_editor = workspace
+            .update_in(cx, |_, window, cx| {
+                ProjectConfigEditor::deserialize(
+                    project.clone(),
+                    weak_workspace.clone(),
+                    workspace_id,
+                    item_id,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+
+        project_config_editor.read_with(cx, |project_config_editor, cx| {
+            let ProjectConfigEditorState::Ready(rows) = &project_config_editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+
+            assert_eq!(
+                crate::variables_from_rows(rows, cx),
+                vec![Variable {
+                    name: "base_url".to_string(),
+                    value: "http://localhost:8000".to_string(),
+                    disabled: false,
+                }]
+            );
+            assert_eq!(
+                project_config_editor.buffer.read(cx).file().path.as_ref(),
+                rel_path(".zaku/environments/Dev.toml")
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_deserialize_missing_environment(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(path!("project"), json!({}));
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let project_config_editor_db = cx.update(|_, cx| ProjectConfigEditorDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let item_id: ItemId = 1;
+        let serialized_project_config_editor = SerializedProjectConfigEditor {
+            absolute_path: project_path.join(path!(".zaku/environments/Dev.toml")),
+        };
+
+        project_config_editor_db
+            .save_serialized_project_config_editor(
+                item_id,
+                workspace_id,
+                serialized_project_config_editor,
+            )
+            .await
+            .unwrap();
+
+        let weak_workspace = workspace.downgrade();
+        let error = workspace
+            .update_in(cx, |_, window, cx| {
+                ProjectConfigEditor::deserialize(
+                    project.clone(),
+                    weak_workspace.clone(),
+                    workspace_id,
+                    item_id,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "failed to read file {}",
+                project_path
+                    .join(path!(".zaku/environments/Dev.toml"))
+                    .display()
+            )
+        );
     }
 
     #[gpui::test]

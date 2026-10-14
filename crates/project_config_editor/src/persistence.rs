@@ -71,3 +71,55 @@ impl Domain for ProjectConfigEditorDb {
 }
 
 db::static_connection!(ProjectConfigEditorDb, [workspace::WorkspaceDb]);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::TestAppContext;
+
+    use workspace::WorkspaceDb;
+
+    #[gpui::test]
+    async fn test_save_and_load_serialized_project_config_editor(cx: &mut TestAppContext) {
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let project_config_editor_db = cx.update(|cx| ProjectConfigEditorDb::global(cx));
+
+        let serialized_project_config_editor = SerializedProjectConfigEditor {
+            absolute_path: PathBuf::from(".zaku/environments/Dev.toml"),
+        };
+        project_config_editor_db
+            .save_serialized_project_config_editor(
+                1234,
+                workspace_id,
+                serialized_project_config_editor.clone(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            project_config_editor_db
+                .load_serialized_project_config_editor(1234, workspace_id)
+                .unwrap(),
+            Some(serialized_project_config_editor)
+        );
+
+        let serialized_project_config_editor = SerializedProjectConfigEditor {
+            absolute_path: PathBuf::from(".zaku/environments/Staging.toml"),
+        };
+        project_config_editor_db
+            .save_serialized_project_config_editor(
+                1234,
+                workspace_id,
+                serialized_project_config_editor.clone(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            project_config_editor_db
+                .load_serialized_project_config_editor(1234, workspace_id)
+                .unwrap(),
+            Some(serialized_project_config_editor)
+        );
+    }
+}
