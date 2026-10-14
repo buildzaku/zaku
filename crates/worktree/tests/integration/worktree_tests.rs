@@ -370,7 +370,7 @@ async fn test_gitignored_config_dirs_are_scanned(cx: &mut TestAppContext) {
             ".zaku": {
                 "project.toml": "",
                 "environments": {
-                    "dev.toml": "",
+                    "Dev.toml": "",
                 },
             },
             "users": {
@@ -411,7 +411,7 @@ async fn test_gitignored_config_dirs_are_scanned(cx: &mut TestAppContext) {
                 (rel_path(".gitignore"), false, false),
                 (rel_path(".zaku"), true, false),
                 (rel_path(".zaku/environments"), true, false),
-                (rel_path(".zaku/environments/dev.toml"), true, false),
+                (rel_path(".zaku/environments/Dev.toml"), true, false),
                 (rel_path(".zaku/project.toml"), true, false),
                 (rel_path("baz.toml"), false, true),
                 (rel_path("private"), true, false),

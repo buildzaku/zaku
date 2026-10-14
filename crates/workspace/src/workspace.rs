@@ -4772,7 +4772,7 @@ mod tests {
             })
             .await;
         workspace_db
-            .set_active_environment(workspace_id, Some("dev".to_string()))
+            .set_active_environment(workspace_id, Some("Dev".to_string()))
             .await
             .unwrap();
 
@@ -4789,7 +4789,7 @@ mod tests {
                     .project_config_store()
                     .read(cx)
                     .active_environment(),
-                Some("dev")
+                Some("Dev")
             );
         });
     }

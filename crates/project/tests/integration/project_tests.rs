@@ -165,7 +165,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                     variables = [{ name = "user_id", value = "2" }]
                 "#},
                 "environments": {
-                    "dev.toml": indoc! {r#"
+                    "Dev.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -173,7 +173,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                         color = "green"
                         variables = [{ name = "base_url", value = "http://localhost:8000" }]
                     "#},
-                    "prod.toml": indoc! {r#"
+                    "Prod.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -182,7 +182,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                         variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
                     "#},
                     "nested": {
-                        "staging.toml": staging_env,
+                        "Staging.toml": staging_env,
                     },
                 },
             },
@@ -196,7 +196,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                         variables = [{ name = "user_id", value = "1" }]
                     "#},
                     "environments": {
-                        "staging.toml": staging_env,
+                        "Staging.toml": staging_env,
                     },
                 },
                 "foo.toml": "",
@@ -231,7 +231,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
             project_config_store.environments().collect::<Vec<_>>(),
             vec![
                 (
-                    "dev",
+                    "Dev",
                     &EnvironmentFile {
                         meta: ConfigFileMeta {
                             version: SCHEMA_VERSION,
@@ -247,7 +247,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                     }
                 ),
                 (
-                    "prod",
+                    "Prod",
                     &EnvironmentFile {
                         meta: ConfigFileMeta {
                             version: SCHEMA_VERSION,
@@ -284,7 +284,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
 
     temp_fs
         .write(
-            &project_path.join(path!(".zaku/environments/dev.toml")),
+            &project_path.join(path!(".zaku/environments/Dev.toml")),
             indoc! {br#"
                 [meta]
                 version = 1
@@ -297,7 +297,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
         .unwrap();
     temp_fs
         .write(
-            &project_path.join(path!(".zaku/environments/staging.toml")),
+            &project_path.join(path!(".zaku/environments/Staging.toml")),
             indoc! {br#"
                 [meta]
                 version = 1
@@ -331,7 +331,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
             project_config_store.environments().collect::<Vec<_>>(),
             vec![
                 (
-                    "dev",
+                    "Dev",
                     &EnvironmentFile {
                         meta: ConfigFileMeta {
                             version: SCHEMA_VERSION,
@@ -347,7 +347,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                     }
                 ),
                 (
-                    "prod",
+                    "Prod",
                     &EnvironmentFile {
                         meta: ConfigFileMeta {
                             version: SCHEMA_VERSION,
@@ -363,7 +363,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                     }
                 ),
                 (
-                    "staging",
+                    "Staging",
                     &EnvironmentFile {
                         meta: ConfigFileMeta {
                             version: SCHEMA_VERSION,
@@ -399,7 +399,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
 
     temp_fs
         .remove_file(
-            &project_path.join(path!(".zaku/environments/dev.toml")),
+            &project_path.join(path!(".zaku/environments/Dev.toml")),
             RemoveOptions::default(),
         )
         .await
@@ -416,7 +416,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                 .collect::<Vec<_>>(),
             vec![
                 (
-                    "prod",
+                    "Prod",
                     &EnvironmentFile {
                         meta: ConfigFileMeta {
                             version: SCHEMA_VERSION,
@@ -432,7 +432,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                     }
                 ),
                 (
-                    "staging",
+                    "Staging",
                     &EnvironmentFile {
                         meta: ConfigFileMeta {
                             version: SCHEMA_VERSION,
@@ -500,7 +500,7 @@ async fn test_invalid_config_file(cx: &mut TestAppContext) {
         json!({
             ".zaku": {
                 "environments": {
-                    "prod.toml": indoc! {r#"
+                    "Prod.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -541,7 +541,7 @@ async fn test_invalid_config_file(cx: &mut TestAppContext) {
 
     temp_fs
         .write(
-            &project_path.join(path!(".zaku/environments/prod.toml")),
+            &project_path.join(path!(".zaku/environments/Prod.toml")),
             b"[environment",
         )
         .await
@@ -557,7 +557,7 @@ async fn test_invalid_config_file(cx: &mut TestAppContext) {
                 .environments()
                 .collect::<Vec<_>>(),
             vec![(
-                "prod",
+                "Prod",
                 &EnvironmentFile {
                     meta: ConfigFileMeta {
                         version: SCHEMA_VERSION,
@@ -579,13 +579,13 @@ async fn test_invalid_config_file(cx: &mut TestAppContext) {
         message,
         Some(format!(
             "Failed to parse environment config file {}:\nunclosed table, expected `]` at line 1 column 13",
-            rel_path(".zaku/environments/prod.toml").display(PathStyle::local())
+            rel_path(".zaku/environments/Prod.toml").display(PathStyle::local())
         ))
     );
 
     temp_fs
         .write(
-            &project_path.join(path!(".zaku/environments/prod.toml")),
+            &project_path.join(path!(".zaku/environments/Prod.toml")),
             indoc! {br#"
                 [meta]
                 version = 1
@@ -610,7 +610,7 @@ async fn test_invalid_config_file(cx: &mut TestAppContext) {
                 .environments()
                 .collect::<Vec<_>>(),
             vec![(
-                "prod",
+                "Prod",
                 &EnvironmentFile {
                     meta: ConfigFileMeta {
                         version: SCHEMA_VERSION,
@@ -654,7 +654,7 @@ async fn test_request_variables(cx: &mut TestAppContext) {
                     variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
                 "#},
                 "environments": {
-                    "dev.toml": indoc! {r#"
+                    "Dev.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -719,7 +719,7 @@ async fn test_request_variables(cx: &mut TestAppContext) {
         project
             .project_config_store()
             .update(cx, |project_config_store, cx| {
-                project_config_store.activate_environment(Some("dev".to_string()), cx);
+                project_config_store.activate_environment(Some("Dev".to_string()), cx);
             });
     });
     project.read_with(cx, |project, cx| {
@@ -740,7 +740,7 @@ async fn test_request_variables(cx: &mut TestAppContext) {
 
     temp_fs
         .remove_file(
-            &project_path.join(path!(".zaku/environments/dev.toml")),
+            &project_path.join(path!(".zaku/environments/Dev.toml")),
             RemoveOptions::default(),
         )
         .await
@@ -983,7 +983,7 @@ async fn test_find_or_create_worktree_replaces_config_files(cx: &mut TestAppCont
                     variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
                 "#},
                 "environments": {
-                    "dev.toml": indoc! {r#"
+                    "Dev.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -1033,7 +1033,7 @@ async fn test_find_or_create_worktree_replaces_config_files(cx: &mut TestAppCont
         assert_eq!(
             project_config_store.environments().collect::<Vec<_>>(),
             vec![(
-                "dev",
+                "Dev",
                 &EnvironmentFile {
                     meta: ConfigFileMeta {
                         version: SCHEMA_VERSION,

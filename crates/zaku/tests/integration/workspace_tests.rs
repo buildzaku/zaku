@@ -292,7 +292,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
         json!({
             ".zaku": {
                 "environments": {
-                    "dev.toml": indoc! {r#"
+                    "Dev.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -300,7 +300,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                         color = "green"
                         variables = [{ name = "base_url", value = "http://localhost:8000" }]
                     "#},
-                    "staging-9.toml": indoc! {r#"
+                    "Staging-9.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -308,7 +308,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                         color = "blue"
                         variables = [{ name = "base_url", value = "https://staging-9.api.zaku.dev" }]
                     "#},
-                    "staging-10.toml": indoc! {r#"
+                    "Staging-10.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -331,7 +331,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
             .project_config_store()
             .clone()
             .update(cx, |project_config_store, cx| {
-                project_config_store.activate_environment(Some("dev".to_string()), cx);
+                project_config_store.activate_environment(Some("Dev".to_string()), cx);
             });
     });
 
@@ -353,9 +353,9 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
             picker.delegate.matched_environments(),
             vec![
                 (None, false),
-                (Some("dev".to_string()), false),
-                (Some("staging-9".to_string()), false),
-                (Some("staging-10".to_string()), false),
+                (Some("Dev".to_string()), false),
+                (Some("Staging-9".to_string()), false),
+                (Some("Staging-10".to_string()), false),
             ]
         );
         assert_eq!(picker.delegate.selected_index(), 1);
@@ -367,7 +367,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
     );
     temp_fs
         .remove_file(
-            &project_path.join(path!(".zaku/environments/dev.toml")),
+            &project_path.join(path!(".zaku/environments/Dev.toml")),
             RemoveOptions::default(),
         )
         .await
@@ -392,10 +392,10 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
         assert_eq!(
             picker.delegate.matched_environments(),
             vec![
-                (Some("dev".to_string()), true),
+                (Some("Dev".to_string()), true),
                 (None, false),
-                (Some("staging-9".to_string()), false),
-                (Some("staging-10".to_string()), false),
+                (Some("Staging-9".to_string()), false),
+                (Some("Staging-10".to_string()), false),
             ]
         );
         assert_eq!(picker.delegate.selected_index(), 0);
@@ -413,7 +413,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                 .project_config_store()
                 .read(cx)
                 .active_environment(),
-            Some("staging-10")
+            Some("Staging-10")
         );
         assert!(workspace.active_modal::<EnvironmentSelector>(cx).is_none());
     });
@@ -442,7 +442,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                 .project_config_store()
                 .read(cx)
                 .active_environment(),
-            Some("staging-10")
+            Some("Staging-10")
         );
     });
 }
