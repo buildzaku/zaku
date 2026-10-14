@@ -200,6 +200,7 @@ impl VariablesPanel {
             self.selection = Some(entry.path());
             window.focus(&self.focus_handle, cx);
             self.autoscroll(cx);
+            cx.notify();
         } else {
             self.select_first(&actions::menu::SelectFirst, window, cx);
         }
@@ -222,6 +223,7 @@ impl VariablesPanel {
             self.selection = Some(entry.path());
             window.focus(&self.focus_handle, cx);
             self.autoscroll(cx);
+            cx.notify();
         } else {
             self.select_first(&actions::menu::SelectFirst, window, cx);
         }
@@ -237,6 +239,7 @@ impl VariablesPanel {
             self.selection = Some(entry.path());
             window.focus(&self.focus_handle, cx);
             self.autoscroll(cx);
+            cx.notify();
         }
     }
 
@@ -250,6 +253,7 @@ impl VariablesPanel {
             self.selection = Some(entry.path());
             window.focus(&self.focus_handle, cx);
             self.autoscroll(cx);
+            cx.notify();
         }
     }
 
