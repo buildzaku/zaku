@@ -3573,6 +3573,96 @@ mod tests {
     }
 
     #[gpui::test]
+    fn test_left_dock_panels_share_size(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
+
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
+        let (workspace, cx) = build_workspace(&project, cx);
+
+        workspace.update(cx, |workspace, _| {
+            workspace.bounds.size.width = gpui::px(640.0);
+        });
+
+        let (first_panel, second_panel) = workspace.update_in(cx, |workspace, window, cx| {
+            let first_panel = cx.new(|cx| TestPanel::new(100, cx));
+            let second_panel = cx.new(|cx| TestPanel::new(200, cx));
+            workspace.add_panel(first_panel.clone(), DockPosition::Left, window, cx);
+            workspace.add_panel(second_panel.clone(), DockPosition::Left, window, cx);
+            workspace.left_dock.update(cx, |left_dock, cx| {
+                left_dock.activate_panel(0, window, cx);
+                left_dock.set_open(true, window, cx);
+            });
+            workspace.resize_left_dock(gpui::px(350.0), window, cx);
+            (first_panel, second_panel)
+        });
+
+        workspace.read_with(cx, |workspace, cx| {
+            let left_dock = workspace.left_dock.read(cx);
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&first_panel)
+                    .and_then(|state| state.size),
+                Some(gpui::px(350.0))
+            );
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&second_panel)
+                    .and_then(|state| state.size),
+                Some(gpui::px(350.0))
+            );
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.left_dock.update(cx, |left_dock, cx| {
+                left_dock.activate_panel(1, window, cx);
+            });
+            workspace.resize_left_dock(gpui::px(400.0), window, cx);
+        });
+
+        workspace.read_with(cx, |workspace, cx| {
+            let left_dock = workspace.left_dock.read(cx);
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&first_panel)
+                    .and_then(|state| state.size),
+                Some(gpui::px(400.0))
+            );
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&second_panel)
+                    .and_then(|state| state.size),
+                Some(gpui::px(400.0))
+            );
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.left_dock.update(cx, |left_dock, cx| {
+                left_dock.resize_panel_sizes(None, window, cx);
+            });
+        });
+
+        workspace.read_with(cx, |workspace, cx| {
+            let left_dock = workspace.left_dock.read(cx);
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&first_panel)
+                    .and_then(|state| state.size),
+                None
+            );
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&second_panel)
+                    .and_then(|state| state.size),
+                None
+            );
+        });
+    }
+
+    #[gpui::test]
     fn test_remove_last_item_refocuses_pane(cx: &mut TestAppContext) {
         let temp_fs = TempFs::new(cx.executor());
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
