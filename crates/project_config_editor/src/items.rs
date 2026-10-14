@@ -321,3 +321,93 @@ impl SerializableItem for ProjectConfigEditor {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::TestAppContext;
+    use indoc::indoc;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    use fs::TempFs;
+    use path::{PathStyle, rel_path};
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+    use util_macros::path;
+    use workspace::{AppState, build_workspace};
+
+    fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test_new(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+            workspace::init(app_state, cx);
+            editor::init(cx);
+            crate::init(cx);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_breadcrumbs(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, cx) = build_workspace(&project, cx);
+        let project_config_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/environments/Dev.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        project_config_editor.read_with(cx, |project_config_editor, cx| {
+            assert_eq!(
+                project_config_editor.breadcrumb_location(cx),
+                ToolbarItemLocation::PrimaryLeft
+            );
+            assert_eq!(
+                project_config_editor.breadcrumbs(cx),
+                Some(vec![
+                    rel_path(".zaku/environments/Dev.toml")
+                        .display(PathStyle::local())
+                        .into_owned()
+                        .into()
+                ])
+            );
+        });
+    }
+}

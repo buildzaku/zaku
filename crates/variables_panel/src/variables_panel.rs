@@ -590,10 +590,12 @@ mod tests {
     use serde_json::json;
 
     use fs::{Fs, RemoveOptions, TempFs};
+    use path::rel_path;
+    use project_config_editor::ProjectConfigEditor;
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
-    use workspace::{AppState, build_workspace};
+    use workspace::{AppState, build_workspace, pane::PaneEvent};
     use worktree::WorktreeModelHandle;
 
     fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
@@ -603,6 +605,8 @@ mod tests {
             theme::init(LoadThemes::JustBase, cx);
             workspace::init(app_state, cx);
             crate::init(cx);
+            editor::init(cx);
+            project_config_editor::init(cx);
         });
     }
 
@@ -824,5 +828,103 @@ mod tests {
             visible_entries_as_strings(&panel, cx),
             &["Project Variables  <== selected", "Prod"]
         );
+    }
+
+    #[gpui::test]
+    async fn test_file_open_in_project_config_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, VariablesPanel::new);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_first(&actions::menu::SelectFirst, window, cx);
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open(&actions::variables_panel::Open, window, cx);
+        });
+        pane.condition::<PaneEvent>(cx, |pane, cx| {
+            pane.active_item()
+                .and_then(|item| item.project_path(cx))
+                .is_some_and(|project_path| {
+                    project_path.path.as_ref() == rel_path(".zaku/project.toml")
+                })
+        })
+        .await;
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables  <== selected  <== marked", "Dev"]
+        );
+        let project_variables_editor = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.active_item_as::<ProjectConfigEditor>(cx).unwrap()
+        });
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open(&actions::variables_panel::Open, window, cx);
+        });
+        cx.run_until_parked();
+
+        workspace.update_in(cx, |workspace, _, cx| {
+            assert_eq!(
+                workspace.active_item_as::<ProjectConfigEditor>(cx),
+                Some(project_variables_editor)
+            );
+        });
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_next(&actions::menu::SelectNext, window, cx);
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open(&actions::variables_panel::Open, window, cx);
+        });
+        pane.condition::<PaneEvent>(cx, |pane, cx| {
+            pane.active_item()
+                .and_then(|item| item.project_path(cx))
+                .is_some_and(|project_path| {
+                    project_path.path.as_ref() == rel_path(".zaku/environments/Dev.toml")
+                })
+        })
+        .await;
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== selected  <== marked"]
+        );
+        workspace.update_in(cx, |workspace, _, cx| {
+            assert!(
+                workspace
+                    .active_item_as::<ProjectConfigEditor>(cx)
+                    .is_some()
+            );
+        });
+        assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 1);
     }
 }

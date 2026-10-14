@@ -29,3 +29,17 @@ settings = { workspace = true }
 ui = { workspace = true }
 util = { workspace = true }
 workspace = { workspace = true }
+
+[dev-dependencies]
+actions = { workspace = true }
+fs = { workspace = true, features = ["test"] }
+gpui = { workspace = true, features = ["test-support"] }
+indoc = { workspace = true }
+path = { workspace = true, features = ["test"] }
+project = { workspace = true, features = ["test"] }
+serde_json = { workspace = true }
+settings = { workspace = true, features = ["test"] }
+theme = { workspace = true }
+util_macros = { workspace = true }
+workspace = { workspace = true, features = ["test"] }
+worktree = { workspace = true, features = ["test"] }

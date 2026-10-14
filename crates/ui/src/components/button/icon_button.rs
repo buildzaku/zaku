@@ -32,8 +32,9 @@ pub struct IconButton {
 
 impl IconButton {
     pub fn new(id: impl Into<ElementId>, icon: IconAsset) -> Self {
-        Self {
-            base: ButtonLike::new(id),
+        let id = id.into();
+        let mut this = Self {
+            base: ButtonLike::new(id.clone()),
             shape: IconButtonShape::default(),
             icon_size: IconSize::default(),
             icon,
@@ -41,7 +42,12 @@ impl IconButton {
             icon_color: Color::Default,
             selected_icon_color: None,
             hover_icon_color: None,
-        }
+        };
+        this.base.base = this
+            .base
+            .base
+            .debug_selector(|| format!("ICON_BUTTON-{id}"));
+        this
     }
 
     pub fn icon_size(mut self, icon_size: IconSize) -> Self {

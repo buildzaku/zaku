@@ -51,6 +51,7 @@ impl VariableRow {
     }
 }
 
+#[derive(Debug, PartialEq)]
 enum ValidationState {
     None,
     Warning(String),
@@ -563,5 +564,574 @@ impl Render for ProjectConfigEditor {
             ProjectConfigEditorState::Invalid { error } => self.render_invalid(error, cx),
         }
         .key_context("ProjectConfigEditor")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::{Modifiers, TestAppContext};
+    use indoc::indoc;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    use fs::{Fs, TempFs};
+    use path::rel_path;
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+    use util_macros::path;
+    use workspace::{AppState, Item, build_workspace};
+    use worktree::WorktreeModelHandle;
+
+    fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test_new(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+            workspace::init(app_state, cx);
+            editor::init(cx);
+            crate::init(cx);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_save_from_project_config_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [
+                              { name = "base_url", value = "http://localhost:8000" },
+                              { name = "user_id", value = "1" },
+                              { name = "timeout", value = "30" },
+                              { name = "debug", value = "1" }
+                            ]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap());
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        let (workspace, cx) = build_workspace(&project, cx);
+
+        let project_config_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/environments/Dev.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        let add_button_bounds = cx.debug_bounds("BUTTON-variable-add").unwrap();
+        cx.simulate_click(add_button_bounds.center(), Modifiers::default());
+
+        project_config_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+        });
+
+        project_config_editor.update_in(cx, |editor, _, cx| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            let row = rows.first().unwrap();
+            row.value.update(cx, |editor, cx| {
+                editor.set_text("http://localhost:3000", cx);
+            });
+            let row = &rows[1];
+            row.name.update(cx, |editor, cx| {
+                editor.set_text("account_id", cx);
+            });
+        });
+        let checkbox_bounds = cx.debug_bounds("CHECKBOX-variable-checkbox-2").unwrap();
+        cx.simulate_click(checkbox_bounds.center(), Modifiers::default());
+        let remove_button_bounds = cx.debug_bounds("ICON_BUTTON-variable-remove-3").unwrap();
+        cx.simulate_click(remove_button_bounds.center(), Modifiers::default());
+
+        project_config_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_dirty(cx));
+        });
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.save_active_item(actions::pane::SaveIntent::Save, window, cx)
+            })
+            .await
+            .unwrap();
+        worktree.flush_fs_events(cx).await;
+
+        project_config_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+        });
+        assert_eq!(
+            temp_fs
+                .load("project/.zaku/environments/Dev.toml".as_ref())
+                .await
+                .unwrap(),
+            indoc! {r#"
+                [meta]
+                version = 1
+
+                [environment]
+                color = "green"
+                variables = [
+                  { name = "base_url", value = "http://localhost:3000" },
+                  { name = "account_id", value = "1" },
+                  { name = "timeout", value = "30", disabled = true }
+                ]
+            "#}
+        );
+    }
+
+    #[gpui::test]
+    async fn test_save_creates_project_file(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(path!("project"), json!({}));
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap());
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        let (workspace, cx) = build_workspace(&project, cx);
+
+        let project_config_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/project.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        project_config_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+        });
+
+        let add_button_bounds = cx.debug_bounds("BUTTON-variable-add").unwrap();
+        cx.simulate_click(add_button_bounds.center(), Modifiers::default());
+        project_config_editor.update_in(cx, |editor, _, cx| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            let row = rows.first().unwrap();
+            row.name.update(cx, |editor, cx| {
+                editor.set_text("base_url", cx);
+            });
+            row.value.update(cx, |editor, cx| {
+                editor.set_text("https://api.zaku.dev", cx);
+            });
+        });
+
+        project_config_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_dirty(cx));
+        });
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.save_active_item(actions::pane::SaveIntent::Save, window, cx)
+            })
+            .await
+            .unwrap();
+        worktree.flush_fs_events(cx).await;
+
+        project_config_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+        });
+        assert_eq!(
+            temp_fs
+                .load("project/.zaku/project.toml".as_ref())
+                .await
+                .unwrap(),
+            indoc! {r#"
+                [meta]
+                version = 1
+
+                [request]
+                variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+            "#}
+        );
+    }
+
+    #[gpui::test]
+    async fn test_save_conflicting_project_config_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap());
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        let (workspace, cx) = build_workspace(&project, cx);
+
+        let project_config_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/environments/Dev.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        project_config_editor.update_in(cx, |editor, _, cx| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            let row = rows.first().unwrap();
+            row.value.update(cx, |editor, cx| {
+                editor.set_text("http://localhost:4321", cx);
+            });
+        });
+
+        temp_fs
+            .write(
+                &project_path.join(path!(".zaku/environments/Dev.toml")),
+                indoc! {br#"
+                    [meta]
+                    version = 1
+
+                    [environment]
+                    color = "green"
+                    variables = [{ name = "base_url", value = "http://localhost:3000" }]
+                "#},
+            )
+            .await
+            .unwrap();
+        worktree.flush_fs_events(cx).await;
+
+        project_config_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_dirty(cx));
+            assert!(editor.has_conflict(cx));
+        });
+
+        let save_task = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.save_active_item(actions::pane::SaveIntent::Save, window, cx)
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("Overwrite");
+        save_task.await.unwrap();
+
+        project_config_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+            assert!(!editor.has_conflict(cx));
+        });
+        assert_eq!(
+            temp_fs
+                .load("project/.zaku/environments/Dev.toml".as_ref())
+                .await
+                .unwrap(),
+            indoc! {r#"
+                [meta]
+                version = 1
+
+                [environment]
+                color = "green"
+                variables = [{ name = "base_url", value = "http://localhost:4321" }]
+            "#}
+        );
+    }
+
+    #[gpui::test]
+    async fn test_save_invalid_variable_name(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let dev_env = indoc! {r#"
+            [meta]
+            version = 1
+
+            [environment]
+            color = "green"
+            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+        "#};
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": dev_env
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, cx) = build_workspace(&project, cx);
+
+        let project_config_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/environments/Dev.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        project_config_editor.update_in(cx, |editor, _, cx| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            let row = rows.first().unwrap();
+            row.name.update(cx, |editor, cx| {
+                editor.set_text("1st", cx);
+            });
+        });
+
+        let error = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.save_active_item(actions::pane::SaveIntent::Save, window, cx)
+            })
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.to_string(), "Cannot save invalid variable names");
+        project_config_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_dirty(cx));
+        });
+        assert_eq!(
+            temp_fs
+                .load("project/.zaku/environments/Dev.toml".as_ref())
+                .await
+                .unwrap(),
+            dev_env
+        );
+    }
+
+    #[test]
+    fn test_is_valid_variable_name() {
+        assert!(is_valid_variable_name("base_url"));
+        assert!(is_valid_variable_name("api.v2"));
+        assert!(is_valid_variable_name("user-id"));
+
+        assert!(!is_valid_variable_name("1st"));
+        assert!(!is_valid_variable_name("_token"));
+        assert!(!is_valid_variable_name("base url"));
+    }
+
+    #[test]
+    fn test_validation_states() {
+        let variables = [
+            ("", "", false),
+            ("  ", "1", false),
+            ("1st", "1", false),
+            ("page_size", "20", false),
+            ("page_size", "50", false),
+            ("timeout", "30", false),
+            ("timeout", "60", true),
+        ]
+        .into_iter()
+        .map(|(name, value, disabled)| Variable {
+            name: name.to_string(),
+            value: value.to_string(),
+            disabled,
+        })
+        .collect::<Vec<_>>();
+
+        assert_eq!(
+            validation_states(&variables),
+            vec![
+                ValidationState::None,
+                ValidationState::Error("Variable name must be provided.".to_string()),
+                ValidationState::Error(
+                    "Variable name must start with a letter and contain only letters, digits, '_', '-' and '.'."
+                        .to_string(),
+                ),
+                ValidationState::Warning(
+                    "Variable 'page_size' is defined more than once; the last one is used."
+                        .to_string(),
+                ),
+                ValidationState::Warning(
+                    "Variable 'page_size' is defined more than once; the last one is used."
+                        .to_string(),
+                ),
+                ValidationState::None,
+                ValidationState::None,
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_reload_invalid_environment(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap());
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        let (workspace, cx) = build_workspace(&project, cx);
+
+        let project_config_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/environments/Dev.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        temp_fs
+            .write(
+                &project_path.join(path!(".zaku/environments/Dev.toml")),
+                b"[environment",
+            )
+            .await
+            .unwrap();
+        worktree.flush_fs_events(cx).await;
+        cx.run_until_parked();
+
+        project_config_editor.read_with(cx, |editor, cx| {
+            let ProjectConfigEditorState::Invalid { error } = &editor.state else {
+                panic!("expected project config editor to be invalid");
+            };
+            assert_eq!(error, "unclosed table, expected `]` at line 1 column 13");
+            assert!(!editor.can_save(cx));
+        });
+
+        temp_fs
+            .write(
+                &project_path.join(path!(".zaku/environments/Dev.toml")),
+                indoc! {br#"
+                    [meta]
+                    version = 1
+
+                    [environment]
+                    color = "green"
+                    variables = [
+                      { name = "base_url", value = "http://localhost:3000" },
+                      { name = "user_id", value = "1" }
+                    ]
+                "#},
+            )
+            .await
+            .unwrap();
+        worktree.flush_fs_events(cx).await;
+        cx.run_until_parked();
+
+        project_config_editor.read_with(cx, |editor, cx| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            assert_eq!(
+                variables_from_rows(rows, cx),
+                vec![
+                    Variable {
+                        name: "base_url".to_string(),
+                        value: "http://localhost:3000".to_string(),
+                        disabled: false,
+                    },
+                    Variable {
+                        name: "user_id".to_string(),
+                        value: "1".to_string(),
+                        disabled: false,
+                    },
+                ]
+            );
+            assert!(editor.can_save(cx));
+        });
     }
 }
