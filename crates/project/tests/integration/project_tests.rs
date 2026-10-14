@@ -819,7 +819,9 @@ async fn test_open_buffer_at_uses_hidden_worktree_for_external_file(cx: &mut Tes
         Some(project_path)
     );
     assert!(opened_path.path.is_empty());
-    assert!(!hidden_worktree.read_with(cx, |worktree, _| worktree.is_visible()));
+    hidden_worktree.read_with(cx, |worktree, _| {
+        assert!(!worktree.is_visible());
+    });
 }
 
 #[gpui::test]

@@ -441,10 +441,12 @@ mod tests {
             !cx.has_pending_prompt(),
             "only window 1 should show an error prompt"
         );
-        assert!(
-            !update_version2.read_with(cx, |update_version, _| update_version.is_dismissed()),
-            "closing the prompt should keep the failure visible"
-        );
+        update_version2.read_with(cx, |update_version, _| {
+            assert!(
+                !update_version.is_dismissed(),
+                "closing the prompt should keep the failure visible"
+            );
+        });
     }
 
     #[gpui::test]
