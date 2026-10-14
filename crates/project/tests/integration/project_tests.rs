@@ -7,12 +7,15 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 use collections::BTreeMap;
 use fs::{Fs, RemoveOptions, TempFs};
 use path::{PathStyle, RelPath, rel_path};
-use project::{Project, ProjectEvent, ProjectItem, ProjectPath, RequestBuffer, RequestBufferEvent};
+use project::{
+    Project, ProjectConfigBuffer, ProjectEvent, ProjectItem, ProjectPath, RequestBuffer,
+    RequestBufferEvent,
+};
 use util_macros::path;
 use worktree::{
-    ConfigFileMeta, EnvironmentColor, EnvironmentFile, EnvironmentSection, FolderFile, ProjectFile,
-    RequestFile, RequestFileHttp, RequestFileMeta, RequestFileState, RequestSection,
-    SCHEMA_VERSION, Variable, WorktreeModelHandle,
+    ConfigFile, ConfigFileMeta, ConfigFileState, EnvironmentColor, EnvironmentFile,
+    EnvironmentSection, FolderFile, ProjectFile, RequestFile, RequestFileHttp, RequestFileMeta,
+    RequestFileState, RequestSection, SCHEMA_VERSION, Variable, WorktreeModelHandle,
 };
 
 #[gpui::test]
@@ -1399,6 +1402,192 @@ async fn test_edit_request_buffer_while_it_saves(cx: &mut TestAppContext) {
             [http]
             method = "GET"
             url = "https://api.zaku.dev/users/2"
+        "#}
+    );
+}
+
+#[gpui::test]
+async fn test_edit_project_config_buffer_while_it_reloads(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(
+        path!("project"),
+        json!({
+            ".zaku": {
+                "environments": {
+                    "Dev.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [environment]
+                        color = "green"
+                        variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                    "#}
+                }
+            }
+        }),
+    );
+
+    let project_path = temp_fs.path().join(path!("project"));
+    let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+    let worktree = project.update(cx, |project, cx| project.root_worktree(cx).unwrap());
+    let worktree_id = worktree.update(cx, |worktree, _| worktree.id());
+    let buffer = cx
+        .update(|cx| {
+            <ProjectConfigBuffer as ProjectItem>::try_open(
+                &project,
+                &(worktree_id, rel_path(".zaku/environments/Dev.toml")).into(),
+                cx,
+            )
+            .unwrap()
+        })
+        .await
+        .unwrap();
+
+    temp_fs
+        .write(
+            &project_path.join(path!(".zaku/environments/Dev.toml")),
+            indoc! {br#"
+                [meta]
+                version = 1
+
+                [environment]
+                color = "green"
+                variables = [{ name = "base_url", value = "http://localhost:3000" }]
+            "#},
+        )
+        .await
+        .unwrap();
+
+    let reload_task = project.update(cx, |project, cx| {
+        project.reload_project_config_buffer(&buffer, cx)
+    });
+    let edited_environment = ConfigFileState::Parsed(ConfigFile::Environment(EnvironmentFile {
+        meta: ConfigFileMeta {
+            version: SCHEMA_VERSION,
+        },
+        environment: EnvironmentSection {
+            color: Some(EnvironmentColor::Green),
+            variables: vec![Variable {
+                name: "base_url".to_string(),
+                value: "http://localhost:4321".to_string(),
+                disabled: false,
+            }],
+        },
+    }));
+    buffer.update(cx, |buffer, cx| {
+        buffer.set_config_file(edited_environment.clone(), cx);
+        buffer.set_dirty(true, cx);
+    });
+    reload_task.await.unwrap();
+
+    buffer.update(cx, |buffer, _| {
+        assert_eq!(buffer.config_file(), &edited_environment);
+        assert!(buffer.is_dirty());
+        assert!(buffer.has_conflict());
+    });
+}
+
+#[gpui::test]
+async fn test_edit_project_config_buffer_while_it_saves(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(
+        path!("project"),
+        json!({
+            ".zaku": {
+                "environments": {
+                    "Dev.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [environment]
+                        color = "green"
+                        variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                    "#}
+                }
+            }
+        }),
+    );
+
+    let project_path = temp_fs.path().join(path!("project"));
+    let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+    let worktree = project.update(cx, |project, cx| project.root_worktree(cx).unwrap());
+    let worktree_id = worktree.update(cx, |worktree, _| worktree.id());
+    let buffer = cx
+        .update(|cx| {
+            <ProjectConfigBuffer as ProjectItem>::try_open(
+                &project,
+                &(worktree_id, rel_path(".zaku/environments/Dev.toml")).into(),
+                cx,
+            )
+            .unwrap()
+        })
+        .await
+        .unwrap();
+
+    buffer.update(cx, |buffer, cx| {
+        buffer.set_config_file(
+            ConfigFileState::Parsed(ConfigFile::Environment(EnvironmentFile {
+                meta: ConfigFileMeta {
+                    version: SCHEMA_VERSION,
+                },
+                environment: EnvironmentSection {
+                    color: Some(EnvironmentColor::Green),
+                    variables: vec![Variable {
+                        name: "base_url".to_string(),
+                        value: "http://localhost:4321".to_string(),
+                        disabled: false,
+                    }],
+                },
+            })),
+            cx,
+        );
+        buffer.set_dirty(true, cx);
+    });
+
+    let save_task = project.update(cx, |project, cx| {
+        project.save_project_config_buffer(&buffer, cx)
+    });
+    buffer.update(cx, |buffer, cx| {
+        buffer.set_config_file(
+            ConfigFileState::Parsed(ConfigFile::Environment(EnvironmentFile {
+                meta: ConfigFileMeta {
+                    version: SCHEMA_VERSION,
+                },
+                environment: EnvironmentSection {
+                    color: Some(EnvironmentColor::Green),
+                    variables: vec![Variable {
+                        name: "base_url".to_string(),
+                        value: "http://localhost:5173".to_string(),
+                        disabled: false,
+                    }],
+                },
+            })),
+            cx,
+        );
+        buffer.set_dirty(true, cx);
+    });
+    save_task.await.unwrap();
+
+    buffer.update(cx, |buffer, _| {
+        assert!(buffer.is_dirty());
+        assert!(!buffer.has_conflict());
+    });
+    assert_eq!(
+        temp_fs
+            .load("project/.zaku/environments/Dev.toml".as_ref())
+            .await
+            .unwrap(),
+        indoc! {r#"
+            [meta]
+            version = 1
+
+            [environment]
+            color = "green"
+            variables = [{ name = "base_url", value = "http://localhost:4321" }]
         "#}
     );
 }
