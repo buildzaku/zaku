@@ -6,7 +6,8 @@ use fs::Fs;
 use path::{PathStyle, RelPath};
 use util::ResultExt;
 use worktree::{
-    EnvironmentFile, FolderFile, PathChange, ProjectFile, UpdatedEntriesSet, Worktree, WorktreeId,
+    ConfigFileKind, EnvironmentFile, FolderFile, PathChange, ProjectFile, UpdatedEntriesSet,
+    Worktree, WorktreeId,
 };
 
 use crate::{
@@ -25,41 +26,6 @@ pub enum ProjectConfigStoreEvent {
 pub struct InvalidConfigFileError {
     pub path: Arc<RelPath>,
     pub message: String,
-}
-
-enum ConfigFileKind {
-    Project,
-    Environment(String),
-    Folder(Arc<RelPath>),
-}
-
-impl ConfigFileKind {
-    fn for_path(path: &RelPath) -> Option<Self> {
-        if path == path::project_config_file_relative_path() {
-            return Some(Self::Project);
-        }
-
-        if path.parent() == Some(path::project_environments_folder_relative_path())
-            && path
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
-        {
-            return path
-                .file_stem()
-                .map(|name| Self::Environment(name.to_string()));
-        }
-
-        let folder_file_relative_path = path::project_folder_file_relative_path();
-        let folder = path
-            .ancestors()
-            .nth(folder_file_relative_path.component_count())?;
-        let is_folder_file = !folder.is_empty()
-            && !folder
-                .components()
-                .any(|component| component == path::project_config_folder_name())
-            && &*folder.join(folder_file_relative_path) == path;
-        is_folder_file.then(|| Self::Folder(folder.into()))
-    }
 }
 
 pub struct ProjectConfigStore {

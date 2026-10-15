@@ -155,8 +155,10 @@ impl RenderOnce for Checkbox {
                     .children(icon),
             );
 
+        let id = self.id;
         gpui::div()
-            .id(self.id)
+            .id(id.clone())
+            .debug_selector(|| format!("CHECKBOX-{id}"))
             .flex()
             .items_center()
             .map(|this| {

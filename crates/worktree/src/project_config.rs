@@ -1,8 +1,105 @@
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::{collections::HashMap, hash::BuildHasher};
+use std::{collections::HashMap, hash::BuildHasher, sync::Arc};
+
+use path::RelPath;
 
 use crate::SCHEMA_VERSION;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigFileKind {
+    Project,
+    Environment(String),
+    Folder(Arc<RelPath>),
+}
+
+impl ConfigFileKind {
+    pub fn for_path(path: &RelPath) -> Option<Self> {
+        if path == path::project_config_file_relative_path() {
+            return Some(Self::Project);
+        }
+
+        if path.parent() == Some(path::project_environments_folder_relative_path())
+            && path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
+        {
+            return path
+                .file_stem()
+                .map(|name| Self::Environment(name.to_string()));
+        }
+
+        let folder_file_relative_path = path::project_folder_file_relative_path();
+        let folder = path
+            .ancestors()
+            .nth(folder_file_relative_path.component_count())?;
+        let is_folder_file = !folder.is_empty()
+            && !folder
+                .components()
+                .any(|component| component == path::project_config_folder_name())
+            && &*folder.join(folder_file_relative_path) == path;
+        is_folder_file.then(|| Self::Folder(folder.into()))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigFileType {
+    Project,
+    Environment,
+}
+
+impl ConfigFileType {
+    pub fn for_path(path: &RelPath) -> Option<Self> {
+        match ConfigFileKind::for_path(path)? {
+            ConfigFileKind::Project => Some(Self::Project),
+            ConfigFileKind::Environment(_) => Some(Self::Environment),
+            ConfigFileKind::Folder(_) => None,
+        }
+    }
+
+    pub fn parse(self, contents: &str) -> ConfigFileState {
+        let config_file = match self {
+            Self::Project => parse_config_file(contents).map(ConfigFile::Project),
+            Self::Environment => parse_config_file(contents).map(ConfigFile::Environment),
+        };
+
+        match config_file {
+            Ok(config_file) => ConfigFileState::Parsed(config_file),
+            Err(error) => ConfigFileState::Invalid(error.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigFileState {
+    Parsed(ConfigFile),
+    Invalid(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum ConfigFile {
+    Project(ProjectFile),
+    Environment(EnvironmentFile),
+}
+
+impl ConfigFile {
+    pub fn variables(&self) -> &[Variable] {
+        match self {
+            Self::Project(project_file) => &project_file.request.variables,
+            Self::Environment(environment_file) => &environment_file.environment.variables,
+        }
+    }
+
+    pub fn set_variables(&mut self, variables: Vec<Variable>) {
+        match self {
+            Self::Project(project_file) => project_file.request.variables = variables,
+            Self::Environment(environment_file) => {
+                environment_file.environment.variables = variables;
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectFile {
@@ -144,7 +241,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
-    fn test_parse_project_file() {
+    fn test_parse_config_file_into_project_file() {
         let project_file = parse_config_file::<ProjectFile>(indoc! {r#"
             [meta]
             version = 1
@@ -178,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_folder_file() {
+    fn test_parse_config_file_into_folder_file() {
         let folder_file = parse_config_file::<FolderFile>(indoc! {r#"
             [meta]
             version = 1
@@ -212,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_environment_file() {
+    fn test_parse_config_file_into_environment_file() {
         let environment_file = parse_config_file::<EnvironmentFile>(indoc! {r#"
             [meta]
             version = 1

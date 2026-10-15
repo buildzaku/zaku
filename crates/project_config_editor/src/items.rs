@@ -1,0 +1,551 @@
+use anyhow::{Context as _, anyhow};
+use gpui::{
+    AnyElement, App, AppContext, Context, Entity, EntityId, SharedString, Task, WeakEntity, Window,
+    prelude::*,
+};
+
+use editor::items::{entry_git_aware_text_color, entry_text_color};
+use path::PathExt;
+use project::{ConfigFileState, ConfigFileType, Project, ProjectConfigBuffer};
+use settings::{GitSettings, Settings};
+use ui::{Color, Icon, IconAsset, IconSize, Text, TextCommon};
+use util::truncate_and_trailoff;
+use workspace::{
+    Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, TabContentParams,
+    ToolbarItemLocation, Workspace, WorkspaceId, delete_unloaded_items, pane::Pane,
+};
+
+use crate::{
+    ProjectConfigEditor, ProjectConfigEditorEvent, ProjectConfigEditorState,
+    persistence::{ProjectConfigEditorDb, SerializedProjectConfigEditor},
+};
+
+const MAX_TAB_TITLE_LEN: usize = 24;
+
+impl Item for ProjectConfigEditor {
+    type Event = ProjectConfigEditorEvent;
+
+    fn to_item_events(event: &Self::Event, emitter: &mut dyn FnMut(ItemEvent)) {
+        match event {
+            ProjectConfigEditorEvent::TitleChanged => {
+                emitter(ItemEvent::UpdateTab);
+                emitter(ItemEvent::UpdateBreadcrumbs);
+            }
+            ProjectConfigEditorEvent::Saved | ProjectConfigEditorEvent::DirtyChanged => {
+                emitter(ItemEvent::UpdateTab);
+            }
+            ProjectConfigEditorEvent::ProjectConfigBufferEdited => emitter(ItemEvent::Edit),
+            ProjectConfigEditorEvent::FileHandleChanged => {}
+        }
+    }
+
+    fn breadcrumb_location(&self, _: &App) -> ToolbarItemLocation {
+        ToolbarItemLocation::PrimaryLeft
+    }
+
+    fn breadcrumbs(&self, cx: &App) -> Option<Vec<SharedString>> {
+        let project_path = self.project_path(cx)?;
+        let path = project_path.path.display(self.path_style(cx)).into_owned();
+
+        Some(vec![path.into()])
+    }
+
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        self.title(cx)
+    }
+
+    fn tab_content(&self, params: TabContentParams, _: &Window, cx: &App) -> AnyElement {
+        let git_settings = GitSettings::get_global(cx);
+        let git_status_enabled =
+            git_settings.is_git_status_enabled() && git_settings.status.tabs.colors;
+        let text_color = if git_status_enabled {
+            self.project_path(cx)
+                .and_then(|project_path| {
+                    let project = self.project.read(cx);
+                    let entry = project.entry_for_path(&project_path, cx)?;
+                    let git_status = project
+                        .project_path_git_status(&project_path, cx)
+                        .map(|status| status.summary())
+                        .unwrap_or_default();
+
+                    Some(entry_git_aware_text_color(
+                        git_status,
+                        entry.is_ignored,
+                        params.selected,
+                    ))
+                })
+                .unwrap_or_else(|| entry_text_color(params.selected))
+        } else {
+            entry_text_color(params.selected)
+        };
+        let was_deleted = self.buffer.read(cx).file().disk_state.is_deleted();
+        let title = Text::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
+            .single_line()
+            .color(text_color)
+            .when(params.preview, |this| this.italic())
+            .when(was_deleted, |this| this.strikethrough());
+        let icon = match (&self.state, self.buffer.read(cx).file_type()) {
+            (ProjectConfigEditorState::Invalid { .. }, _) => Icon::new(IconAsset::WarningCircle)
+                .size(IconSize::Small)
+                .color(Color::Error),
+            (ProjectConfigEditorState::Ready(_), ConfigFileType::Project) => {
+                Icon::new(IconAsset::SquareInset)
+                    .size(IconSize::XSmall)
+                    .color(text_color)
+            }
+            (ProjectConfigEditorState::Ready(_), ConfigFileType::Environment) => {
+                environment_selector::environment_icon(self.environment_color(cx), text_color)
+            }
+        };
+
+        gpui::div()
+            .flex()
+            .items_center()
+            .min_w_0()
+            .gap_2()
+            .child(gpui::div().flex_none().flex().items_center().child(icon))
+            .child(title)
+            .into_any_element()
+    }
+
+    fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
+        let project_path = self.project_path(cx)?;
+        self.project
+            .read(cx)
+            .absolute_path(&project_path, cx)
+            .map(|path| {
+                ui::utils::replace_control_characters(&path.compact().to_string_lossy())
+                    .into_owned()
+                    .into()
+            })
+    }
+
+    fn for_each_project_item(
+        &self,
+        cx: &App,
+        visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+    ) {
+        visitor(Entity::entity_id(&self.buffer), self.buffer.read(cx));
+    }
+
+    fn buffer_kind(&self, _: &App) -> ItemBufferKind {
+        ItemBufferKind::Singleton
+    }
+
+    fn is_dirty(&self, cx: &App) -> bool {
+        self.buffer.read(cx).is_dirty()
+    }
+
+    fn has_conflict(&self, cx: &App) -> bool {
+        self.buffer.read(cx).has_conflict()
+    }
+
+    fn can_save(&self, cx: &App) -> bool {
+        matches!(&self.state, ProjectConfigEditorState::Ready(_)) && self.project_path(cx).is_some()
+    }
+
+    fn save(
+        &mut self,
+        project: Entity<Project>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let buffer = self.buffer.clone();
+        let ProjectConfigEditorState::Ready(rows) = &self.state else {
+            return Task::ready(Err(anyhow!("Cannot save invalid config file")));
+        };
+        let variables = crate::variables_from_rows(rows, cx);
+        if crate::validation_states(&variables)
+            .iter()
+            .any(|validation_state| matches!(validation_state, crate::ValidationState::Error(_)))
+        {
+            return Task::ready(Err(anyhow!("Cannot save invalid variable names")));
+        }
+        buffer.update(cx, |buffer, cx| {
+            if let ConfigFileState::Parsed(config_file) = buffer.config_file() {
+                let mut config_file = config_file.clone();
+                config_file.set_variables(variables.clone());
+                buffer.set_config_file(ConfigFileState::Parsed(config_file), cx);
+            }
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            project
+                .update(cx, |project, cx| {
+                    project.save_project_config_buffer(&buffer, cx)
+                })
+                .await?;
+            this.update(cx, |project_config_editor, cx| {
+                project_config_editor.saved_variables = Some(variables);
+                cx.notify();
+            })?;
+            Ok(())
+        })
+    }
+
+    fn reload(
+        &mut self,
+        project: Entity<Project>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let buffer = self.buffer.clone();
+        let reload_task = project.update(cx, |project, cx| {
+            project.reload_project_config_buffer(&buffer, cx)
+        });
+
+        cx.spawn_in(window, async move |_, _| {
+            reload_task.await?;
+            anyhow::Ok(())
+        })
+    }
+}
+
+impl ProjectItem for ProjectConfigEditor {
+    type Item = ProjectConfigBuffer;
+
+    fn for_project_item(
+        project: Entity<Project>,
+        _: Option<&Pane>,
+        item: Entity<Self::Item>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self
+    where
+        Self: Sized,
+    {
+        Self::for_buffer(project, item, window, cx)
+    }
+}
+
+impl SerializableItem for ProjectConfigEditor {
+    fn serialized_item_kind() -> &'static str {
+        "ProjectConfigEditor"
+    }
+
+    fn cleanup(
+        workspace_id: WorkspaceId,
+        alive_items: Vec<ItemId>,
+        _: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        delete_unloaded_items(
+            alive_items,
+            workspace_id,
+            "project_config_editor",
+            &ProjectConfigEditorDb::global(cx),
+            cx,
+        )
+    }
+
+    fn deserialize(
+        project: Entity<Project>,
+        _: WeakEntity<Workspace>,
+        workspace_id: WorkspaceId,
+        item_id: ItemId,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<Entity<Self>>> {
+        let serialized_project_config_editor = match ProjectConfigEditorDb::global(cx)
+            .load_serialized_project_config_editor(item_id, workspace_id)
+        {
+            Ok(Some(serialized_project_config_editor)) => serialized_project_config_editor,
+            Ok(None) => {
+                return Task::ready(Err(anyhow!(
+                    "Unable to deserialize project config editor: No entry in database for item_id: {item_id} and workspace_id {workspace_id:?}"
+                )));
+            }
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let path = serialized_project_config_editor.absolute_path;
+
+        let Some(project_path) = project
+            .read(cx)
+            .project_path_for_absolute_path(path.as_path(), cx)
+        else {
+            return Task::ready(Err(anyhow!(
+                "Unable to deserialize project config editor: path is not in project: {}",
+                path.display()
+            )));
+        };
+
+        let Some(open_buffer) =
+            <ProjectConfigBuffer as project::ProjectItem>::try_open(&project, &project_path, cx)
+        else {
+            return Task::ready(Err(anyhow!(
+                "Unable to deserialize project config editor: cannot open path: {}",
+                path.display()
+            )));
+        };
+
+        window.spawn(cx, async move |cx| {
+            let buffer = open_buffer.await?;
+            cx.update(|window, cx| {
+                cx.new(|cx| ProjectConfigEditor::for_buffer(project, buffer, window, cx))
+            })
+        })
+    }
+
+    fn serialize(
+        &mut self,
+        workspace: &mut Workspace,
+        item_id: ItemId,
+        _closing: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let project_path = self.project_path(cx)?;
+        let path = self.project.read(cx).absolute_path(&project_path, cx)?;
+        let workspace_id = workspace.database_id()?;
+        let project_config_editor_db = ProjectConfigEditorDb::global(cx);
+
+        Some(cx.background_spawn(async move {
+            project_config_editor_db
+                .save_serialized_project_config_editor(
+                    item_id,
+                    workspace_id,
+                    SerializedProjectConfigEditor {
+                        absolute_path: path,
+                    },
+                )
+                .await
+                .context("failed to save serialized project config editor")
+        }))
+    }
+
+    fn should_serialize(&self, event: &Self::Event) -> bool {
+        matches!(
+            event,
+            ProjectConfigEditorEvent::Saved
+                | ProjectConfigEditorEvent::DirtyChanged
+                | ProjectConfigEditorEvent::ProjectConfigBufferEdited
+                | ProjectConfigEditorEvent::FileHandleChanged
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::TestAppContext;
+    use indoc::indoc;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    use fs::TempFs;
+    use path::{PathStyle, rel_path};
+    use project::Variable;
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+    use util_macros::path;
+    use workspace::{AppState, WorkspaceDb, build_workspace};
+
+    fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test_new(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+            workspace::init(app_state, cx);
+            editor::init(cx);
+            crate::init(cx);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_deserialize(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let project_config_editor_db = cx.update(|_, cx| ProjectConfigEditorDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let item_id: ItemId = 1;
+        let serialized_project_config_editor = SerializedProjectConfigEditor {
+            absolute_path: project_path.join(path!(".zaku/environments/Dev.toml")),
+        };
+
+        project_config_editor_db
+            .save_serialized_project_config_editor(
+                item_id,
+                workspace_id,
+                serialized_project_config_editor,
+            )
+            .await
+            .unwrap();
+
+        let weak_workspace = workspace.downgrade();
+        let project_config_editor = workspace
+            .update_in(cx, |_, window, cx| {
+                ProjectConfigEditor::deserialize(
+                    project.clone(),
+                    weak_workspace.clone(),
+                    workspace_id,
+                    item_id,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+
+        project_config_editor.read_with(cx, |project_config_editor, cx| {
+            let ProjectConfigEditorState::Ready(rows) = &project_config_editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+
+            assert_eq!(
+                crate::variables_from_rows(rows, cx),
+                vec![Variable {
+                    name: "base_url".to_string(),
+                    value: "http://localhost:8000".to_string(),
+                    disabled: false,
+                }]
+            );
+            assert_eq!(
+                project_config_editor.buffer.read(cx).file().path.as_ref(),
+                rel_path(".zaku/environments/Dev.toml")
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_deserialize_missing_environment(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(path!("project"), json!({}));
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let project_config_editor_db = cx.update(|_, cx| ProjectConfigEditorDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let item_id: ItemId = 1;
+        let serialized_project_config_editor = SerializedProjectConfigEditor {
+            absolute_path: project_path.join(path!(".zaku/environments/Dev.toml")),
+        };
+
+        project_config_editor_db
+            .save_serialized_project_config_editor(
+                item_id,
+                workspace_id,
+                serialized_project_config_editor,
+            )
+            .await
+            .unwrap();
+
+        let weak_workspace = workspace.downgrade();
+        let error = workspace
+            .update_in(cx, |_, window, cx| {
+                ProjectConfigEditor::deserialize(
+                    project.clone(),
+                    weak_workspace.clone(),
+                    workspace_id,
+                    item_id,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "failed to read file {}",
+                project_path
+                    .join(path!(".zaku/environments/Dev.toml"))
+                    .display()
+            )
+        );
+    }
+
+    #[gpui::test]
+    async fn test_breadcrumbs(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, cx) = build_workspace(&project, cx);
+        let project_config_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/environments/Dev.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        project_config_editor.read_with(cx, |project_config_editor, cx| {
+            assert_eq!(
+                project_config_editor.breadcrumb_location(cx),
+                ToolbarItemLocation::PrimaryLeft
+            );
+            assert_eq!(
+                project_config_editor.breadcrumbs(cx),
+                Some(vec![
+                    rel_path(".zaku/environments/Dev.toml")
+                        .display(PathStyle::local())
+                        .into_owned()
+                        .into()
+                ])
+            );
+        });
+    }
+}

@@ -11,5 +11,6 @@ pub mod response_panel;
 pub mod text;
 pub mod theme;
 pub mod updater;
+pub mod variables_panel;
 pub mod workspace;
 pub mod zaku;

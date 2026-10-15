@@ -1837,7 +1837,7 @@ impl RequestEditor {
                         background: theme_colors.element_background.opacity(0.5),
                         foreground: theme_colors.button_secondary_foreground,
                         hover_background: theme_colors.button_secondary_hover_background,
-                        border: gpui::transparent_black(),
+                        border: theme_colors.text.opacity(0.15),
                     })
                     .size(ButtonSize::None)
                     .width(gpui::rems(1.0))
@@ -2823,7 +2823,9 @@ mod tests {
 
         cx.dispatch_action(actions::workspace::SendRequest);
         let response_tx = rx.try_recv().unwrap();
-        assert!(request_editor.read_with(cx, |editor, cx| editor.is_fetching(cx)));
+        request_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_fetching(cx));
+        });
 
         cx.dispatch_action(actions::workspace::SendRequest);
         assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
@@ -2846,7 +2848,9 @@ mod tests {
         let button_bounds = cx.debug_bounds("BUTTON-request-send-cancel").unwrap();
         cx.simulate_click(button_bounds.center(), Modifiers::default());
         let response_tx = rx.try_recv().unwrap();
-        assert!(request_editor.read_with(cx, |editor, cx| editor.is_fetching(cx)));
+        request_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_fetching(cx));
+        });
 
         let response = Response::builder()
             .status(StatusCode::OK)
@@ -3059,12 +3063,16 @@ mod tests {
 
         cx.dispatch_action(actions::workspace::CancelRequest);
         assert!(second_tx.is_canceled());
-        assert!(first_editor.read_with(cx, |editor, cx| editor.is_fetching(cx)));
+        first_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_fetching(cx));
+        });
 
         cx.dispatch_action(actions::workspace::SendRequest);
         let (path, second_tx) = rx.try_recv().unwrap();
         assert_eq!(path, "/second");
-        assert!(second_editor.read_with(cx, |editor, cx| editor.is_fetching(cx)));
+        second_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_fetching(cx));
+        });
 
         second_editor.update_in(cx, |editor, window, cx| {
             editor.focus_handle(cx).focus(window, cx);
@@ -3191,7 +3199,9 @@ mod tests {
             !response_tx.is_canceled(),
             "escape should only dismiss the method dropdown"
         );
-        assert!(request_editor.read_with(cx, |editor, cx| editor.is_fetching(cx)));
+        request_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_fetching(cx));
+        });
         cx.update(|window, cx| assert!(focus_handle.contains_focused(window, cx)));
 
         cx.simulate_keystrokes("escape");
@@ -3298,7 +3308,9 @@ mod tests {
             .downcast::<RequestEditor>()
             .unwrap();
 
-        assert!(!request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
+        request_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+        });
 
         request_editor.update_in(cx, |editor, _, cx| {
             let RequestEditorState::Ready(request) = &mut editor.request else {
@@ -3317,7 +3329,9 @@ mod tests {
             });
         });
 
-        assert!(request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
+        request_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_dirty(cx));
+        });
 
         request_editor.update_in(cx, |editor, window, cx| {
             let RequestEditorState::Ready(request) = &mut editor.request else {
@@ -3336,7 +3350,9 @@ mod tests {
             .unwrap();
         worktree.flush_fs_events(cx).await;
 
-        assert!(!request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
+        request_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+        });
 
         let saved = temp_fs
             .load("project/folder/request.toml".as_ref())

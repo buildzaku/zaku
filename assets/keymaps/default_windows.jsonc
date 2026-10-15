@@ -44,7 +44,9 @@
       "ctrl-s": "workspace::Save",
       "ctrl-enter": "workspace::SendRequest",
       "ctrl-shift-e": "project_panel::ToggleFocus",
-      "ctrl-shift-r": "response_panel::ToggleFocus"
+      "ctrl-e": "variables_panel::ToggleFocus",
+      "ctrl-shift-r": "response_panel::ToggleFocus",
+      "ctrl-k ctrl-e": "environment_selector::Toggle"
     }
   },
   {
@@ -103,6 +105,15 @@
     "use_key_equivalents": true,
     "bindings": {
       "space": "project_panel::Open"
+    }
+  },
+  {
+    "context": "VariablesPanel",
+    "use_key_equivalents": true,
+    "bindings": {
+      "tab": null,
+      "shift-tab": null,
+      "space": "variables_panel::Open"
     }
   },
   {
@@ -188,6 +199,12 @@
   },
   {
     "context": "RequestForm > Editor && mode == auto_height",
+    "bindings": {
+      "enter": "editor::Newline"
+    }
+  },
+  {
+    "context": "ProjectConfigEditor > Editor && mode == auto_height",
     "bindings": {
       "enter": "editor::Newline"
     }

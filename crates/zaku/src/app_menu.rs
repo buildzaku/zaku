@@ -64,6 +64,7 @@ pub fn app_menu(cx: &mut App) -> Vec<Menu> {
                 MenuItem::action("Toggle Bottom Dock", actions::workspace::ToggleBottomDock),
                 MenuItem::separator(),
                 MenuItem::action("Project Panel", actions::project_panel::ToggleFocus),
+                MenuItem::action("Variables Panel", actions::variables_panel::ToggleFocus),
                 MenuItem::action("Response Panel", actions::response_panel::ToggleFocus),
             ],
         },

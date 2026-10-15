@@ -937,7 +937,9 @@ mod tests {
         let buffer = cx.new(|cx| Buffer::local("{}", cx).with_language(json_lang(), cx));
 
         cx.executor().run_until_parked();
-        assert!(!buffer.update(cx, |buffer, _| buffer.is_parsing()));
+        buffer.update(cx, |buffer, _| {
+            assert!(!buffer.is_parsing());
+        });
         assert_eq!(get_tree_sexp(&buffer, cx), "(document (object))");
 
         buffer.update(cx, |buffer, _| buffer.set_sync_parse_timeout(None));
@@ -957,7 +959,9 @@ mod tests {
             assert!(buffer.is_parsing());
         });
         cx.executor().run_until_parked();
-        assert!(!buffer.update(cx, |buffer, _| buffer.is_parsing()));
+        buffer.update(cx, |buffer, _| {
+            assert!(!buffer.is_parsing());
+        });
         assert_eq!(get_tree_sexp(&buffer, cx), "(document (array))");
 
         buffer.update(cx, |buffer, cx| {

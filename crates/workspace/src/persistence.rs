@@ -1533,7 +1533,7 @@ mod tests {
         let second_workspace_id = workspace_db.next_id().await.unwrap();
 
         workspace_db
-            .set_active_environment(first_workspace_id, Some("dev".to_string()))
+            .set_active_environment(first_workspace_id, Some("Dev".to_string()))
             .await
             .unwrap();
         assert_eq!(
@@ -1541,11 +1541,11 @@ mod tests {
                 .active_environment(first_workspace_id)
                 .await
                 .unwrap(),
-            Some("dev".to_string())
+            Some("Dev".to_string())
         );
 
         workspace_db
-            .set_active_environment(first_workspace_id, Some("prod".to_string()))
+            .set_active_environment(first_workspace_id, Some("Prod".to_string()))
             .await
             .unwrap();
         assert_eq!(
@@ -1553,11 +1553,11 @@ mod tests {
                 .active_environment(first_workspace_id)
                 .await
                 .unwrap(),
-            Some("prod".to_string())
+            Some("Prod".to_string())
         );
 
         workspace_db
-            .set_active_environment(second_workspace_id, Some("dev".to_string()))
+            .set_active_environment(second_workspace_id, Some("Dev".to_string()))
             .await
             .unwrap();
         workspace_db
@@ -1576,7 +1576,7 @@ mod tests {
                 .active_environment(second_workspace_id)
                 .await
                 .unwrap(),
-            Some("dev".to_string())
+            Some("Dev".to_string())
         );
 
         workspace_db

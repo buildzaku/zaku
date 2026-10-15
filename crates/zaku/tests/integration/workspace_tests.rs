@@ -292,7 +292,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
         json!({
             ".zaku": {
                 "environments": {
-                    "dev.toml": indoc! {r#"
+                    "Dev.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -300,7 +300,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                         color = "green"
                         variables = [{ name = "base_url", value = "http://localhost:8000" }]
                     "#},
-                    "staging-9.toml": indoc! {r#"
+                    "Staging-9.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -308,7 +308,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                         color = "blue"
                         variables = [{ name = "base_url", value = "https://staging-9.api.zaku.dev" }]
                     "#},
-                    "staging-10.toml": indoc! {r#"
+                    "Staging-10.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -331,7 +331,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
             .project_config_store()
             .clone()
             .update(cx, |project_config_store, cx| {
-                project_config_store.activate_environment(Some("dev".to_string()), cx);
+                project_config_store.activate_environment(Some("Dev".to_string()), cx);
             });
     });
 
@@ -353,9 +353,9 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
             picker.delegate.matched_environments(),
             vec![
                 (None, false),
-                (Some("dev".to_string()), false),
-                (Some("staging-9".to_string()), false),
-                (Some("staging-10".to_string()), false),
+                (Some("Dev".to_string()), false),
+                (Some("Staging-9".to_string()), false),
+                (Some("Staging-10".to_string()), false),
             ]
         );
         assert_eq!(picker.delegate.selected_index(), 1);
@@ -367,7 +367,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
     );
     temp_fs
         .remove_file(
-            &project_path.join(path!(".zaku/environments/dev.toml")),
+            &project_path.join(path!(".zaku/environments/Dev.toml")),
             RemoveOptions::default(),
         )
         .await
@@ -392,10 +392,10 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
         assert_eq!(
             picker.delegate.matched_environments(),
             vec![
-                (Some("dev".to_string()), true),
+                (Some("Dev".to_string()), true),
                 (None, false),
-                (Some("staging-9".to_string()), false),
-                (Some("staging-10".to_string()), false),
+                (Some("Staging-9".to_string()), false),
+                (Some("Staging-10".to_string()), false),
             ]
         );
         assert_eq!(picker.delegate.selected_index(), 0);
@@ -413,7 +413,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                 .project_config_store()
                 .read(cx)
                 .active_environment(),
-            Some("staging-10")
+            Some("Staging-10")
         );
         assert!(workspace.active_modal::<EnvironmentSelector>(cx).is_none());
     });
@@ -442,7 +442,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                 .project_config_store()
                 .read(cx)
                 .active_environment(),
-            Some("staging-10")
+            Some("Staging-10")
         );
     });
 }
@@ -1045,7 +1045,9 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
     .await;
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
-    assert!(pane.read_with(cx, |pane, _| pane.preview_item_idx().is_none()));
+    pane.read_with(cx, |pane, _| {
+        assert!(pane.preview_item_idx().is_none());
+    });
 
     open_path_preview(
         open_result.window,
@@ -1057,9 +1059,9 @@ async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) 
     cx.run_until_parked();
 
     let first_item_id = first_item.item_id();
-    assert!(pane.read_with(cx, |pane, _| {
-        pane.items().any(|item| item.item_id() == first_item_id)
-    }));
+    pane.read_with(cx, |pane, _| {
+        assert!(pane.items().any(|item| item.item_id() == first_item_id));
+    });
 
     let response = Response::builder()
         .status(StatusCode::OK)
@@ -1186,9 +1188,9 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "first response"
@@ -1262,9 +1264,9 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "second response"
@@ -1313,9 +1315,9 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
 
     activate_item_for_path(open_result.window, "folder/first.toml", cx);
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "first response"
@@ -1353,9 +1355,9 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
 
     activate_item_for_path(open_result.window, "folder/second.toml", cx);
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "second response"
@@ -1472,18 +1474,18 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
         .unwrap();
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
-    assert!(response_panel.read_with(cx, |response_panel, _| {
-        response_panel.has_response_context()
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
+    response_panel.read_with(cx, |response_panel, _| {
+        assert!(response_panel.has_response_context());
+    });
 
     activate_item_for_path(open_result.window, "settings.jsonc", cx);
 
-    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(!workspace.is_panel_open::<ResponsePanel>(cx));
+    });
 
     cx.executor()
         .advance_clock(workspace::SERIALIZATION_THROTTLE_TIME);
@@ -1520,24 +1522,24 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         }),
         Some(ProjectPath::from((worktree_id, rel_path("settings.jsonc"))))
     );
-    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(!workspace.is_panel_open::<ResponsePanel>(cx));
+    });
 
     activate_item_for_path(open_result.window, "folder/second.toml", cx);
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
-    assert!(response_panel.read_with(cx, |response_panel, _| {
-        response_panel.has_response_context()
-    }));
-    assert!(
-        response_panel.read_with(cx, |response_panel, cx| {
-            response_panel.text(cx).is_empty()
-        }),
-        "response panel should reflect restored request tab"
-    );
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
+    response_panel.read_with(cx, |response_panel, _| {
+        assert!(response_panel.has_response_context());
+    });
+    response_panel.read_with(cx, |response_panel, cx| {
+        assert!(
+            response_panel.text(cx).is_empty(),
+            "response panel should reflect restored request tab"
+        );
+    });
 
     activate_item_for_path(open_result.window, "settings.jsonc", cx);
 
@@ -1546,21 +1548,21 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         actions::response_panel::ToggleFocus,
     );
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
-    assert!(!response_panel.read_with(cx, |response_panel, _| {
-        response_panel.has_response_context()
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
+    response_panel.read_with(cx, |response_panel, _| {
+        assert!(!response_panel.has_response_context());
+    });
 
     activate_item_for_path(open_result.window, "folder/second.toml", cx);
 
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "second response"
@@ -1568,28 +1570,28 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
 
     activate_item_for_path(open_result.window, "settings.jsonc", cx);
 
-    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
-    assert!(!response_panel.read_with(cx, |response_panel, _| {
-        response_panel.has_response_context()
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(!workspace.is_panel_open::<ResponsePanel>(cx));
+    });
+    response_panel.read_with(cx, |response_panel, _| {
+        assert!(!response_panel.has_response_context());
+    });
 
     activate_item_for_path(open_result.window, "folder/first.toml", cx);
 
-    assert!(
-        response_panel.read_with(cx, |response_panel, cx| {
-            response_panel.text(cx).is_empty()
-        }),
-        "response panel should reflect first tab"
-    );
+    response_panel.read_with(cx, |response_panel, cx| {
+        assert!(
+            response_panel.text(cx).is_empty(),
+            "response panel should reflect first tab"
+        );
+    });
 
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "first response"
@@ -1597,9 +1599,9 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
 
     activate_item_for_path(open_result.window, "folder/second.toml", cx);
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "second response"
@@ -1662,19 +1664,19 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
 
     open_path(open_result.window, valid_request_path.clone(), cx).await;
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
-    assert!(response_panel.read_with(cx, |response_panel, _| {
-        response_panel.has_response_context()
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
+    response_panel.read_with(cx, |response_panel, _| {
+        assert!(response_panel.has_response_context());
+    });
 
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "valid response"
@@ -1682,15 +1684,15 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
 
     open_path(open_result.window, invalid_request_path, cx).await;
 
-    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(!workspace.is_panel_open::<ResponsePanel>(cx));
+    });
 
     open_path(open_result.window, valid_request_path.clone(), cx).await;
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "valid response"
@@ -1699,24 +1701,24 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
     open_path(open_result.window, settings_path.clone(), cx).await;
 
     assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 3);
-    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(!workspace.is_panel_open::<ResponsePanel>(cx));
+    });
 
     cx.dispatch_action(
         open_result.window.into(),
         actions::response_panel::ToggleFocus,
     );
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
 
     open_path(open_result.window, valid_request_path, cx).await;
 
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(workspace.is_panel_open::<ResponsePanel>(cx));
+    });
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "valid response"
@@ -1724,9 +1726,9 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
 
     open_path(open_result.window, settings_path, cx).await;
 
-    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        assert!(!workspace.is_panel_open::<ResponsePanel>(cx));
+    });
 }
 
 #[gpui::test]

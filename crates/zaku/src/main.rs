@@ -191,6 +191,7 @@ fn main() {
         reliability::init(client, cx);
         workspace::init(app_state.clone(), cx);
         project_panel::init(cx);
+        variables_panel::init(cx);
         editor::init(cx);
         request_editor::init(cx);
         response_panel::init(cx);
@@ -198,6 +199,7 @@ fn main() {
         zaku::init(cx);
         command_palette::init(cx);
         recent_projects::init(cx);
+        project_config_editor::init(cx);
         environment_selector::init(cx);
         let menus = zaku::app_menu(cx);
         cx.set_menus(menus);

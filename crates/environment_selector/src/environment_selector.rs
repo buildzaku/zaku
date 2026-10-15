@@ -1,6 +1,6 @@
 use fuzzy_nucleo::{Case, LengthPenalty, StringMatch, StringMatchCandidate};
 use gpui::{
-    AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
+    Action, AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
     SharedString, Subscription, Task, TaskExt, WeakEntity, Window, prelude::*,
 };
 use std::{iter, sync::Arc};
@@ -8,8 +8,9 @@ use std::{iter, sync::Arc};
 use picker::{Picker, PickerDelegate};
 use project::{EnvironmentColor, Project};
 use ui::{
-    ActiveTheme, Color, DynamicSpacing, HighlightedText, Icon, IconAsset, IconSize, ListItem,
-    ListItemSpacing, ListSubHeader, Text, TextCommon, TextSize, Toggleable,
+    ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, DynamicSpacing,
+    HighlightedText, Icon, IconAsset, IconSize, KeyBinding, ListItem, ListItemSpacing,
+    ListSubHeader, Text, TextCommon, TextSize, Toggleable,
 };
 use workspace::{ModalView, Workspace, WorkspaceDb};
 
@@ -18,7 +19,7 @@ pub fn init(cx: &mut App) {
 }
 
 pub fn environment_icon(environment_color: Option<EnvironmentColor>, text_color: Color) -> Icon {
-    Icon::new(IconAsset::Circle)
+    Icon::new(IconAsset::SquareInset)
         .size(IconSize::XSmall)
         .color(match environment_color {
             Some(EnvironmentColor::Red) => Color::PaletteRed,
@@ -303,10 +304,18 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
         index: usize,
         selected: bool,
         _: &mut Window,
-        _: &mut Context<Picker<Self>>,
+        cx: &mut Context<Picker<Self>>,
     ) -> Option<Self::ListItem> {
         let string_match = self.matches.get(index)?;
         let environment = self.environments.get(string_match.candidate_id)?;
+        let active_environment = self
+            .project
+            .read(cx)
+            .project_config_store()
+            .read(cx)
+            .active_environment();
+        let is_active =
+            !environment.is_missing && environment.name.as_deref() == active_environment;
 
         Some(
             ListItem::new(index)
@@ -318,7 +327,7 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                         .size(IconSize::XSmall)
                         .color(Color::Warning)
                 } else if environment.name.is_none() {
-                    Icon::new(IconAsset::CircleDashed)
+                    Icon::new(IconAsset::SquareDashed)
                         .size(IconSize::XSmall)
                         .color(Color::Default)
                 } else {
@@ -341,6 +350,13 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                             .size(TextSize::Small)
                             .color(Color::Muted),
                     )
+                })
+                .when(is_active, |this| {
+                    this.end_slot(
+                        Icon::new(IconAsset::Check)
+                            .size(IconSize::XSmall)
+                            .color(Color::Accent),
+                    )
                 }),
         )
     }
@@ -354,6 +370,48 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                 .pt(DynamicSpacing::Base04.rems(cx) * 2.0)
                 .bg(theme_colors.elevated_surface_background)
                 .child(ListSubHeader::new("Environments").inset(true))
+                .into_any_element(),
+        )
+    }
+
+    fn render_footer(&self, _: &mut Window, cx: &mut Context<Picker<Self>>) -> Option<AnyElement> {
+        let theme_colors = cx.theme().colors();
+
+        Some(
+            gpui::div()
+                .flex()
+                .items_center()
+                .justify_end()
+                .w_full()
+                .flex_none()
+                .p_1p5()
+                .border_t_1()
+                .border_color(theme_colors.border_variant)
+                .child(
+                    ButtonLike::new("manage-environments")
+                        .size(ButtonSize::Medium)
+                        .child(
+                            gpui::div()
+                                .flex()
+                                .items_center()
+                                .gap(DynamicSpacing::Base08.rems(cx))
+                                .child(Text::new("Manage Environments"))
+                                .child(
+                                    KeyBinding::for_action(
+                                        &actions::variables_panel::ToggleFocus,
+                                        cx,
+                                    )
+                                    .size(ui::rems_from_px(12.0_f32)),
+                                ),
+                        )
+                        .on_click(cx.listener(|_, _, window, cx| {
+                            window.dispatch_action(
+                                actions::variables_panel::ToggleFocus.boxed_clone(),
+                                cx,
+                            );
+                            cx.emit(DismissEvent);
+                        })),
+                )
                 .into_any_element(),
         )
     }

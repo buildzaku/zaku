@@ -19,6 +19,7 @@ use system_specs::SystemSpecs;
 use theme::{ActiveTheme, Appearance};
 use title_bar::TitleBar;
 use ui::StyledTypography;
+use variables_panel::VariablesPanel;
 use workspace::{
     AppState, Breadcrumbs, CloseIntent, DockPosition, OpenMode, Panel, Root, SessionWorkspace,
     Toast, Workspace, WorkspaceDb, WorkspaceEvent, create_and_open_file,
@@ -120,6 +121,8 @@ pub fn init(cx: &mut App) {
         let project_panel = ProjectPanel::new(workspace, window, cx);
         let project_panel_should_start_open = project_panel.read(cx).starts_open(window, cx);
         workspace.add_panel(project_panel, DockPosition::Left, window, cx);
+        let variables_panel = VariablesPanel::new(workspace, window, cx);
+        workspace.add_panel(variables_panel, DockPosition::Left, window, cx);
         if !project_panel_should_start_open {
             workspace.left_dock().update(cx, |dock, cx| {
                 dock.set_open(false, window, cx);

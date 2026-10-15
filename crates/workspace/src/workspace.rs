@@ -1580,7 +1580,8 @@ impl Workspace {
         let project = self.project.clone();
         let workspace_id = serialized_workspace.id;
         let center_pane = serialized_workspace.center_pane;
-        let docks = serialized_workspace.docks;
+        // Restore docks before waiting for the scan so the default panel doesn't flash.
+        self.set_dock_structure(serialized_workspace.docks, window, cx);
 
         cx.spawn_in(window, async move |workspace, cx| {
             let scan_complete =
@@ -1622,7 +1623,6 @@ impl Workspace {
                     cx.emit(WorkspaceEvent::PaneRestored(pane.clone()));
                     cx.focus_self(window);
                 }
-                workspace.set_dock_structure(docks, window, cx);
                 cx.notify();
 
                 item_ids_by_kind
@@ -2527,7 +2527,7 @@ impl Workspace {
             (self.bounds.size.width - dock::RESIZE_HANDLE_SIZE).max(dock::RESIZE_HANDLE_SIZE);
         let size = size.min(max_size);
         self.left_dock.update(cx, |dock, cx| {
-            dock.resize_active_panel(Some(size), window, cx);
+            dock.resize_panel_sizes(Some(size), window, cx);
         });
     }
 
@@ -2538,7 +2538,7 @@ impl Workspace {
             .min(max_size)
             .max(MIN_RESPONSE_PANE_HEIGHT.min(max_size));
         self.bottom_dock.update(cx, |dock, cx| {
-            dock.resize_active_panel(Some(size), window, cx);
+            dock.resize_panel_sizes(Some(size), window, cx);
         });
     }
 
@@ -3568,6 +3568,96 @@ mod tests {
             assert_eq!(
                 size_state.and_then(|state| state.size),
                 Some(gpui::px(350.0))
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn test_left_dock_panels_share_size(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
+
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
+        let (workspace, cx) = build_workspace(&project, cx);
+
+        workspace.update(cx, |workspace, _| {
+            workspace.bounds.size.width = gpui::px(640.0);
+        });
+
+        let (first_panel, second_panel) = workspace.update_in(cx, |workspace, window, cx| {
+            let first_panel = cx.new(|cx| TestPanel::new(100, cx));
+            let second_panel = cx.new(|cx| TestPanel::new(200, cx));
+            workspace.add_panel(first_panel.clone(), DockPosition::Left, window, cx);
+            workspace.add_panel(second_panel.clone(), DockPosition::Left, window, cx);
+            workspace.left_dock.update(cx, |left_dock, cx| {
+                left_dock.activate_panel(0, window, cx);
+                left_dock.set_open(true, window, cx);
+            });
+            workspace.resize_left_dock(gpui::px(350.0), window, cx);
+            (first_panel, second_panel)
+        });
+
+        workspace.read_with(cx, |workspace, cx| {
+            let left_dock = workspace.left_dock.read(cx);
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&first_panel)
+                    .and_then(|state| state.size),
+                Some(gpui::px(350.0))
+            );
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&second_panel)
+                    .and_then(|state| state.size),
+                Some(gpui::px(350.0))
+            );
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.left_dock.update(cx, |left_dock, cx| {
+                left_dock.activate_panel(1, window, cx);
+            });
+            workspace.resize_left_dock(gpui::px(400.0), window, cx);
+        });
+
+        workspace.read_with(cx, |workspace, cx| {
+            let left_dock = workspace.left_dock.read(cx);
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&first_panel)
+                    .and_then(|state| state.size),
+                Some(gpui::px(400.0))
+            );
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&second_panel)
+                    .and_then(|state| state.size),
+                Some(gpui::px(400.0))
+            );
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.left_dock.update(cx, |left_dock, cx| {
+                left_dock.resize_panel_sizes(None, window, cx);
+            });
+        });
+
+        workspace.read_with(cx, |workspace, cx| {
+            let left_dock = workspace.left_dock.read(cx);
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&first_panel)
+                    .and_then(|state| state.size),
+                None
+            );
+            assert_eq!(
+                left_dock
+                    .stored_panel_size_state(&second_panel)
+                    .and_then(|state| state.size),
+                None
             );
         });
     }
@@ -4772,7 +4862,7 @@ mod tests {
             })
             .await;
         workspace_db
-            .set_active_environment(workspace_id, Some("dev".to_string()))
+            .set_active_environment(workspace_id, Some("Dev".to_string()))
             .await
             .unwrap();
 
@@ -4789,7 +4879,7 @@ mod tests {
                     .project_config_store()
                     .read(cx)
                     .active_environment(),
-                Some("dev")
+                Some("Dev")
             );
         });
     }

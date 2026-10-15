@@ -5909,6 +5909,7 @@ dependencies = [
  "language",
  "log",
  "path 26.1.0-dev",
+ "project_config_buffer",
  "request_buffer",
  "serde_json",
  "sum_tree",
@@ -5917,6 +5918,41 @@ dependencies = [
  "util 26.1.0-dev",
  "util_macros 26.1.0-dev",
  "which",
+ "worktree",
+]
+
+[[package]]
+name = "project_config_buffer"
+version = "26.1.0-dev"
+dependencies = [
+ "anyhow",
+ "fs",
+ "gpui",
+ "language",
+ "worktree",
+]
+
+[[package]]
+name = "project_config_editor"
+version = "26.1.0-dev"
+dependencies = [
+ "actions",
+ "anyhow",
+ "db",
+ "editor",
+ "environment_selector",
+ "fs",
+ "gpui",
+ "indoc",
+ "path 26.1.0-dev",
+ "project",
+ "serde_json",
+ "settings",
+ "theme",
+ "ui",
+ "util 26.1.0-dev",
+ "util_macros 26.1.0-dev",
+ "workspace",
  "worktree",
 ]
 
@@ -5934,6 +5970,7 @@ dependencies = [
  "log",
  "path 26.1.0-dev",
  "project",
+ "project_config_editor",
  "request_editor",
  "serde_json",
  "settings",
@@ -6462,7 +6499,6 @@ dependencies = [
  "fs",
  "gpui",
  "language",
- "util 26.1.0-dev",
  "worktree",
 ]
 
@@ -9056,6 +9092,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "variables_panel"
+version = "26.1.0-dev"
+dependencies = [
+ "actions",
+ "editor",
+ "environment_selector",
+ "fs",
+ "gpui",
+ "indoc",
+ "path 26.1.0-dev",
+ "project",
+ "project_config_editor",
+ "request_editor",
+ "serde_json",
+ "settings",
+ "theme",
+ "ui",
+ "util 26.1.0-dev",
+ "util_macros 26.1.0-dev",
+ "workspace",
+ "worktree",
+]
+
+[[package]]
 name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10320,6 +10380,7 @@ dependencies = [
  "picker",
  "platform_title_bar",
  "project",
+ "project_config_editor",
  "project_panel",
  "recent_projects",
  "request_editor",
@@ -10341,6 +10402,7 @@ dependencies = [
  "updater",
  "util_macros 26.1.0-dev",
  "uuid",
+ "variables_panel",
  "windows 0.62.2",
  "workspace",
  "worktree",

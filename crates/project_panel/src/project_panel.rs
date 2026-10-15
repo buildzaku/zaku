@@ -17,7 +17,7 @@ use std::{
 
 use editor::{
     Editor, EditorEvent, MultiBufferOffset, SelectionEffects,
-    items::{entry_git_aware_text_color, entry_text_color},
+    items::{entry_git_aware_text_color, entry_text_color, git_status_indicator},
 };
 use git::status::GitSummary;
 use path::{PathStyle, RelPath, SortMode, SortOrder};
@@ -448,10 +448,24 @@ impl ProjectPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> anyhow::Result<()> {
-        project
+        let worktree = project
             .read(cx)
             .worktree_for_entry(entry_id, cx)
             .context("can't reveal a non-existent entry in the project panel")?;
+        if worktree
+            .read(cx)
+            .entry_for_id(entry_id)
+            .is_some_and(|entry| {
+                entry
+                    .path
+                    .components()
+                    .any(|component| component == path::project_config_folder_name())
+            })
+        {
+            self.marked_entries.clear();
+            cx.notify();
+            return Ok(());
+        }
 
         self.expand_entry(entry_id, cx);
         self.update_visible_entries(Some(entry_id), false, true, window, cx);
@@ -3215,31 +3229,6 @@ fn file_stem_for_entry(entry: &Entry) -> &str {
     file_name.strip_suffix(".toml").unwrap_or(file_name)
 }
 
-fn git_status_indicator(git_status: GitSummary) -> Option<(&'static str, Color)> {
-    if git_status.conflict > 0 {
-        return Some(("!", Color::Conflict));
-    }
-    if git_status.untracked > 0 {
-        return Some(("U", Color::Created));
-    }
-    if git_status.worktree.deleted > 0 {
-        return Some(("D", Color::Deleted));
-    }
-    if git_status.worktree.modified > 0 {
-        return Some(("M", Color::Modified));
-    }
-    if git_status.index.deleted > 0 {
-        return Some(("D", Color::Deleted));
-    }
-    if git_status.index.modified > 0 {
-        return Some(("M", Color::Modified));
-    }
-    if git_status.index.added > 0 {
-        return Some(("A", Color::Created));
-    }
-    None
-}
-
 fn is_missing_entry_name(file_name: &str, is_dir: bool, path_style: PathStyle) -> bool {
     let Ok(file_name) = RelPath::new(Path::new(file_name), path_style) else {
         return false;
@@ -3331,6 +3320,7 @@ mod tests {
             crate::init(cx);
             editor::init(cx);
             request_editor::init(cx);
+            project_config_editor::init(cx);
         });
     }
 
@@ -3533,13 +3523,7 @@ mod tests {
 
         assert_eq!(
             actual,
-            vec![
-                String::from("> Apple"),
-                String::from("> Carrot"),
-                String::from("  aardvark"),
-                String::from("  banana"),
-                String::from("  zebra"),
-            ]
+            &["> Apple", "> Carrot", "  aardvark", "  banana", "  zebra"]
         );
     }
 
@@ -3575,11 +3559,7 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("> folder"),
-                String::from("  [EDITOR: '']  <== selected"),
-                String::from("  existing"),
-            ]
+            &["> folder", "  [EDITOR: '']  <== selected", "  existing"]
         );
 
         panel
@@ -3595,10 +3575,10 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("> folder"),
-                String::from("  existing"),
-                String::from("  New request  <== selected  <== marked"),
+            &[
+                "> folder",
+                "  existing",
+                "  New request  <== selected  <== marked",
             ]
         );
 
@@ -3644,10 +3624,7 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("> [EDITOR: '']  <== selected"),
-                String::from("  existing"),
-            ]
+            &["> [EDITOR: '']  <== selected", "  existing"]
         );
 
         panel
@@ -3663,10 +3640,7 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v New folder  <== selected"),
-                String::from("  existing"),
-            ]
+            &["v New folder  <== selected", "  existing"]
         );
 
         let metadata = temp_fs
@@ -3730,11 +3704,11 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v foo"),
-                String::from("    v bar"),
-                String::from("          [EDITOR: '']  <== selected"),
-                String::from("          baz"),
+            &[
+                "v foo",
+                "    v bar",
+                "          [EDITOR: '']  <== selected",
+                "          baz",
             ]
         );
 
@@ -3753,11 +3727,11 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v foo"),
-                String::from("    v bar"),
-                String::from("        > [EDITOR: '']  <== selected"),
-                String::from("          baz"),
+            &[
+                "v foo",
+                "    v bar",
+                "        > [EDITOR: '']  <== selected",
+                "          baz",
             ]
         );
 
@@ -3776,11 +3750,11 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v foo"),
-                String::from("    v bar"),
-                String::from("          [EDITOR: '']  <== selected"),
-                String::from("          baz"),
+            &[
+                "v foo",
+                "    v bar",
+                "          [EDITOR: '']  <== selected",
+                "          baz",
             ]
         );
     }
@@ -3849,11 +3823,11 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      first  <== selected  <== marked"),
-                String::from("      second"),
-                String::from("      third"),
+            &[
+                "v folder",
+                "      first  <== selected  <== marked",
+                "      second",
+                "      third",
             ]
         );
 
@@ -3877,11 +3851,11 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      first"),
-                String::from("      second  <== selected  <== marked"),
-                String::from("      third"),
+            &[
+                "v folder",
+                "      first",
+                "      second  <== selected  <== marked",
+                "      third",
             ]
         );
 
@@ -3980,6 +3954,102 @@ mod tests {
                 "v other",
                 "      fourth  <== selected  <== marked",
             ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_autoreveal_skips_config_files(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                    },
+                },
+                "foo": {
+                    "req1.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/req1"
+                    "#},
+                    "req2.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "POST"
+                        url = "https://api.zaku.dev/req2"
+                    "#},
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        assert_eq!(visible_entries_as_strings(&panel, 0..10, cx), &["> foo"]);
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath::from((worktree_id, rel_path("foo/req1.toml"))),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            &[
+                "v foo",
+                "      req1  <== selected  <== marked",
+                "      req2",
+            ]
+        );
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath::from((worktree_id, rel_path(".zaku/environments/Dev.toml"))),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            &["v foo", "      req1  <== selected", "      req2"]
         );
     }
 
@@ -4171,10 +4241,7 @@ mod tests {
         select_path(&panel, "project/first.toml", cx);
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("  first  <== selected"),
-                String::from("  first.v2"),
-            ]
+            &["  first  <== selected", "  first.v2"]
         );
 
         panel.update_in(cx, |panel, window, cx| {
@@ -4196,10 +4263,10 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("  first"),
-                String::from("  [EDITOR: 'first copy']  <== selected  <== marked"),
-                String::from("  first.v2"),
+            &[
+                "  first",
+                "  [EDITOR: 'first copy']  <== selected  <== marked",
+                "  first.v2",
             ]
         );
 
@@ -4246,11 +4313,11 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("  first"),
-                String::from("  first copy"),
-                String::from("  [EDITOR: 'first copy 1']  <== selected  <== marked"),
-                String::from("  first.v2"),
+            &[
+                "  first",
+                "  first copy",
+                "  [EDITOR: 'first copy 1']  <== selected  <== marked",
+                "  first.v2",
             ]
         );
 
@@ -4288,11 +4355,11 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("> folder"),
-                String::from("> other"),
-                String::from("  first  <== marked"),
-                String::from("  second  <== selected  <== marked"),
+            &[
+                "> folder",
+                "> other",
+                "  first  <== marked",
+                "  second  <== selected  <== marked",
             ]
         );
 
@@ -4325,11 +4392,11 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      first  <== marked"),
-                String::from("      second  <== selected  <== marked"),
-                String::from("> other"),
+            &[
+                "v folder",
+                "      first  <== marked",
+                "      second  <== selected  <== marked",
+                "> other",
             ]
         );
 
@@ -4359,13 +4426,13 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      first"),
-                String::from("      second"),
-                String::from("v other"),
-                String::from("      first"),
-                String::from("      second  <== selected"),
+            &[
+                "v folder",
+                "      first",
+                "      second",
+                "v other",
+                "      first",
+                "      second  <== selected",
             ]
         );
     }
@@ -4424,11 +4491,11 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      first"),
-                String::from("      [EDITOR: 'first copy']  <== selected  <== marked"),
-                String::from("      second"),
+            &[
+                "v folder",
+                "      first",
+                "      [EDITOR: 'first copy']  <== selected  <== marked",
+                "      second",
             ]
         );
     }
@@ -4469,10 +4536,10 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      [EDITOR: 'first']  <== selected"),
-                String::from("      second"),
+            &[
+                "v folder",
+                "      [EDITOR: 'first']  <== selected",
+                "      second",
             ]
         );
 
@@ -4504,10 +4571,10 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      [PROCESSING: 'renamed']  <== selected"),
-                String::from("      second"),
+            &[
+                "v folder",
+                "      [PROCESSING: 'renamed']  <== selected",
+                "      second",
             ]
         );
 
@@ -4515,11 +4582,7 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      renamed  <== selected"),
-                String::from("      second"),
-            ]
+            &["v folder", "      renamed  <== selected", "      second"]
         );
     }
 
@@ -4552,11 +4615,11 @@ mod tests {
         select_path(&panel, "project/folder/first.toml", cx);
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      first  <== selected"),
-                String::from("      second"),
-                String::from("      third"),
+            &[
+                "v folder",
+                "      first  <== selected",
+                "      second",
+                "      third",
             ]
         );
 
@@ -4569,11 +4632,11 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      [EDITOR: 'first']  <== selected"),
-                String::from("      second"),
-                String::from("      third"),
+            &[
+                "v folder",
+                "      [EDITOR: 'first']  <== selected",
+                "      second",
+                "      third",
             ]
         );
 
@@ -4597,11 +4660,11 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      first  <== selected"),
-                String::from("      second"),
-                String::from("      third"),
+            &[
+                "v folder",
+                "      first  <== selected",
+                "      second",
+                "      third",
             ],
             "File list should be unchanged after failed rename confirmation"
         );
@@ -4637,11 +4700,11 @@ mod tests {
         select_path_with_mark(&panel, "project/folder/second.toml", cx);
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      first  <== marked"),
-                String::from("      second  <== selected  <== marked"),
-                String::from("      third"),
+            &[
+                "v folder",
+                "      first  <== marked",
+                "      second  <== selected  <== marked",
+                "      third",
             ]
         );
 
@@ -4670,10 +4733,7 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("      third  <== selected"),
-            ]
+            &["v folder", "      third  <== selected"]
         );
         assert!(
             temp_fs
@@ -4742,10 +4802,10 @@ mod tests {
         select_path_with_mark(&panel, "project/other.toml", cx);
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("> folder  <== marked"),
-                String::from("  other  <== selected  <== marked"),
-                String::from("  third"),
+            &[
+                "> folder  <== marked",
+                "  other  <== selected  <== marked",
+                "  third",
             ]
         );
 
@@ -4770,7 +4830,7 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![String::from("  third  <== selected")]
+            &["  third  <== selected"]
         );
         assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 0);
         assert!(
@@ -4848,13 +4908,13 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v folder"),
-                String::from("    v nested"),
-                String::from("    v scripts  <== selected"),
-                String::from("          second"),
-                String::from("      first"),
-                String::from("  request"),
+            &[
+                "v folder",
+                "    v nested",
+                "    v scripts  <== selected",
+                "          second",
+                "      first",
+                "  request",
             ]
         );
     }
@@ -4873,7 +4933,7 @@ mod tests {
                 ".zaku": {
                     "project.toml": "",
                     "environments": {
-                        "dev.toml": "",
+                        "Dev.toml": "",
                     },
                 },
                 "users": {
@@ -4896,11 +4956,7 @@ mod tests {
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            vec![
-                String::from("v users  <== selected"),
-                String::from("      foo"),
-                String::from("  bar"),
-            ]
+            &["v users  <== selected", "      foo", "  bar"]
         );
     }
 }

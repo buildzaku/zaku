@@ -28,6 +28,8 @@ members = [
   "crates/picker",
   "crates/platform_title_bar",
   "crates/project",
+  "crates/project_config_buffer",
+  "crates/project_config_editor",
   "crates/project_panel",
   "crates/recent_projects",
   "crates/refineable",
@@ -58,6 +60,7 @@ members = [
   "crates/updater_windows",
   "crates/util",
   "crates/util_macros",
+  "crates/variables_panel",
   "crates/workspace",
   "crates/worktree",
   "crates/zaku"
@@ -274,6 +277,8 @@ path = { path = "crates/path" }
 picker = { path = "crates/picker" }
 platform_title_bar = { path = "crates/platform_title_bar" }
 project = { path = "crates/project" }
+project_config_buffer = { path = "crates/project_config_buffer" }
+project_config_editor = { path = "crates/project_config_editor" }
 project_panel = { path = "crates/project_panel" }
 recent_projects = { path = "crates/recent_projects" }
 refineable = { path = "crates/refineable" }
@@ -304,6 +309,7 @@ updater = { path = "crates/updater" }
 updater_windows = { path = "crates/updater_windows" }
 util = { path = "crates/util" }
 util_macros = { path = "crates/util_macros" }
+variables_panel = { path = "crates/variables_panel" }
 workspace = { path = "crates/workspace" }
 worktree = { path = "crates/worktree" }
 

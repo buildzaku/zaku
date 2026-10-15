@@ -4,8 +4,9 @@ mod request;
 
 pub use language::DiskState;
 pub use project_config::{
-    ConfigFileMeta, EnvironmentColor, EnvironmentFile, EnvironmentSection, FolderFile, ProjectFile,
-    RequestSection, Variable, parse_config_file, substitute_variables_in_str,
+    ConfigFile, ConfigFileKind, ConfigFileMeta, ConfigFileState, ConfigFileType, EnvironmentColor,
+    EnvironmentFile, EnvironmentSection, FolderFile, ProjectFile, RequestSection, Variable,
+    parse_config_file, substitute_variables_in_str,
 };
 pub use request::{
     RequestFile, RequestFileBody, RequestFileBodyType, RequestFileFormField, RequestFileHeader,
@@ -198,16 +199,16 @@ impl Worktree {
         }
     }
 
-    pub fn write_request_file(
+    pub fn write_toml_file(
         &self,
         path: Arc<RelPath>,
-        request_file: RequestFile,
+        value: impl Serialize + Send + Sync + 'static,
         cx: &Context<Self>,
     ) -> Task<anyhow::Result<Arc<File>>> {
         let fs = self.fs().clone();
         let abs_path = self.absolutize(&path);
         let write_task = cx.background_spawn(async move {
-            let contents = to_pretty_toml(&request_file).await?;
+            let contents = to_pretty_toml(&value).await?;
             fs.write(&abs_path, contents.as_bytes()).await
         });
 

@@ -183,6 +183,14 @@ impl PanelEntry {
     }
 }
 
+fn resize_panel_entry(
+    entry: &mut PanelEntry,
+    size: Option<Pixels>,
+) -> (&'static str, PanelSizeState) {
+    entry.size_state.size = size.map(|size| size.max(RESIZE_HANDLE_SIZE).round());
+    (entry.panel.panel_key(), entry.size_state)
+}
+
 pub struct Dock {
     position: DockPosition,
     workspace: WeakEntity<Workspace>,
@@ -410,7 +418,20 @@ impl Dock {
         dispatch_context
     }
 
-    pub fn resize_active_panel(
+    pub fn resize_panel_sizes(
+        &mut self,
+        size: Option<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.position == DockPosition::Left {
+            self.resize_all_panels(size, window, cx);
+        } else {
+            self.resize_active_panel(size, window, cx);
+        }
+    }
+
+    fn resize_active_panel(
         &mut self,
         size: Option<Pixels>,
         _window: &mut Window,
@@ -423,14 +444,40 @@ impl Dock {
             return;
         };
 
-        entry.size_state.size = size.map(|size| size.max(RESIZE_HANDLE_SIZE).round());
-        let panel_key = entry.panel.panel_key();
-        let size_state = entry.size_state;
+        let (panel_key, size_state) = self::resize_panel_entry(entry, size);
         let workspace = self.workspace.clone();
         cx.defer(move |cx| {
             if let Some(workspace) = workspace.upgrade() {
                 workspace.update(cx, |workspace, cx| {
                     workspace.save_panel_size_state(panel_key, size_state, cx);
+                });
+            }
+        });
+        cx.notify();
+    }
+
+    fn resize_all_panels(
+        &mut self,
+        size: Option<Pixels>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.active_panel_index.is_none() {
+            return;
+        }
+
+        let size_states_to_save = self
+            .panel_entries
+            .iter_mut()
+            .map(|entry| self::resize_panel_entry(entry, size))
+            .collect::<Vec<_>>();
+        let workspace = self.workspace.clone();
+        cx.defer(move |cx| {
+            if let Some(workspace) = workspace.upgrade() {
+                workspace.update(cx, |workspace, cx| {
+                    for (panel_key, size_state) in size_states_to_save {
+                        workspace.save_panel_size_state(panel_key, size_state, cx);
+                    }
                 });
             }
         });
@@ -520,7 +567,7 @@ impl Render for Dock {
                         MouseButton::Left,
                         cx.listener(move |dock, e: &MouseUpEvent, window, cx| {
                             if e.click_count == 2 {
-                                dock.resize_active_panel(None, window, cx);
+                                dock.resize_panel_sizes(None, window, cx);
                                 cx.stop_propagation();
                             }
                         }),

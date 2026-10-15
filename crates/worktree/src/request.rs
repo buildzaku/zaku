@@ -474,7 +474,7 @@ mod tests {
         assert!(!is_request_path(rel_path("README.md")));
         assert!(!is_request_path(rel_path(".gitignore")));
         assert!(!is_request_path(rel_path(".zaku/project.toml")));
-        assert!(!is_request_path(rel_path(".zaku/environments/dev.toml")));
+        assert!(!is_request_path(rel_path(".zaku/environments/Dev.toml")));
         assert!(!is_request_path(rel_path("users/.zaku/folder.toml")));
     }
 }

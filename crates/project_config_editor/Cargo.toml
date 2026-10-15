@@ -1,0 +1,45 @@
+[package]
+name = "project_config_editor"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "project_config_editor"
+path = "src/project_config_editor.rs"
+
+[lints]
+workspace = true
+
+[features]
+test = ["db/test"]
+
+[dependencies]
+anyhow = { workspace = true }
+db = { workspace = true }
+editor = { workspace = true }
+environment_selector = { workspace = true }
+gpui = { workspace = true }
+path = { workspace = true }
+project = { workspace = true }
+settings = { workspace = true }
+ui = { workspace = true }
+util = { workspace = true }
+workspace = { workspace = true }
+
+[dev-dependencies]
+actions = { workspace = true }
+fs = { workspace = true, features = ["test"] }
+gpui = { workspace = true, features = ["test-support"] }
+indoc = { workspace = true }
+path = { workspace = true, features = ["test"] }
+project = { workspace = true, features = ["test"] }
+serde_json = { workspace = true }
+settings = { workspace = true, features = ["test"] }
+theme = { workspace = true }
+util_macros = { workspace = true }
+workspace = { workspace = true, features = ["test"] }
+worktree = { workspace = true, features = ["test"] }

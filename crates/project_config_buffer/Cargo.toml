@@ -1,0 +1,22 @@
+[package]
+name = "project_config_buffer"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "project_config_buffer"
+path = "src/project_config_buffer.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+fs = { workspace = true }
+gpui = { workspace = true }
+language = { workspace = true }
+worktree = { workspace = true }

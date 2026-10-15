@@ -60,6 +60,7 @@ mimalloc = { workspace = true, optional = true }
 multi_buffer = { workspace = true }
 path = { workspace = true }
 platform_title_bar = { workspace = true }
+project_config_editor = { workspace = true }
 project_panel = { workspace = true }
 recent_projects = { workspace = true }
 request_editor = { workspace = true }
@@ -79,6 +80,7 @@ title_bar = { workspace = true }
 ui = { workspace = true }
 updater = { workspace = true }
 uuid = { workspace = true }
+variables_panel = { workspace = true }
 workspace = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
