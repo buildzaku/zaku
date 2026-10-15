@@ -128,7 +128,7 @@ pub enum ProjectPanelEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct SelectedEntry(ProjectEntryId);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum ValidationState {
     None,
     Warning(String),
@@ -3468,32 +3468,6 @@ mod tests {
         });
     }
 
-    #[track_caller]
-    fn assert_validation_state(
-        panel: &Entity<ProjectPanel>,
-        expected: ValidationState,
-        cx: &mut VisualTestContext,
-    ) {
-        let actual = panel.update(cx, |panel, _| {
-            panel
-                .tree_state
-                .edit_state
-                .as_ref()
-                .unwrap()
-                .validation_state
-                .clone()
-        });
-
-        match (actual, expected) {
-            (ValidationState::None, ValidationState::None) => {}
-            (ValidationState::Warning(actual), ValidationState::Warning(expected))
-            | (ValidationState::Error(actual), ValidationState::Error(expected)) => {
-                assert_eq!(actual, expected);
-            }
-            (actual, expected) => panic!("Expected {expected:?}, got {actual:?}"),
-        }
-    }
-
     #[gpui::test]
     async fn test_sort_mode_directories_first(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
@@ -4086,11 +4060,17 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error("File or directory name must be provided.".to_string()),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error("File or directory name must be provided.".to_string())
+            );
+        });
         assert!(
             panel
                 .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
@@ -4103,11 +4083,17 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error("File or directory name must be provided.".to_string()),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error("File or directory name must be provided.".to_string())
+            );
+        });
         assert!(
             panel
                 .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
@@ -4120,13 +4106,19 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Warning(
-                "File name contains leading or trailing whitespace.".to_string(),
-            ),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Warning(
+                    "File name contains leading or trailing whitespace.".to_string(),
+                )
+            );
+        });
 
         panel.update_in(cx, |panel, _, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
@@ -4134,7 +4126,17 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(&panel, ValidationState::None, cx);
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::None
+            );
+        });
 
         panel.update_in(cx, |panel, _, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
@@ -4142,14 +4144,20 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error(
-                "File 'first.toml' already exists at location. Please choose a different name."
-                    .to_string(),
-            ),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error(
+                    "File 'first.toml' already exists at location. Please choose a different name."
+                        .to_string(),
+                )
+            );
+        });
 
         panel.update_in(cx, |panel, _, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
@@ -4157,14 +4165,20 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error(
-                "Directory 'first' already exists at location. Please choose a different name."
-                    .to_string(),
-            ),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error(
+                    "Directory 'first' already exists at location. Please choose a different name."
+                        .to_string(),
+                )
+            );
+        });
 
         panel.update_in(cx, |panel, _, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
@@ -4172,14 +4186,20 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error(
-                "File 'first.toml' already exists at location. Please choose a different name."
-                    .to_string(),
-            ),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error(
+                    "File 'first.toml' already exists at location. Please choose a different name."
+                        .to_string(),
+                )
+            );
+        });
 
         panel.update_in(cx, |panel, _, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
@@ -4187,11 +4207,17 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error("'.zaku' is a reserved name.".to_string()),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error("'.zaku' is a reserved name.".to_string())
+            );
+        });
         assert!(
             panel
                 .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
@@ -4204,11 +4230,17 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error("'.zaku' is a reserved name.".to_string()),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error("'.zaku' is a reserved name.".to_string())
+            );
+        });
         assert!(
             panel
                 .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
