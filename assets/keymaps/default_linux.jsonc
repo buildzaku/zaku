@@ -116,7 +116,9 @@
     "context": "VariablesPanel",
     "bindings": {
       "tab": null,
-      "shift-tab": null
+      "shift-tab": null,
+      "new": "variables_panel::NewEnvironment",
+      "ctrl-n": "variables_panel::NewEnvironment"
     }
   },
   {

@@ -110,7 +110,8 @@
     "use_key_equivalents": true,
     "bindings": {
       "tab": null,
-      "shift-tab": null
+      "shift-tab": null,
+      "cmd-n": "variables_panel::NewEnvironment"
     }
   },
   {
