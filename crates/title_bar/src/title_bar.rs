@@ -209,7 +209,6 @@ impl TitleBar {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let workspace = self.workspace.clone();
         let project = project.clone();
         let project_config_store = project.read(cx).project_config_store().read(cx);
         let active_environment = project_config_store.active_environment();
@@ -254,14 +253,7 @@ impl TitleBar {
         let selected_background = cx.theme().colors().ghost_element_hover;
 
         PopoverMenu::new("environment-selector-popover")
-            .menu(move |window, cx| {
-                Some(EnvironmentSelector::popover(
-                    workspace.clone()?,
-                    project.clone(),
-                    window,
-                    cx,
-                ))
-            })
+            .menu(move |window, cx| Some(EnvironmentSelector::popover(project.clone(), window, cx)))
             .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
             .trigger_with_tooltip(
                 ButtonLike::new("environment-trigger")
