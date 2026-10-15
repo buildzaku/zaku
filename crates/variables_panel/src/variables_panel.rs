@@ -62,6 +62,7 @@ impl VariablesListEntry {
     }
 }
 
+#[derive(Debug, PartialEq)]
 enum ValidationState {
     None,
     Error(String),
@@ -958,7 +959,7 @@ mod tests {
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
-    use workspace::{AppState, build_workspace, pane::PaneEvent};
+    use workspace::{AppState, DockPosition, build_workspace, pane::PaneEvent};
     use worktree::WorktreeModelHandle;
 
     fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
@@ -981,6 +982,14 @@ mod tests {
         panel.read_with(cx, |panel, cx| {
             let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
             let worktree_id = worktree.read(cx).id();
+            let edit_entry = panel.edit_state.as_ref().map(|edit_state| {
+                if let Some(name) = &edit_state.processing_name {
+                    format!("[PROCESSING: '{name}']")
+                } else {
+                    let name = panel.environment_name_editor.read(cx).text(cx);
+                    format!("[EDITOR: '{name}']")
+                }
+            });
 
             panel
                 .entries(cx)
@@ -1010,6 +1019,7 @@ mod tests {
 
                     format!("{name}{selected}{marked}")
                 })
+                .chain(edit_entry)
                 .collect()
         })
     }
@@ -1420,5 +1430,234 @@ mod tests {
             visible_entries_as_strings(&panel, cx),
             &["Project Variables", "Dev  <== marked", "Prod  <== selected"]
         );
+    }
+
+    #[gpui::test]
+    async fn test_new_environment(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(path!("project"), json!({}));
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, |workspace, window, cx| {
+            let panel = VariablesPanel::new(workspace, window, cx);
+            workspace.add_panel(panel.clone(), DockPosition::Left, window, cx);
+            workspace.open_panel::<VariablesPanel>(window, cx);
+            panel
+        });
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables"]
+        );
+
+        let new_environment_button_bounds = cx
+            .debug_bounds("ICON_BUTTON-variables-panel-new-environment")
+            .unwrap();
+        cx.simulate_click(new_environment_button_bounds.center(), Modifiers::default());
+
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.environment_name_editor.read(cx).is_focused(window));
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "[EDITOR: '']"]
+        );
+
+        panel
+            .update_in(cx, |panel, window, cx| {
+                panel.environment_name_editor.update(cx, |editor, cx| {
+                    editor.set_text("Dev", cx);
+                });
+                panel.confirm_edit(true, window, cx).unwrap()
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+        pane.condition::<PaneEvent>(cx, |pane, cx| {
+            pane.active_item()
+                .and_then(|item| item.project_path(cx))
+                .is_some_and(|project_path| {
+                    project_path.path.as_ref() == rel_path(".zaku/environments/Dev.toml")
+                })
+        })
+        .await;
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== selected  <== marked"]
+        );
+        workspace.update_in(cx, |workspace, _, cx| {
+            assert!(
+                workspace
+                    .active_item_as::<ProjectConfigEditor>(cx)
+                    .is_some()
+            );
+        });
+        assert_eq!(
+            temp_fs
+                .load("project/.zaku/environments/Dev.toml".as_ref())
+                .await
+                .unwrap(),
+            indoc! {"
+                [meta]
+                version = 1
+
+                [environment]
+            "}
+        );
+    }
+
+    #[gpui::test]
+    async fn test_new_environment_validation(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                        "Prod.toml": "[environment",
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, VariablesPanel::new);
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.new_environment(&actions::variables_panel::NewEnvironment, window, cx);
+        });
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.environment_name_editor.update(cx, |editor, cx| {
+                editor.set_text("   ", cx);
+            });
+        });
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.edit_state.as_ref().unwrap().validation_state,
+                ValidationState::Error("Environment name must be provided.".to_string())
+            );
+        });
+        assert!(
+            panel
+                .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
+                .is_none()
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.environment_name_editor.update(cx, |editor, cx| {
+                editor.set_text("Staging/2", cx);
+            });
+        });
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.edit_state.as_ref().unwrap().validation_state,
+                ValidationState::Error(
+                    "Environment name must start and end with a letter or digit and contain only letters, digits, '_', '-', '.' and single spaces."
+                        .to_string(),
+                )
+            );
+        });
+        assert!(
+            panel
+                .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
+                .is_none()
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.environment_name_editor.update(cx, |editor, cx| {
+                editor.set_text("dev", cx);
+            });
+        });
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.edit_state.as_ref().unwrap().validation_state,
+                ValidationState::Error("Environment 'Dev' already exists.".to_string())
+            );
+        });
+        assert!(
+            panel
+                .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
+                .is_none()
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.environment_name_editor.update(cx, |editor, cx| {
+                editor.set_text("Prod", cx);
+            });
+        });
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.edit_state.as_ref().unwrap().validation_state,
+                ValidationState::Error("Environment 'Prod' already exists.".to_string())
+            );
+        });
+        assert!(
+            panel
+                .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
+                .is_none()
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.environment_name_editor.update(cx, |editor, cx| {
+                editor.set_text("Staging", cx);
+            });
+        });
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.edit_state.as_ref().unwrap().validation_state,
+                ValidationState::None
+            );
+        });
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.cancel(&actions::menu::Cancel, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev"]
+        );
+    }
+
+    #[test]
+    fn test_is_valid_environment_name() {
+        assert!(is_valid_environment_name("Dev"));
+        assert!(is_valid_environment_name("Staging 2"));
+        assert!(is_valid_environment_name("Staging-10"));
+        assert!(is_valid_environment_name("Prod_EU"));
+        assert!(is_valid_environment_name("Prod.EU"));
+
+        assert!(!is_valid_environment_name(""));
+        assert!(!is_valid_environment_name(" Dev"));
+        assert!(!is_valid_environment_name("Staging-"));
+        assert!(!is_valid_environment_name("Staging  2"));
+        assert!(!is_valid_environment_name("Staging/2"));
+        assert!(!is_valid_environment_name("Dév"));
     }
 }
