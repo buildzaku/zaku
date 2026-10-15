@@ -241,7 +241,7 @@ impl TitleBar {
                 .size(IconSize::XSmall)
                 .color(text_color)
         } else if active_environment.is_none() {
-            Icon::new(IconAsset::CircleDashed)
+            Icon::new(IconAsset::SquareDashed)
                 .size(IconSize::XSmall)
                 .color(text_color)
         } else {

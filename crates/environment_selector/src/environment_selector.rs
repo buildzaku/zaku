@@ -19,7 +19,7 @@ pub fn init(cx: &mut App) {
 }
 
 pub fn environment_icon(environment_color: Option<EnvironmentColor>, text_color: Color) -> Icon {
-    Icon::new(IconAsset::Circle)
+    Icon::new(IconAsset::SquareInset)
         .size(IconSize::XSmall)
         .color(match environment_color {
             Some(EnvironmentColor::Red) => Color::PaletteRed,
@@ -319,7 +319,7 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                         .size(IconSize::XSmall)
                         .color(Color::Warning)
                 } else if environment.name.is_none() {
-                    Icon::new(IconAsset::CircleDashed)
+                    Icon::new(IconAsset::SquareDashed)
                         .size(IconSize::XSmall)
                         .color(Color::Default)
                 } else {
