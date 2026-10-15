@@ -595,15 +595,16 @@ impl VariablesPanel {
         } else {
             theme_colors.element_hover
         };
+        let icon_color = entry_text_color(is_marked);
         let (icon, name) = match entry {
             VariablesListEntry::ProjectVariables => (
                 Icon::new(IconAsset::SquareInset)
                     .size(IconSize::XSmall)
-                    .color(text_color),
+                    .color(icon_color),
                 SharedString::from("Project Variables"),
             ),
             VariablesListEntry::Environment(environment) => (
-                environment_selector::environment_icon(environment.color, text_color),
+                environment_selector::environment_icon(environment.color, icon_color),
                 environment.name,
             ),
         };
