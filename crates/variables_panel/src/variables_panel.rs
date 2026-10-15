@@ -1,10 +1,13 @@
 use gpui::{
     Action, App, ClickEvent, Context, Div, Entity, FocusHandle, Focusable, KeyContext, Pixels,
-    ScrollHandle, SharedString, Stateful, WeakEntity, Window, prelude::*,
+    ScrollHandle, SharedString, Stateful, Task, WeakEntity, Window, prelude::*,
 };
 use std::{iter, sync::Arc};
 
-use editor::items::{entry_git_aware_text_color, entry_text_color, git_status_indicator};
+use editor::{
+    Editor, EditorEvent,
+    items::{entry_git_aware_text_color, entry_text_color, git_status_indicator},
+};
 use path::RelPath;
 use project::{
     ConfigFileType, EnvironmentColor, Project, ProjectPath, WorktreeId,
@@ -14,8 +17,9 @@ use project::{
 use settings::{GitSettings, Settings};
 use theme::ActiveTheme;
 use ui::{
-    Color, DynamicSpacing, Icon, IconAsset, IconSize, ListItem, ListItemSpacing, ScrollAxes,
-    Scrollbars, Text, TextCommon, TextSize, TrackLayout, WithScrollbar,
+    ButtonCommon, Clickable, Color, DynamicSpacing, Icon, IconAsset, IconButton, IconButtonShape,
+    IconSize, ListItem, ListItemSpacing, ScrollAxes, Scrollbars, Text, TextCommon, TextSize,
+    Tooltip, TrackLayout, WithScrollbar,
 };
 use util::ResultExt;
 use workspace::{Panel, Workspace, WorkspaceEvent};
@@ -58,6 +62,16 @@ impl VariablesListEntry {
     }
 }
 
+enum ValidationState {
+    None,
+    Error(String),
+}
+
+struct EditState {
+    processing_name: Option<SharedString>,
+    validation_state: ValidationState,
+}
+
 pub struct VariablesPanel {
     focus_handle: FocusHandle,
     project: Entity<Project>,
@@ -65,6 +79,8 @@ pub struct VariablesPanel {
     scroll_handle: ScrollHandle,
     selection: Option<Arc<RelPath>>,
     active_item_path: Option<ProjectPath>,
+    edit_state: Option<EditState>,
+    environment_name_editor: Entity<Editor>,
 }
 
 impl VariablesPanel {
@@ -86,6 +102,7 @@ impl VariablesPanel {
             .and_then(|item| item.project_path(cx));
 
         cx.new(|cx| {
+            let environment_name_editor = cx.new(|cx| Editor::single_line(window, cx));
             cx.subscribe_in(
                 &workspace_entity,
                 window,
@@ -118,6 +135,33 @@ impl VariablesPanel {
             )
             .detach();
 
+            cx.subscribe_in(
+                &environment_name_editor,
+                window,
+                |this: &mut VariablesPanel, _, editor_event, window, cx| match editor_event {
+                    EditorEvent::BufferEdited => {
+                        this.populate_validation_error(cx);
+                    }
+                    EditorEvent::Blurred => {
+                        if this
+                            .edit_state
+                            .as_ref()
+                            .is_some_and(|edit_state| edit_state.processing_name.is_none())
+                        {
+                            match this.confirm_edit(false, window, cx) {
+                                Some(task) => task.detach_and_log_err(cx),
+                                None => this.discard_edit_state(cx),
+                            }
+                        }
+                    }
+                    EditorEvent::DirtyChanged
+                    | EditorEvent::FileHandleChanged
+                    | EditorEvent::Saved
+                    | EditorEvent::TitleChanged => {}
+                },
+            )
+            .detach();
+
             cx.subscribe(&git_store, |_, _, event: &GitStoreEvent, cx| match event {
                 GitStoreEvent::RepositoryUpdated(_, RepositoryEvent::StatusesChanged, _)
                 | GitStoreEvent::RepositoryAdded
@@ -133,6 +177,8 @@ impl VariablesPanel {
                 scroll_handle: ScrollHandle::new(),
                 selection: None,
                 active_item_path,
+                edit_state: None,
+                environment_name_editor,
             }
         })
     }
@@ -167,10 +213,22 @@ impl VariablesPanel {
             .position(|entry| entry.path() == *selection)
     }
 
-    fn dispatch_context(&self) -> KeyContext {
+    fn dispatch_context(&self, window: &Window, cx: &Context<Self>) -> KeyContext {
         let mut dispatch_context = KeyContext::new_with_defaults();
         dispatch_context.add(Self::PANEL_KEY);
         dispatch_context.add("menu");
+
+        let identifier = if self
+            .environment_name_editor
+            .focus_handle(cx)
+            .is_focused(window)
+        {
+            "editing"
+        } else {
+            "not_editing"
+        };
+
+        dispatch_context.add(identifier);
         dispatch_context
     }
 
@@ -314,6 +372,150 @@ impl VariablesPanel {
 
         if !focus_opened_item {
             window.focus(&self.focus_handle, cx);
+        }
+    }
+
+    fn new_environment(
+        &mut self,
+        _: &actions::variables_panel::NewEnvironment,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.project.read(cx).root_worktree(cx).is_none() {
+            return;
+        }
+
+        self.edit_state = Some(EditState {
+            processing_name: None,
+            validation_state: ValidationState::None,
+        });
+        self.environment_name_editor.update(cx, |editor, cx| {
+            editor.clear(window, cx);
+        });
+        window.focus(&self.environment_name_editor.focus_handle(cx), cx);
+        let environment_count = self
+            .project
+            .read(cx)
+            .project_config_store()
+            .read(cx)
+            .environments()
+            .count();
+        self.scroll_handle.scroll_to_item(environment_count);
+        cx.notify();
+    }
+
+    fn confirm(&mut self, _: &actions::menu::Confirm, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(task) = self.confirm_edit(true, window, cx) {
+            task.detach_and_log_err(cx);
+        }
+    }
+
+    fn cancel(&mut self, _: &actions::menu::Cancel, window: &mut Window, cx: &mut Context<Self>) {
+        self.discard_edit_state(cx);
+        window.focus(&self.focus_handle, cx);
+    }
+
+    fn populate_validation_error(&mut self, cx: &mut Context<Self>) {
+        let name = self.environment_name_editor.read(cx).text(cx);
+        let validation_state = self.environment_name_validation_state(&name, cx);
+        let Some(edit_state) = self.edit_state.as_mut() else {
+            return;
+        };
+
+        edit_state.validation_state = validation_state;
+        cx.notify();
+    }
+
+    fn environment_name_validation_state(&self, name: &str, cx: &App) -> ValidationState {
+        if name.is_empty() {
+            return ValidationState::None;
+        }
+        if name.trim().is_empty() {
+            return ValidationState::Error("Environment name must be provided.".to_string());
+        }
+        if !is_valid_environment_name(name) {
+            return ValidationState::Error(
+                "Environment name must start and end with a letter or digit and contain only letters, digits, '_', '-', '.' and single spaces."
+                    .to_string(),
+            );
+        }
+
+        let Some(worktree) = self.project.read(cx).root_worktree(cx) else {
+            return ValidationState::None;
+        };
+        let existing_name = worktree
+            .read(cx)
+            .child_entries(path::project_environments_folder_relative_path())
+            .filter(|entry| {
+                ConfigFileType::for_path(&entry.path) == Some(ConfigFileType::Environment)
+            })
+            .filter_map(|entry| entry.path.file_stem())
+            .find(|existing_name| existing_name.eq_ignore_ascii_case(name))
+            .map(ToString::to_string);
+        if let Some(existing_name) = existing_name {
+            return ValidationState::Error(format!(
+                "Environment '{existing_name}' already exists."
+            ));
+        }
+
+        ValidationState::None
+    }
+
+    fn confirm_edit(
+        &mut self,
+        refocus: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let name = self.environment_name_editor.read(cx).text(cx);
+        if self.edit_state.is_none()
+            || name.is_empty()
+            || !matches!(
+                self.environment_name_validation_state(&name, cx),
+                ValidationState::None
+            )
+        {
+            return None;
+        }
+
+        let worktree_id = self.project.read(cx).root_worktree(cx)?.read(cx).id();
+        let new_path = path::project_environments_folder_relative_path()
+            .join(RelPath::from_unix_str(&format!("{name}.toml")).ok()?);
+        let new_project_path = ProjectPath {
+            worktree_id,
+            path: new_path.clone(),
+        };
+        let create_task = self.project.update(cx, |project, cx| {
+            project.create_entry(new_project_path, false, cx)
+        });
+
+        if refocus {
+            window.focus(&self.focus_handle, cx);
+        }
+        if let Some(edit_state) = self.edit_state.as_mut() {
+            edit_state.processing_name = Some(SharedString::from(name));
+        }
+        cx.notify();
+
+        Some(cx.spawn_in(window, async move |variables_panel, cx| {
+            let new_entry = create_task.await;
+            variables_panel.update(cx, |variables_panel, cx| {
+                variables_panel.edit_state = None;
+                cx.notify();
+            })?;
+            new_entry?;
+
+            variables_panel.update_in(cx, |variables_panel, window, cx| {
+                variables_panel.selection = Some(new_path.clone());
+                variables_panel.open_entry(new_path, true, false, window, cx);
+                cx.notify();
+            })
+        }))
+    }
+
+    fn discard_edit_state(&mut self, cx: &mut Context<Self>) {
+        if self.edit_state.take().is_some() {
+            cx.notify();
         }
     }
 
@@ -477,6 +679,88 @@ impl VariablesPanel {
                     ),
             )
     }
+
+    fn render_edit_entry(
+        &self,
+        edit_state: &EditState,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let theme_colors = cx.theme().colors();
+        let text_color = entry_text_color(false);
+        let show_editor = edit_state.processing_name.is_none();
+        let validation_color_and_message = if show_editor {
+            match &edit_state.validation_state {
+                ValidationState::Error(message) => Some((Color::Error.color(cx), message.clone())),
+                ValidationState::None => None,
+            }
+        } else {
+            None
+        };
+        let entry_prefix_slot_width = window.rem_size();
+
+        gpui::div()
+            .relative()
+            .border_1()
+            .border_color(gpui::transparent_black())
+            .child(
+                ListItem::new("variables-panel-edit-entry")
+                    .spacing(ListItemSpacing::Dense)
+                    .selectable(false)
+                    .child(
+                        gpui::div()
+                            .w(entry_prefix_slot_width)
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(environment_selector::environment_icon(None, text_color)),
+                    )
+                    .child(match edit_state.processing_name.clone() {
+                        Some(name) => gpui::div()
+                            .flex()
+                            .items_center()
+                            .h_6()
+                            .min_w_0()
+                            .child(Text::new(name).color(text_color).single_line().truncate()),
+                        None => {
+                            gpui::div()
+                                .flex()
+                                .items_center()
+                                .h_6()
+                                .w_full()
+                                .mr(Pixels::ZERO - DynamicSpacing::Base06.px(cx) - gpui::px(1.0))
+                                .border_1()
+                                .border_color(validation_color_and_message.as_ref().map_or(
+                                    theme_colors.border_focused.opacity(0.7),
+                                    |(color, _)| *color,
+                                ))
+                                .child(self.environment_name_editor.clone())
+                        }
+                    })
+                    .overflow_x(),
+            )
+            .when_some(validation_color_and_message, |this, (color, message)| {
+                this.child(gpui::deferred(
+                    gpui::div()
+                        .occlude()
+                        .absolute()
+                        .top_full()
+                        .left(gpui::px(-1.0))
+                        .right(gpui::px(-1.0))
+                        .py_1()
+                        .px_2()
+                        .border_1()
+                        .border_color(color)
+                        .bg(cx.theme().colors().background)
+                        .child(
+                            Text::new(message)
+                                .color(Color::from(color))
+                                .size(TextSize::Small),
+                        ),
+                ))
+            })
+    }
 }
 
 impl Focusable for VariablesPanel {
@@ -541,6 +825,10 @@ impl Render for VariablesPanel {
             .into_iter();
         let project_entry = entries.next();
         let environment_entries = entries.collect::<Vec<_>>();
+        let edit_entry = self
+            .edit_state
+            .as_ref()
+            .map(|edit_state| self.render_edit_entry(edit_state, window, cx));
         let initial_load_completed = self
             .project
             .read(cx)
@@ -549,22 +837,51 @@ impl Render for VariablesPanel {
             .initial_load_completed();
         let panel_background = cx.theme().colors().panel_background;
         let entry_prefix_slot_width = window.rem_size();
+        let focus_handle = self.focus_handle.clone();
 
         gpui::div()
             .track_focus(&self.focus_handle)
-            .key_context(self.dispatch_context())
+            .key_context(self.dispatch_context(window, cx))
             .on_action(cx.listener(Self::select_next))
             .on_action(cx.listener(Self::select_previous))
             .on_action(cx.listener(Self::select_first))
             .on_action(cx.listener(Self::select_last))
+            .on_action(cx.listener(Self::new_environment))
             .on_action(cx.listener(Self::open))
+            .on_action(cx.listener(Self::confirm))
+            .on_action(cx.listener(Self::cancel))
             .flex()
             .flex_col()
             .size_full()
             .bg(panel_background)
             .children(project_header)
             .children(project_entry)
-            .child(self.render_header(SharedString::from("ENVIRONMENTS"), cx))
+            .child(
+                self.render_header(SharedString::from("ENVIRONMENTS"), cx)
+                    .child(
+                        IconButton::new(
+                            "variables-panel-new-environment",
+                            IconAsset::SquareInsetPlus,
+                        )
+                        .shape(IconButtonShape::Square)
+                        .icon_size(IconSize::Medium)
+                        .icon_color(Color::Muted)
+                        .tooltip(Tooltip::for_action_title_in(
+                            "New Environment",
+                            &actions::variables_panel::NewEnvironment,
+                            &focus_handle,
+                        ))
+                        .on_click(cx.listener(
+                            |variables_panel, _, window, cx| {
+                                variables_panel.new_environment(
+                                    &actions::variables_panel::NewEnvironment,
+                                    window,
+                                    cx,
+                                );
+                            },
+                        )),
+                    ),
+            )
             .child(
                 gpui::div()
                     .flex_1()
@@ -579,7 +896,9 @@ impl Render for VariablesPanel {
                             .overflow_y_scroll()
                             .track_scroll(&self.scroll_handle)
                             .when(
-                                initial_load_completed && environment_entries.is_empty(),
+                                initial_load_completed
+                                    && environment_entries.is_empty()
+                                    && edit_entry.is_none(),
                                 |this| {
                                     this.child(
                                         ListItem::new("variables-panel-no-environments")
@@ -598,7 +917,8 @@ impl Render for VariablesPanel {
                                     )
                                 },
                             )
-                            .children(environment_entries),
+                            .children(environment_entries)
+                            .children(edit_entry),
                     )
                     .custom_scrollbars(
                         Scrollbars::new(ScrollAxes::Vertical)
@@ -613,6 +933,15 @@ impl Render for VariablesPanel {
                     ),
             )
     }
+}
+
+fn is_valid_environment_name(name: &str) -> bool {
+    name.starts_with(|character: char| character.is_ascii_alphanumeric())
+        && name.ends_with(|character: char| character.is_ascii_alphanumeric())
+        && !name.contains("  ")
+        && name.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.' | ' ')
+        })
 }
 
 #[cfg(test)]

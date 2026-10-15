@@ -9096,6 +9096,7 @@ name = "variables_panel"
 version = "26.1.0-dev"
 dependencies = [
  "actions",
+ "anyhow",
  "editor",
  "environment_selector",
  "fs",

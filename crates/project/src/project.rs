@@ -35,6 +35,7 @@ use git::status::FileStatus;
 use language::{AvailableLanguage, Buffer, BufferEvent, Language, LanguageRegistry, PLAIN_TEXT};
 use path::{PathStyle, RelPath};
 use util::ResultExt;
+use worktree::{EnvironmentFile, ProjectFile};
 
 use crate::{
     buffer_store::{BufferStore, BufferStoreEvent, is_not_found_error},
@@ -883,8 +884,17 @@ impl Project {
             });
         }
 
+        let config_file_type = ConfigFileType::for_path(&project_path.path);
         let content_task = cx.background_spawn(async move {
-            let contents = worktree::to_pretty_toml(&RequestFile::default()).await?;
+            let contents = match config_file_type {
+                Some(ConfigFileType::Project) => {
+                    worktree::to_pretty_toml(&ProjectFile::default()).await?
+                }
+                Some(ConfigFileType::Environment) => {
+                    worktree::to_pretty_toml(&EnvironmentFile::default()).await?
+                }
+                None => worktree::to_pretty_toml(&RequestFile::default()).await?,
+            };
             anyhow::Ok(contents.into_bytes())
         });
 

@@ -116,7 +116,12 @@
     "context": "VariablesPanel",
     "bindings": {
       "tab": null,
-      "shift-tab": null,
+      "shift-tab": null
+    }
+  },
+  {
+    "context": "VariablesPanel && not_editing",
+    "bindings": {
       "space": "variables_panel::Open"
     }
   },
