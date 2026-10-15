@@ -112,8 +112,8 @@ impl VariablesPanel {
                 &project_config_store,
                 |_, _, event: &ProjectConfigStoreEvent, cx| match event {
                     ProjectConfigStoreEvent::ConfigFileUpdated(_)
-                    | ProjectConfigStoreEvent::ConfigFilesLoaded => cx.notify(),
-                    ProjectConfigStoreEvent::ActiveEnvironmentChanged => {}
+                    | ProjectConfigStoreEvent::ConfigFilesLoaded
+                    | ProjectConfigStoreEvent::ActiveEnvironmentChanged => cx.notify(),
                 },
             )
             .detach();
@@ -361,6 +361,13 @@ impl VariablesPanel {
         let is_ignored = project
             .entry_for_path(&project_path, cx)
             .is_some_and(|entry| entry.is_ignored);
+        let active_environment = project.project_config_store().read(cx).active_environment();
+        let is_active = match &entry {
+            VariablesListEntry::ProjectVariables => false,
+            VariablesListEntry::Environment(environment) => {
+                active_environment == Some(environment.name.as_ref())
+            }
+        };
         let git_settings = GitSettings::get_global(cx);
         let git_status_enabled = git_settings.is_git_status_enabled();
         let text_color = if git_status_enabled && git_settings.status.project_panel.colors {
@@ -431,14 +438,24 @@ impl VariablesPanel {
                 ListItem::new(("variables-panel-entry", index))
                     .spacing(ListItemSpacing::Dense)
                     .selectable(false)
-                    .when_some(git_indicator, |this, (text, color)| {
+                    .when(is_active || git_indicator.is_some(), |this| {
                         this.end_slot(
                             gpui::div()
                                 .flex()
                                 .items_center()
+                                .gap_2()
                                 .flex_none()
                                 .pr_3()
-                                .child(Text::new(text).size(TextSize::Small).color(color)),
+                                .when(is_active, |this| {
+                                    this.child(
+                                        Icon::new(IconAsset::Check)
+                                            .size(IconSize::XSmall)
+                                            .color(Color::Accent),
+                                    )
+                                })
+                                .when_some(git_indicator, |this, (text, color)| {
+                                    this.child(Text::new(text).size(TextSize::Small).color(color))
+                                }),
                         )
                     })
                     .child(

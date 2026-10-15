@@ -304,10 +304,18 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
         index: usize,
         selected: bool,
         _: &mut Window,
-        _: &mut Context<Picker<Self>>,
+        cx: &mut Context<Picker<Self>>,
     ) -> Option<Self::ListItem> {
         let string_match = self.matches.get(index)?;
         let environment = self.environments.get(string_match.candidate_id)?;
+        let active_environment = self
+            .project
+            .read(cx)
+            .project_config_store()
+            .read(cx)
+            .active_environment();
+        let is_active =
+            !environment.is_missing && environment.name.as_deref() == active_environment;
 
         Some(
             ListItem::new(index)
@@ -341,6 +349,13 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                         Text::new("Not found")
                             .size(TextSize::Small)
                             .color(Color::Muted),
+                    )
+                })
+                .when(is_active, |this| {
+                    this.end_slot(
+                        Icon::new(IconAsset::Check)
+                            .size(IconSize::XSmall)
+                            .color(Color::Accent),
                     )
                 }),
         )
