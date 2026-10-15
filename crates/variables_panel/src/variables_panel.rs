@@ -524,6 +524,12 @@ impl Render for VariablesPanel {
             .into_iter();
         let project_entry = entries.next();
         let environment_entries = entries.collect::<Vec<_>>();
+        let initial_load_completed = self
+            .project
+            .read(cx)
+            .project_config_store()
+            .read(cx)
+            .initial_load_completed();
         let panel_background = cx.theme().colors().panel_background;
         let entry_prefix_slot_width = window.rem_size();
 
@@ -555,21 +561,26 @@ impl Render for VariablesPanel {
                             .size_full()
                             .overflow_y_scroll()
                             .track_scroll(&self.scroll_handle)
-                            .when(environment_entries.is_empty(), |this| {
-                                this.child(
-                                    ListItem::new("variables-panel-no-environments")
-                                        .spacing(ListItemSpacing::Dense)
-                                        .selectable(false)
-                                        .child(gpui::div().w(entry_prefix_slot_width).flex_none())
-                                        .child(
-                                            gpui::div().flex().items_center().h_6().child(
-                                                Text::new("No environments")
-                                                    .color(Color::Muted)
-                                                    .single_line(),
+                            .when(
+                                initial_load_completed && environment_entries.is_empty(),
+                                |this| {
+                                    this.child(
+                                        ListItem::new("variables-panel-no-environments")
+                                            .spacing(ListItemSpacing::Dense)
+                                            .selectable(false)
+                                            .child(
+                                                gpui::div().w(entry_prefix_slot_width).flex_none(),
+                                            )
+                                            .child(
+                                                gpui::div().flex().items_center().h_6().child(
+                                                    Text::new("No environments")
+                                                        .color(Color::Muted)
+                                                        .single_line(),
+                                                ),
                                             ),
-                                        ),
-                                )
-                            })
+                                    )
+                                },
+                            )
                             .children(environment_entries),
                     )
                     .custom_scrollbars(

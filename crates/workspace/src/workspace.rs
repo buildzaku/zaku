@@ -1580,7 +1580,8 @@ impl Workspace {
         let project = self.project.clone();
         let workspace_id = serialized_workspace.id;
         let center_pane = serialized_workspace.center_pane;
-        let docks = serialized_workspace.docks;
+        // Restore docks before waiting for the scan so the default panel doesn't flash.
+        self.set_dock_structure(serialized_workspace.docks, window, cx);
 
         cx.spawn_in(window, async move |workspace, cx| {
             let scan_complete =
@@ -1622,7 +1623,6 @@ impl Workspace {
                     cx.emit(WorkspaceEvent::PaneRestored(pane.clone()));
                     cx.focus_self(window);
                 }
-                workspace.set_dock_structure(docks, window, cx);
                 cx.notify();
 
                 item_ids_by_kind
