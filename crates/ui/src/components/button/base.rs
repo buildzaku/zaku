@@ -162,10 +162,11 @@ impl RenderOnce for ButtonLike {
         } else {
             style.background
         };
-        let is_outlined = matches!(
-            self.variant,
-            ButtonVariant::Outline | ButtonVariant::OutlinedGhost
-        );
+        let is_outlined = match self.variant {
+            ButtonVariant::Outline | ButtonVariant::OutlinedGhost => true,
+            ButtonVariant::Custom { border, .. } => !border.is_transparent(),
+            _ => false,
+        };
 
         self.base
             .id(self.id.clone())

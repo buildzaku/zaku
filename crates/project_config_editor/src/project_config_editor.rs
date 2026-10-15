@@ -422,7 +422,7 @@ impl ProjectConfigEditor {
                         background: theme_colors.element_background.opacity(0.5),
                         foreground: theme_colors.button_secondary_foreground,
                         hover_background: theme_colors.button_secondary_hover_background,
-                        border: gpui::transparent_black(),
+                        border: theme_colors.text.opacity(0.15),
                     })
                     .size(ButtonSize::None)
                     .width(gpui::rems(1.0))
