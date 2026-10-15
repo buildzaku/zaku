@@ -1,7 +1,7 @@
 use gpui::TestAppContext;
 use indoc::indoc;
 use language::LanguageRegistry;
-use serde_json::{Value, json};
+use serde_json::json;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use collections::BTreeMap;
@@ -25,8 +25,8 @@ async fn test_newer_find_or_create_worktree_request_supersedes_previous_request(
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    temp_fs.insert_tree(path!("first"), Value::default());
-    temp_fs.insert_tree(path!("second"), Value::default());
+    temp_fs.insert_tree(path!("first"), json!({}));
+    temp_fs.insert_tree(path!("second"), json!({}));
 
     let first_path = temp_fs.path().join("first");
     let second_path = temp_fs.path().join("second");
@@ -77,8 +77,8 @@ async fn test_remove_worktree_invalidates_pending_find_or_create_worktree_reques
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    temp_fs.insert_tree(path!("first"), Value::default());
-    temp_fs.insert_tree(path!("second"), Value::default());
+    temp_fs.insert_tree(path!("first"), json!({}));
+    temp_fs.insert_tree(path!("second"), json!({}));
 
     let first_path = temp_fs.path().join("first");
     let second_path = temp_fs.path().join("second");
@@ -115,7 +115,7 @@ async fn test_open_project_creates_worktree(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    temp_fs.insert_tree(path!("project"), Value::default());
+    temp_fs.insert_tree(path!("project"), json!({}));
     let project_path = temp_fs.path().join("project");
 
     let languages = Arc::new(LanguageRegistry::test_new(cx.executor()));
@@ -773,7 +773,7 @@ async fn test_open_buffer_at_uses_hidden_worktree_for_external_file(cx: &mut Tes
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    temp_fs.insert_tree(path!("project"), Value::default());
+    temp_fs.insert_tree(path!("project"), json!({}));
     let settings_content = indoc! {r#"
         {
           "ui": { "font_size": 14 },
@@ -829,8 +829,8 @@ async fn test_find_or_create_worktree_replaces_existing_worktree(cx: &mut TestAp
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    temp_fs.insert_tree(path!("first"), Value::default());
-    temp_fs.insert_tree(path!("second"), Value::default());
+    temp_fs.insert_tree(path!("first"), json!({}));
+    temp_fs.insert_tree(path!("second"), json!({}));
 
     let first_path = temp_fs.path().join("first");
     let second_path = temp_fs.path().join("second");
@@ -878,7 +878,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_ca
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    temp_fs.insert_tree(path!("project"), Value::default());
+    temp_fs.insert_tree(path!("project"), json!({}));
 
     let canonical_project_path = temp_fs.path().join("project");
     let alternate_project_path = canonical_project_path.join("..").join("project");
@@ -923,7 +923,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_sy
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    temp_fs.insert_tree(path!("project"), Value::default());
+    temp_fs.insert_tree(path!("project"), json!({}));
 
     let project_path = temp_fs.path().join("project");
     let alias_project_path = temp_fs.path().join("project-alias");
@@ -1130,7 +1130,7 @@ async fn test_initial_scan_complete(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    temp_fs.insert_tree(path!("project"), Value::default());
+    temp_fs.insert_tree(path!("project"), json!({}));
 
     let project_path = temp_fs.path().join("project");
     let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;

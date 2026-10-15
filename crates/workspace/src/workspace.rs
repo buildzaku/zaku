@@ -3022,7 +3022,7 @@ mod tests {
 
     use gpui::{Modifiers, MouseDownEvent, MouseMoveEvent, MouseUpEvent, TestAppContext};
     use indoc::indoc;
-    use serde_json::{Value, json};
+    use serde_json::json;
     use std::sync::Arc;
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -3792,7 +3792,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), Value::default());
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
@@ -3890,7 +3890,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), Value::default());
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
@@ -3949,7 +3949,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), Value::default());
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
@@ -3989,7 +3989,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), Value::default());
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
@@ -4036,7 +4036,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), Value::default());
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
@@ -4070,7 +4070,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), Value::default());
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
@@ -4104,7 +4104,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), Value::default());
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
@@ -4622,7 +4622,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state.clone(), cx);
 
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
         let project_path = temp_fs.path().join(path!("project"));
         let result = cx
             .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
@@ -4647,7 +4647,7 @@ mod tests {
         let temp_fs = TempFs::new(cx.executor());
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state.clone(), cx);
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let default_bounds = init_default_window_bounds(app_state.clone(), cx).await;
         let project_path = temp_fs.path().join(path!("project"));
@@ -4723,7 +4723,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state.clone(), cx);
 
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
         let project_path = temp_fs.path().join(path!("project"));
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         init_default_window_bounds(app_state.clone(), cx).await;
@@ -4782,7 +4782,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state.clone(), cx);
 
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
         let project_path = temp_fs.path().join(path!("project"));
         init_default_window_bounds(app_state.clone(), cx).await;
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
@@ -4871,7 +4871,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state.clone(), cx);
 
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
         let project_path = temp_fs.path().join(path!("project"));
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
 
@@ -4975,7 +4975,7 @@ mod tests {
         init_test(app_state, cx);
         cx.update(register_serializable_item::<TestItem>);
 
-        temp_fs.insert_tree(path!("project"), Value::default());
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
@@ -5035,7 +5035,7 @@ mod tests {
         init_test(app_state, cx);
         cx.update(register_serializable_item::<TestItem>);
 
-        temp_fs.insert_tree(path!("project"), Value::default());
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
