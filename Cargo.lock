@@ -9104,6 +9104,7 @@ dependencies = [
  "path 26.1.0-dev",
  "project",
  "project_config_editor",
+ "request_editor",
  "serde_json",
  "settings",
  "theme",

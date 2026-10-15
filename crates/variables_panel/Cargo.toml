@@ -33,6 +33,7 @@ gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
 path = { workspace = true, features = ["test"] }
 project_config_editor = { workspace = true }
+request_editor = { workspace = true }
 serde_json = { workspace = true }
 settings = { workspace = true, features = ["test"] }
 util_macros = { workspace = true }

@@ -7,7 +7,7 @@ use std::{iter, sync::Arc};
 use editor::items::{entry_git_aware_text_color, entry_text_color, git_status_indicator};
 use path::RelPath;
 use project::{
-    EnvironmentColor, Project, ProjectPath, WorktreeId,
+    ConfigFileType, EnvironmentColor, Project, ProjectPath, WorktreeId,
     git_store::{GitStoreEvent, RepositoryEvent},
     project_config_store::ProjectConfigStoreEvent,
 };
@@ -95,6 +95,12 @@ impl VariablesPanel {
                             .read(cx)
                             .active_item(cx)
                             .and_then(|item| item.project_path(cx));
+                        if let Some(project_path) = this.active_item_path.as_ref()
+                            && ConfigFileType::for_path(&project_path.path).is_some()
+                        {
+                            this.selection = Some(project_path.path.clone());
+                            this.autoscroll(cx);
+                        }
                         cx.notify();
                     }
                     WorkspaceEvent::PaneAdded(_) | WorkspaceEvent::PaneRestored(_) => {}
@@ -585,7 +591,7 @@ impl Render for VariablesPanel {
 mod tests {
     use super::*;
 
-    use gpui::{TestAppContext, VisualTestContext};
+    use gpui::{Modifiers, TestAppContext, VisualTestContext};
     use indoc::indoc;
     use serde_json::json;
 
@@ -606,6 +612,7 @@ mod tests {
             workspace::init(app_state, cx);
             crate::init(cx);
             editor::init(cx);
+            request_editor::init(cx);
             project_config_editor::init(cx);
         });
     }
@@ -926,5 +933,135 @@ mod tests {
             );
         });
         assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 1);
+    }
+
+    #[gpui::test]
+    async fn test_autoreveal_active_entry(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                        "Prod.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "red"
+                            variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                        "#},
+                    },
+                },
+                "foo": {
+                    "req1.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/req1"
+                    "#},
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, VariablesPanel::new);
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev", "Prod"]
+        );
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath::from((worktree_id, rel_path(".zaku/environments/Dev.toml"))),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== selected  <== marked", "Prod"]
+        );
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath::from((worktree_id, rel_path(".zaku/environments/Prod.toml"))),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev", "Prod  <== selected  <== marked"]
+        );
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath::from((worktree_id, rel_path("foo/req1.toml"))),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev", "Prod  <== selected"]
+        );
+
+        let dev_tab_bounds = cx.debug_bounds("TAB-0").unwrap();
+        cx.simulate_click(dev_tab_bounds.center(), Modifiers::default());
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== selected  <== marked", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_next(&actions::menu::SelectNext, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== marked", "Prod  <== selected"]
+        );
     }
 }
