@@ -284,31 +284,21 @@ impl ProjectPanel {
                         project_panel.populate_validation_error(cx);
                         project_panel.autoscroll(cx);
                     }
-                    EditorEvent::Blurred => {
-                        let Some(is_new_entry) = project_panel
+                    EditorEvent::Blurred if window.is_window_active() => {
+                        if project_panel
                             .tree_state
                             .edit_state
                             .as_ref()
-                            .and_then(|edit_state| {
-                                edit_state
-                                    .processing_file_name
-                                    .is_none()
-                                    .then_some(edit_state.is_new_entry())
-                            })
-                        else {
-                            return;
-                        };
-
-                        if is_new_entry {
+                            .is_some_and(|edit_state| edit_state.processing_file_name.is_none())
+                        {
                             match project_panel.confirm_edit(false, window, cx) {
                                 Some(task) => task.detach_and_log_err(cx),
                                 None => project_panel.discard_edit_state(window, cx),
                             }
-                        } else {
-                            project_panel.discard_edit_state(window, cx);
                         }
                     }
-                    EditorEvent::DirtyChanged
+                    EditorEvent::Blurred
+                    | EditorEvent::DirtyChanged
                     | EditorEvent::FileHandleChanged
                     | EditorEvent::Saved
                     | EditorEvent::TitleChanged => {}
