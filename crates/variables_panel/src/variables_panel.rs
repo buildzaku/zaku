@@ -4,6 +4,7 @@ use gpui::{
     Task, WeakEntity, Window, prelude::*,
 };
 use std::{iter, sync::Arc};
+use strum::IntoEnumIterator;
 
 use editor::{
     Editor, EditorEvent, MultiBufferOffset, SelectionEffects,
@@ -19,11 +20,11 @@ use settings::{GitSettings, Settings};
 use theme::ActiveTheme;
 use ui::{
     ButtonCommon, Clickable, Color, ContextMenu, DynamicSpacing, Icon, IconAsset, IconButton,
-    IconButtonShape, IconSize, ListItem, ListItemSpacing, ScrollAxes, Scrollbars, Text, TextCommon,
-    TextSize, Tooltip, TrackLayout, WithScrollbar,
+    IconButtonShape, IconPosition, IconSize, ListItem, ListItemSpacing, ScrollAxes, Scrollbars,
+    Text, TextCommon, TextSize, Tooltip, TrackLayout, WithScrollbar,
 };
 use util::ResultExt;
-use workspace::{Panel, Workspace, WorkspaceEvent};
+use workspace::{Panel, Workspace, WorkspaceEvent, notifications::DetachAndPromptErr};
 
 pub fn init(cx: &mut App) {
     cx.observe_new(
@@ -511,11 +512,57 @@ impl VariablesPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.selection = Some(selected_entry);
+        let Some(worktree) = self.project.read(cx).root_worktree(cx) else {
+            return;
+        };
+        let Some(VariablesListEntry::Environment(environment)) = self
+            .entries(cx)
+            .into_iter()
+            .find(|entry| entry.selected_entry() == selected_entry)
+        else {
+            return;
+        };
 
+        self.selection = Some(selected_entry);
+        let project = self.project.clone();
+        let project_path = ProjectPath {
+            worktree_id: worktree.read(cx).id(),
+            path: environment.path,
+        };
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
                 .action("Rename", Box::new(actions::variables_panel::Rename))
+                .separator()
+                .submenu("Color", move |mut menu, _, _| {
+                    for color in iter::once(None).chain(EnvironmentColor::iter().map(Some)) {
+                        let project = project.clone();
+                        let project_path = project_path.clone();
+                        let display_name = color.map_or("None", |color| color.display_name());
+                        menu = menu.toggleable_entry(
+                            display_name,
+                            color == environment.color,
+                            IconPosition::End,
+                            None,
+                            move |window, cx| {
+                                project
+                                    .update(cx, |project, cx| {
+                                        project.set_environment_color(
+                                            project_path.clone(),
+                                            color,
+                                            cx,
+                                        )
+                                    })
+                                    .detach_and_prompt_err(
+                                        "Failed to change color",
+                                        window,
+                                        cx,
+                                        |_, _, _| None,
+                                    );
+                            },
+                        );
+                    }
+                    menu
+                })
         });
 
         window.focus(&context_menu.focus_handle(cx), cx);

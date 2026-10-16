@@ -1074,6 +1074,17 @@ impl Project {
             .update(cx, |store, cx| store.save_project_config_buffer(buffer, cx))
     }
 
+    pub fn set_environment_color(
+        &self,
+        project_path: ProjectPath,
+        color: Option<EnvironmentColor>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        self.project_config_buffer_store.update(cx, |store, cx| {
+            store.set_environment_color(project_path, color, cx)
+        })
+    }
+
     pub fn reload_project_config_buffer(
         &self,
         buffer: &Entity<ProjectConfigBuffer>,
