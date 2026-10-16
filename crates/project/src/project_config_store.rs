@@ -194,14 +194,32 @@ impl ProjectConfigStore {
         changes: &UpdatedEntriesSet,
         cx: &mut Context<Self>,
     ) {
-        for (path, _, change) in changes.iter() {
+        for (path, entry_id, change) in changes.iter() {
             let Some(kind) = ConfigFileKind::for_path(path) else {
                 continue;
             };
 
             if change == &PathChange::Removed {
                 self.loading_files.remove(path);
-                self.update_config_file(path.clone(), kind, None, cx);
+                // Renamed files keep their entry id; follow it now instead of reporting the active
+                // environment missing.
+                if let ConfigFileKind::Environment(name) = &kind
+                    && let Some(ConfigFileKind::Environment(new_name)) = worktree
+                        .read(cx)
+                        .entry_for_id(*entry_id)
+                        .and_then(|entry| ConfigFileKind::for_path(&entry.path))
+                {
+                    if let Some(environment_file) = self.environment_files.remove(name) {
+                        self.environment_files
+                            .insert(new_name.clone(), environment_file);
+                    }
+                    if self.active_environment.as_ref() == Some(name) {
+                        self.activate_environment(Some(new_name), cx);
+                    }
+                    cx.emit(ProjectConfigStoreEvent::ConfigFileUpdated(Ok(path.clone())));
+                } else {
+                    self.update_config_file(path.clone(), kind, None, cx);
+                }
                 continue;
             }
 

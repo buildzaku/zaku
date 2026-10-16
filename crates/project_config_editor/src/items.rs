@@ -91,10 +91,13 @@ impl Item for ProjectConfigEditor {
             (ProjectConfigEditorState::Ready(_), ConfigFileType::Project) => {
                 Icon::new(IconAsset::SquareInset)
                     .size(IconSize::XSmall)
-                    .color(text_color)
+                    .color(entry_text_color(params.selected))
             }
             (ProjectConfigEditorState::Ready(_), ConfigFileType::Environment) => {
-                environment_selector::environment_icon(self.environment_color(cx), text_color)
+                environment_selector::environment_icon(
+                    self.environment_color(cx),
+                    entry_text_color(params.selected),
+                )
             }
         };
 

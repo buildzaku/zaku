@@ -16,12 +16,14 @@ workspace = true
 
 [dependencies]
 actions = { workspace = true }
+anyhow = { workspace = true }
 editor = { workspace = true }
 environment_selector = { workspace = true }
 gpui = { workspace = true }
 path = { workspace = true }
 project = { workspace = true }
 settings = { workspace = true }
+strum = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
 util = { workspace = true }

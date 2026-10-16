@@ -1,7 +1,7 @@
 use fuzzy_nucleo::{Case, LengthPenalty, StringMatch, StringMatchCandidate};
 use gpui::{
     Action, AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
-    SharedString, Subscription, Task, TaskExt, WeakEntity, Window, prelude::*,
+    SharedString, Subscription, Task, Window, prelude::*,
 };
 use std::{iter, sync::Arc};
 
@@ -12,7 +12,7 @@ use ui::{
     HighlightedText, Icon, IconAsset, IconSize, KeyBinding, ListItem, ListItemSpacing,
     ListSubHeader, Text, TextCommon, TextSize, Toggleable,
 };
-use workspace::{ModalView, Workspace, WorkspaceDb};
+use workspace::{ModalView, Workspace};
 
 pub fn init(cx: &mut App) {
     cx.observe_new(EnvironmentSelector::register).detach();
@@ -76,23 +76,17 @@ impl EnvironmentSelector {
     }
 
     fn toggle(workspace: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) {
-        let workspace_handle = workspace.weak_handle();
         let project = workspace.project().clone();
 
         workspace.toggle_modal(window, cx, |window, cx| {
-            let delegate = EnvironmentSelectorDelegate::new(workspace_handle, project, cx);
+            let delegate = EnvironmentSelectorDelegate::new(project, cx);
             Self::new(delegate, 34.0, false, window, cx)
         });
     }
 
-    pub fn popover(
-        workspace: WeakEntity<Workspace>,
-        project: Entity<Project>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Entity<Self> {
+    pub fn popover(project: Entity<Project>, window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| {
-            let delegate = EnvironmentSelectorDelegate::new(workspace, project, cx);
+            let delegate = EnvironmentSelectorDelegate::new(project, cx);
             let environment_selector = Self::new(delegate, 20.0, true, window, cx);
             environment_selector
                 .picker
@@ -130,7 +124,6 @@ struct Environment {
 }
 
 pub struct EnvironmentSelectorDelegate {
-    workspace: WeakEntity<Workspace>,
     project: Entity<Project>,
     environments: Vec<Environment>,
     matches: Vec<StringMatch>,
@@ -138,7 +131,7 @@ pub struct EnvironmentSelectorDelegate {
 }
 
 impl EnvironmentSelectorDelegate {
-    fn new(workspace: WeakEntity<Workspace>, project: Entity<Project>, cx: &App) -> Self {
+    fn new(project: Entity<Project>, cx: &App) -> Self {
         let project_config_store = project.read(cx).project_config_store().read(cx);
         let mut environment_files = project_config_store.environments().collect::<Vec<_>>();
         environment_files.sort_by(|(left, _), (right, _)| path::natural_sort(left, right));
@@ -169,7 +162,6 @@ impl EnvironmentSelectorDelegate {
             .collect();
 
         Self {
-            workspace,
             project,
             environments,
             matches: Vec::new(),
@@ -280,20 +272,6 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                 project_config_store.activate_environment(name.clone(), cx);
             },
         );
-        if let Some(workspace_id) = self
-            .workspace
-            .upgrade()
-            .and_then(|workspace| workspace.read(cx).database_id())
-        {
-            let workspace_db = WorkspaceDb::global(cx);
-            let name = name.clone();
-            cx.background_spawn(async move {
-                workspace_db
-                    .set_active_environment(workspace_id, name)
-                    .await
-            })
-            .detach_and_log_err(cx);
-        }
         cx.emit(DismissEvent);
     }
 

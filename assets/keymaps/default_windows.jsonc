@@ -120,6 +120,15 @@
     "bindings": {
       "tab": null,
       "shift-tab": null,
+      "ctrl-n": "variables_panel::NewEnvironment",
+      "enter": "variables_panel::Rename",
+      "f2": "variables_panel::Rename"
+    }
+  },
+  {
+    "context": "VariablesPanel && not_editing",
+    "use_key_equivalents": true,
+    "bindings": {
       "space": "variables_panel::Open"
     }
   },
