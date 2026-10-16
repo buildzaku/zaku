@@ -111,7 +111,9 @@
     "bindings": {
       "tab": null,
       "shift-tab": null,
-      "cmd-n": "variables_panel::NewEnvironment"
+      "cmd-n": "variables_panel::NewEnvironment",
+      "enter": "variables_panel::Rename",
+      "f2": "variables_panel::Rename"
     }
   },
   {

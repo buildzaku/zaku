@@ -4303,11 +4303,7 @@ mod tests {
                     "File editing should have a single selection, but got: {file_name_selections:?}"
                 );
                 let file_name_selection = &file_name_selections[0];
-                assert_eq!(
-                    file_name_selection.start,
-                    MultiBufferOffset(0),
-                    "Should select from the beginning of the file name"
-                );
+                assert_eq!(file_name_selection.start, MultiBufferOffset(0));
                 assert_eq!(
                     file_name_selection.end,
                     MultiBufferOffset("first copy".len()),
@@ -4576,11 +4572,7 @@ mod tests {
                     "File editing should have a single selection, but got: {file_name_selections:?}"
                 );
                 let file_name_selection = &file_name_selections[0];
-                assert_eq!(
-                    file_name_selection.start,
-                    MultiBufferOffset(0),
-                    "Should select the file name from the start"
-                );
+                assert_eq!(file_name_selection.start, MultiBufferOffset(0));
                 assert_eq!(
                     file_name_selection.end,
                     MultiBufferOffset("first".len()),
@@ -4687,8 +4679,7 @@ mod tests {
                 "      first  <== selected",
                 "      second",
                 "      third",
-            ],
-            "File list should be unchanged after failed rename confirmation"
+            ]
         );
     }
 

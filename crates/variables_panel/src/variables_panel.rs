@@ -119,6 +119,7 @@ pub struct VariablesPanel {
 impl VariablesPanel {
     const PANEL_KEY: &str = "VariablesPanel";
     const DEFAULT_SIZE: Pixels = gpui::px(250.0);
+    const NEW_ENTRY_ID: ProjectEntryId = ProjectEntryId::MAX;
 
     pub fn new(
         workspace: &mut Workspace,
@@ -441,12 +442,16 @@ impl VariablesPanel {
             return;
         }
 
-        let previously_focused = self.selection.take().or_else(|| {
-            self.edit_state
-                .as_ref()
-                .filter(|edit_state| edit_state.is_new_entry())
-                .and_then(|edit_state| edit_state.previously_focused)
-        });
+        let previously_focused = self
+            .selection
+            .filter(|selection| *selection != SelectedEntry::Environment(Self::NEW_ENTRY_ID))
+            .or_else(|| {
+                self.edit_state
+                    .as_ref()
+                    .filter(|edit_state| edit_state.is_new_entry())
+                    .and_then(|edit_state| edit_state.previously_focused)
+            });
+        self.selection = Some(SelectedEntry::Environment(Self::NEW_ENTRY_ID));
         self.edit_state = Some(EditState {
             entry_id: None,
             processing_name: None,
@@ -643,9 +648,8 @@ impl VariablesPanel {
 
             variables_panel.update_in(cx, |variables_panel, window, cx| {
                 let is_new_entry = edited_entry_id.is_none();
-                if is_new_entry
-                    || variables_panel.selection == edited_entry_id.map(SelectedEntry::Environment)
-                {
+                let edited_entry_id = edited_entry_id.unwrap_or(Self::NEW_ENTRY_ID);
+                if variables_panel.selection == Some(SelectedEntry::Environment(edited_entry_id)) {
                     variables_panel.selection = Some(SelectedEntry::Environment(new_entry.id));
                 }
                 if is_new_entry {
@@ -1177,25 +1181,44 @@ mod tests {
         cx: &mut VisualTestContext,
     ) -> Vec<String> {
         panel.read_with(cx, |panel, cx| {
-            let edit_entry = panel.edit_state.as_ref().map(|edit_state| {
+            let edit_entry_name = |edit_state: &EditState| {
                 if let Some(name) = &edit_state.processing_name {
                     format!("[PROCESSING: '{name}']")
                 } else {
                     let name = panel.environment_name_editor.read(cx).text(cx);
                     format!("[EDITOR: '{name}']")
                 }
-            });
+            };
+            let new_entry = panel
+                .edit_state
+                .as_ref()
+                .filter(|edit_state| edit_state.is_new_entry())
+                .map(|edit_state| {
+                    let name = edit_entry_name(edit_state);
+                    let selected = if panel.selection
+                        == Some(SelectedEntry::Environment(VariablesPanel::NEW_ENTRY_ID))
+                    {
+                        "  <== selected"
+                    } else {
+                        ""
+                    };
+                    format!("{name}{selected}")
+                });
 
             panel
                 .entries(cx)
                 .into_iter()
                 .map(|entry| {
                     let selected_entry = Some(entry.selected_entry());
-                    let name = match entry {
-                        VariablesListEntry::ProjectVariables => {
+                    let edit_state = panel.edit_state.as_ref().filter(|edit_state| {
+                        edit_state.entry_id.map(SelectedEntry::Environment) == selected_entry
+                    });
+                    let name = match (edit_state, entry) {
+                        (Some(edit_state), _) => SharedString::from(edit_entry_name(edit_state)),
+                        (None, VariablesListEntry::ProjectVariables) => {
                             SharedString::from("Project Variables")
                         }
-                        VariablesListEntry::Environment(environment) => environment.name,
+                        (None, VariablesListEntry::Environment(environment)) => environment.name,
                     };
                     let selected = if panel.selection == selected_entry {
                         "  <== selected"
@@ -1210,7 +1233,7 @@ mod tests {
 
                     format!("{name}{selected}{marked}")
                 })
-                .chain(edit_entry)
+                .chain(new_entry)
                 .collect()
         })
     }
@@ -1432,6 +1455,11 @@ mod tests {
         panel.update_in(cx, |panel, window, cx| {
             panel.select_first(&actions::menu::SelectFirst, window, cx);
         });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables  <== selected", "Dev"]
+        );
+
         panel.update_in(cx, |panel, window, cx| {
             panel.open(&actions::variables_panel::Open, window, cx);
         });
@@ -1660,7 +1688,7 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, cx),
-            &["Project Variables", "[EDITOR: '']"]
+            &["Project Variables", "[EDITOR: '']  <== selected"]
         );
 
         panel
@@ -1739,6 +1767,14 @@ mod tests {
         let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, VariablesPanel::new);
         cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_last(&actions::menu::SelectLast, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== selected"]
+        );
 
         panel.update_in(cx, |panel, window, cx| {
             panel.new_environment(&actions::variables_panel::NewEnvironment, window, cx);
@@ -1832,7 +1868,325 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, cx),
-            &["Project Variables", "Dev"]
+            &["Project Variables", "Dev  <== selected"]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_rename_environment(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                        "Prod.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "red"
+                            variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                        "#},
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, VariablesPanel::new);
+        cx.run_until_parked();
+
+        project.update(cx, |project, cx| {
+            project
+                .project_config_store()
+                .clone()
+                .update(cx, |project_config_store, cx| {
+                    project_config_store.activate_environment(Some("Dev".to_string()), cx);
+                });
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_first(&actions::menu::SelectFirst, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables  <== selected", "Dev", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_next(&actions::menu::SelectNext, window, cx);
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            panel.rename(&actions::variables_panel::Rename, window, cx);
+        });
+
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.environment_name_editor.read(cx).is_focused(window));
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "[EDITOR: 'Dev']  <== selected", "Prod"]
+        );
+
+        let confirm = panel.update_in(cx, |panel, window, cx| {
+            panel.environment_name_editor.update(cx, |editor, cx| {
+                let name_selections = editor
+                    .selections
+                    .all::<MultiBufferOffset>(&editor.display_snapshot(cx));
+                assert_eq!(
+                    name_selections.len(),
+                    1,
+                    "Name editing should have a single selection, but got: {name_selections:?}"
+                );
+                let name_selection = &name_selections[0];
+                assert_eq!(name_selection.start, MultiBufferOffset(0));
+                assert_eq!(name_selection.end, MultiBufferOffset("Dev".len()));
+
+                editor.set_text("Dev 2", cx);
+            });
+            panel.confirm_edit(true, window, cx).unwrap()
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &[
+                "Project Variables",
+                "[PROCESSING: 'Dev 2']  <== selected",
+                "Prod",
+            ]
+        );
+
+        confirm.await.unwrap();
+        cx.run_until_parked();
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev 2  <== selected", "Prod"]
+        );
+        project.read_with(cx, |project, cx| {
+            assert_eq!(
+                project.project_config_store().read(cx).active_environment(),
+                Some("Dev 2")
+            );
+        });
+        assert!(
+            temp_fs
+                .metadata("project/.zaku/environments/Dev.toml".as_ref())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            temp_fs
+                .load("project/.zaku/environments/Dev 2.toml".as_ref())
+                .await
+                .unwrap(),
+            indoc! {r#"
+                [meta]
+                version = 1
+
+                [environment]
+                color = "green"
+                variables = [{ name = "base_url", value = "http://localhost:8000" }]
+            "#}
+        );
+    }
+
+    #[gpui::test]
+    async fn test_rename_environment_conflict(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                        "Prod.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "red"
+                            variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                        "#},
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, VariablesPanel::new);
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_first(&actions::menu::SelectFirst, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables  <== selected", "Dev", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_next(&actions::menu::SelectNext, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== selected", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.rename(&actions::variables_panel::Rename, window, cx);
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.environment_name_editor.read(cx).is_focused(window));
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "[EDITOR: 'Dev']  <== selected", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.environment_name_editor.update(cx, |editor, cx| {
+                editor.set_text("prod", cx);
+            });
+        });
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.edit_state.as_ref().unwrap().validation_state,
+                ValidationState::Error("Environment 'Prod' already exists.".to_string())
+            );
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(
+                panel.confirm_edit(true, window, cx).is_none(),
+                "Should not allow to confirm on conflicting environment rename"
+            );
+        });
+        panel.read_with(cx, |panel, _| {
+            assert!(
+                panel.edit_state.is_some(),
+                "Edit state should not be None after conflicting environment rename"
+            );
+        });
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.environment_name_editor.update(cx, |editor, cx| {
+                editor.set_text("Dev", cx);
+            });
+        });
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel.edit_state.as_ref().unwrap().validation_state,
+                ValidationState::None
+            );
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(
+                panel.confirm_edit(true, window, cx).is_none(),
+                "Should not rename an environment to its own name"
+            );
+        });
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.cancel(&actions::menu::Cancel, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== selected", "Prod"]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_rename_survives_window_deactivation(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, |workspace, window, cx| {
+            let panel = VariablesPanel::new(workspace, window, cx);
+            workspace.add_panel(panel.clone(), DockPosition::Left, window, cx);
+            workspace.open_panel::<VariablesPanel>(window, cx);
+            panel
+        });
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_last(&actions::menu::SelectLast, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== selected"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.rename(&actions::variables_panel::Rename, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "[EDITOR: 'Dev']  <== selected"]
+        );
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(
+                panel.environment_name_editor.read(cx).is_focused(window),
+                "Name editor should be focused, otherwise deactivating the window blurs nothing"
+            );
+        });
+
+        cx.deactivate_window();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "[EDITOR: 'Dev']  <== selected"]
         );
     }
 

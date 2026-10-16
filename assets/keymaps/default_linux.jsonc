@@ -118,7 +118,9 @@
       "tab": null,
       "shift-tab": null,
       "new": "variables_panel::NewEnvironment",
-      "ctrl-n": "variables_panel::NewEnvironment"
+      "ctrl-n": "variables_panel::NewEnvironment",
+      "enter": "variables_panel::Rename",
+      "f2": "variables_panel::Rename"
     }
   },
   {
