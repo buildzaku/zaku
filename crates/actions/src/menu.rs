@@ -15,6 +15,10 @@ gpui::actions!(
         SelectFirst,
         /// Select the last item in the menu.
         SelectLast,
+        /// Open the selected submenu.
+        SelectChild,
+        /// Close the submenu and return to its parent menu.
+        SelectParent,
         /// Restart the menu from the beginning.
         Restart,
     ]
