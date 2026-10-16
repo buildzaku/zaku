@@ -1,8 +1,13 @@
 use gpui::{
-    Action, App, DefiniteLength, DismissEvent, ElementId, Entity, EventEmitter, FocusHandle,
-    Focusable, MouseDownEvent, SharedString, Subscription, Window, prelude::*,
+    Action, Anchor, App, Bounds, DefiniteLength, DismissEvent, ElementId, Entity, EventEmitter,
+    FocusHandle, Focusable, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
+    Point, SharedString, Size, Subscription, Window, prelude::*,
 };
-use std::{rc::Rc, time::Duration};
+use std::{
+    cell::Cell,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use theme::ThemeSettings;
 
@@ -13,12 +18,44 @@ use crate::{
     VisibleOnHover, utils::WithRemSize,
 };
 
+#[derive(Clone, Copy)]
+enum SubmenuOpenTrigger {
+    Pointer,
+    Keyboard,
+}
+
+struct OpenSubmenu {
+    item_index: usize,
+    entity: Entity<ContextMenu>,
+    trigger_bounds: Option<Bounds<Pixels>>,
+    offset: Option<Pixels>,
+    flip_left: bool,
+    _dismiss_subscription: Subscription,
+}
+
+enum SubmenuState {
+    Closed,
+    Open(OpenSubmenu),
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum HoverTarget {
+    MainMenu,
+    Submenu,
+}
+
 pub enum ContextMenuItem {
     Separator,
     Header(SharedString),
     HeaderWithLink(SharedString, SharedString, SharedString),
     Text(SharedString),
     Entry(ContextMenuEntry),
+    Submenu {
+        label: SharedString,
+        icon: Option<IconAsset>,
+        icon_color: Option<Color>,
+        builder: Rc<dyn Fn(ContextMenu, &mut Window, &mut Context<ContextMenu>) -> ContextMenu>,
+    },
 }
 
 impl ContextMenuItem {
@@ -29,6 +66,7 @@ impl ContextMenuItem {
             | ContextMenuItem::Separator
             | ContextMenuItem::Text(_) => false,
             ContextMenuItem::Entry(ContextMenuEntry { disabled, .. }) => !disabled,
+            ContextMenuItem::Submenu { .. } => true,
         }
     }
 }
@@ -142,6 +180,14 @@ pub struct ContextMenu {
     on_blur_subscription: Subscription,
     keep_open_on_confirm: bool,
     fixed_width: Option<DefiniteLength>,
+    main_menu: Option<Entity<ContextMenu>>,
+    main_menu_observed_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    submenu_state: SubmenuState,
+    hover_target: HoverTarget,
+    submenu_safety_threshold_x: Option<Pixels>,
+    submenu_trigger_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    submenu_trigger_mouse_down: bool,
+    ignore_blur_until: Option<Instant>,
 }
 
 impl ContextMenu {
@@ -155,6 +201,22 @@ impl ContextMenu {
             &focus_handle,
             window,
             |this: &mut ContextMenu, window, cx| {
+                if let Some(ignore_until) = this.ignore_blur_until {
+                    if Instant::now() < ignore_until {
+                        return;
+                    }
+                    this.ignore_blur_until = None;
+                }
+
+                if this.main_menu.is_none()
+                    && let SubmenuState::Open(open_submenu) = &this.submenu_state
+                {
+                    let submenu_focus = open_submenu.entity.read(cx).focus_handle.clone();
+                    if submenu_focus.contains_focused(window, cx) {
+                        return;
+                    }
+                }
+
                 this.cancel(&actions::menu::Cancel, window, cx);
             },
         );
@@ -174,6 +236,14 @@ impl ContextMenu {
             keep_open_on_confirm: false,
             fixed_width: None,
             key_context: "menu".into(),
+            main_menu: None,
+            main_menu_observed_bounds: Rc::new(Cell::new(None)),
+            submenu_state: SubmenuState::Closed,
+            hover_target: HoverTarget::MainMenu,
+            submenu_safety_threshold_x: None,
+            submenu_trigger_bounds: Rc::new(Cell::new(None)),
+            submenu_trigger_mouse_down: false,
+            ignore_blur_until: None,
         };
 
         (builder)(menu, window, cx)
@@ -203,6 +273,22 @@ impl ContextMenu {
                 &focus_handle,
                 window,
                 |this: &mut ContextMenu, window, cx| {
+                    if let Some(ignore_until) = this.ignore_blur_until {
+                        if Instant::now() < ignore_until {
+                            return;
+                        }
+                        this.ignore_blur_until = None;
+                    }
+
+                    if this.main_menu.is_none()
+                        && let SubmenuState::Open(open_submenu) = &this.submenu_state
+                    {
+                        let submenu_focus = open_submenu.entity.read(cx).focus_handle.clone();
+                        if submenu_focus.contains_focused(window, cx) {
+                            return;
+                        }
+                    }
+
                     this.cancel(&actions::menu::Cancel, window, cx);
                 },
             );
@@ -222,6 +308,14 @@ impl ContextMenu {
                 keep_open_on_confirm: true,
                 fixed_width: None,
                 key_context: "menu".into(),
+                main_menu: None,
+                main_menu_observed_bounds: Rc::new(Cell::new(None)),
+                submenu_state: SubmenuState::Closed,
+                hover_target: HoverTarget::MainMenu,
+                submenu_safety_threshold_x: None,
+                submenu_trigger_bounds: Rc::new(Cell::new(None)),
+                submenu_trigger_mouse_down: false,
+                ignore_blur_until: None,
             };
 
             (builder)(menu, window, cx)
@@ -243,6 +337,22 @@ impl ContextMenu {
             &focus_handle,
             window,
             |this: &mut ContextMenu, window, cx| {
+                if let Some(ignore_until) = this.ignore_blur_until {
+                    if Instant::now() < ignore_until {
+                        return;
+                    }
+                    this.ignore_blur_until = None;
+                }
+
+                if this.main_menu.is_none()
+                    && let SubmenuState::Open(open_submenu) = &this.submenu_state
+                {
+                    let submenu_focus = open_submenu.entity.read(cx).focus_handle.clone();
+                    if submenu_focus.contains_focused(window, cx) {
+                        return;
+                    }
+                }
+
                 this.cancel(&actions::menu::Cancel, window, cx);
             },
         );
@@ -259,6 +369,14 @@ impl ContextMenu {
             keep_open_on_confirm: false,
             fixed_width: None,
             key_context: "menu".into(),
+            main_menu: None,
+            main_menu_observed_bounds: Rc::new(Cell::new(None)),
+            submenu_state: SubmenuState::Closed,
+            hover_target: HoverTarget::MainMenu,
+            submenu_safety_threshold_x: None,
+            submenu_trigger_bounds: Rc::new(Cell::new(None)),
+            submenu_trigger_mouse_down: false,
+            ignore_blur_until: None,
         };
 
         let new_menu = (builder)(menu, window, cx);
@@ -522,6 +640,51 @@ impl ContextMenu {
         self
     }
 
+    pub fn submenu(
+        mut self,
+        label: impl Into<SharedString>,
+        builder: impl Fn(ContextMenu, &mut Window, &mut Context<ContextMenu>) -> ContextMenu + 'static,
+    ) -> Self {
+        self.items.push(ContextMenuItem::Submenu {
+            label: label.into(),
+            icon: None,
+            icon_color: None,
+            builder: Rc::new(builder),
+        });
+        self
+    }
+
+    pub fn submenu_with_icon(
+        mut self,
+        label: impl Into<SharedString>,
+        icon: IconAsset,
+        builder: impl Fn(ContextMenu, &mut Window, &mut Context<ContextMenu>) -> ContextMenu + 'static,
+    ) -> Self {
+        self.items.push(ContextMenuItem::Submenu {
+            label: label.into(),
+            icon: Some(icon),
+            icon_color: None,
+            builder: Rc::new(builder),
+        });
+        self
+    }
+
+    pub fn submenu_with_colored_icon(
+        mut self,
+        label: impl Into<SharedString>,
+        icon: IconAsset,
+        icon_color: Color,
+        builder: impl Fn(ContextMenu, &mut Window, &mut Context<ContextMenu>) -> ContextMenu + 'static,
+    ) -> Self {
+        self.items.push(ContextMenuItem::Submenu {
+            label: label.into(),
+            icon: Some(icon),
+            icon_color: Some(icon_color),
+            builder: Rc::new(builder),
+        });
+        self
+    }
+
     pub fn keep_open_on_confirm(mut self, keep_open: bool) -> Self {
         self.keep_open_on_confirm = keep_open;
         self
@@ -569,6 +732,27 @@ impl ContextMenu {
             return;
         };
 
+        if let Some(ContextMenuItem::Submenu { builder, .. }) = self.items.get(idx) {
+            self.open_submenu(
+                idx,
+                builder.clone(),
+                SubmenuOpenTrigger::Keyboard,
+                window,
+                cx,
+            );
+
+            if let SubmenuState::Open(open_submenu) = &self.submenu_state {
+                let focus_handle = open_submenu.entity.read(cx).focus_handle.clone();
+                window.focus(&focus_handle, cx);
+                open_submenu.entity.update(cx, |submenu, cx| {
+                    submenu.select_first(&actions::menu::SelectFirst, window, cx);
+                });
+            }
+
+            cx.notify();
+            return;
+        }
+
         let context = self.action_context.as_ref();
 
         if let Some(ContextMenuItem::Entry(ContextMenuEntry {
@@ -578,6 +762,10 @@ impl ContextMenu {
         })) = self.items.get(idx)
         {
             (handler)(context, window, cx);
+        }
+
+        if self.main_menu.is_some() && !self.keep_open_on_confirm {
+            self.clicked = true;
         }
 
         if self.keep_open_on_confirm {
@@ -597,6 +785,27 @@ impl ContextMenu {
             return;
         };
 
+        if let Some(ContextMenuItem::Submenu { builder, .. }) = self.items.get(idx) {
+            self.open_submenu(
+                idx,
+                builder.clone(),
+                SubmenuOpenTrigger::Keyboard,
+                window,
+                cx,
+            );
+
+            if let SubmenuState::Open(open_submenu) = &self.submenu_state {
+                let focus_handle = open_submenu.entity.read(cx).focus_handle.clone();
+                window.focus(&focus_handle, cx);
+                open_submenu.entity.update(cx, |submenu, cx| {
+                    submenu.select_first(&actions::menu::SelectFirst, window, cx);
+                });
+            }
+
+            cx.notify();
+            return;
+        }
+
         let context = self.action_context.as_ref();
 
         if let Some(ContextMenuItem::Entry(ContextMenuEntry {
@@ -613,6 +822,10 @@ impl ContextMenu {
             }
         }
 
+        if self.main_menu.is_some() && !self.keep_open_on_confirm {
+            self.clicked = true;
+        }
+
         if self.keep_open_on_confirm {
             self.rebuild(window, cx);
         } else {
@@ -623,9 +836,21 @@ impl ContextMenu {
     pub fn cancel(
         &mut self,
         _: &actions::menu::Cancel,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(parent) = &self.main_menu {
+            cx.emit(DismissEvent);
+
+            // Return focus to the parent so keyboard navigation works after the submenu closes.
+            let parent_focus = parent.read(cx).focus_handle.clone();
+            parent.update(cx, |parent, _| {
+                parent.ignore_blur_until = Some(Instant::now() + Duration::from_millis(200));
+            });
+            window.focus(&parent_focus, cx);
+            return;
+        }
+
         cx.emit(DismissEvent);
     }
 
@@ -722,6 +947,63 @@ impl ContextMenu {
         self.handle_select_last(&actions::menu::SelectLast, window, cx);
     }
 
+    pub fn select_submenu_child(
+        &mut self,
+        _: &actions::menu::SelectChild,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(idx) = self.selected_index else {
+            return;
+        };
+        let Some(ContextMenuItem::Submenu { builder, .. }) = self.items.get(idx) else {
+            return;
+        };
+
+        self.open_submenu(
+            idx,
+            builder.clone(),
+            SubmenuOpenTrigger::Keyboard,
+            window,
+            cx,
+        );
+
+        if let SubmenuState::Open(open_submenu) = &self.submenu_state {
+            let focus_handle = open_submenu.entity.read(cx).focus_handle.clone();
+            window.focus(&focus_handle, cx);
+            open_submenu.entity.update(cx, |submenu, cx| {
+                submenu.select_first(&actions::menu::SelectFirst, window, cx);
+            });
+        }
+
+        cx.notify();
+    }
+
+    pub fn select_submenu_parent(
+        &mut self,
+        _: &actions::menu::SelectParent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(parent) = self.main_menu.clone() else {
+            return;
+        };
+
+        let parent_focus = parent.read(cx).focus_handle.clone();
+        window.focus(&parent_focus, cx);
+
+        cx.emit(DismissEvent);
+
+        parent.update(cx, |parent, cx| {
+            if let SubmenuState::Open(open_submenu) = &parent.submenu_state {
+                let trigger_index = open_submenu.item_index;
+                parent.close_submenu(false, cx);
+                parent.select_index(trigger_index, window, cx);
+                cx.notify();
+            }
+        });
+    }
+
     fn select_index(
         &mut self,
         idx: usize,
@@ -733,6 +1015,127 @@ impl ContextMenu {
             self.selected_index = Some(idx);
         }
         Some(idx)
+    }
+
+    fn create_submenu(
+        builder: Rc<dyn Fn(ContextMenu, &mut Window, &mut Context<ContextMenu>) -> ContextMenu>,
+        parent_entity: Entity<ContextMenu>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (Entity<ContextMenu>, Subscription) {
+        let submenu = Self::build_submenu(builder, parent_entity, window, cx);
+
+        let dismiss_subscription = cx.subscribe(&submenu, |this, submenu, _: &DismissEvent, cx| {
+            let should_dismiss_parent = submenu.read(cx).clicked;
+
+            this.close_submenu(false, cx);
+
+            if should_dismiss_parent {
+                cx.emit(DismissEvent);
+            }
+        });
+
+        (submenu, dismiss_subscription)
+    }
+
+    fn build_submenu(
+        builder: Rc<dyn Fn(ContextMenu, &mut Window, &mut Context<ContextMenu>) -> ContextMenu>,
+        parent_entity: Entity<ContextMenu>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<ContextMenu> {
+        cx.new(move |cx| {
+            let focus_handle = cx.focus_handle();
+            let on_blur_subscription = cx.on_blur(&focus_handle, window, |_, _, _| {});
+
+            let menu = ContextMenu {
+                builder: None,
+                items: Vec::default(),
+                focus_handle,
+                action_context: None,
+                selected_index: None,
+                delayed: false,
+                clicked: false,
+                end_slot_action: None,
+                key_context: "menu".into(),
+                on_blur_subscription,
+                keep_open_on_confirm: false,
+                fixed_width: None,
+                main_menu: Some(parent_entity),
+                main_menu_observed_bounds: Rc::new(Cell::new(None)),
+                submenu_state: SubmenuState::Closed,
+                hover_target: HoverTarget::MainMenu,
+                submenu_safety_threshold_x: None,
+                submenu_trigger_bounds: Rc::new(Cell::new(None)),
+                submenu_trigger_mouse_down: false,
+                ignore_blur_until: None,
+            };
+
+            (builder)(menu, window, cx)
+        })
+    }
+
+    fn close_submenu(&mut self, clear_selection: bool, cx: &mut Context<Self>) {
+        self.submenu_state = SubmenuState::Closed;
+        self.hover_target = HoverTarget::MainMenu;
+        self.submenu_safety_threshold_x = None;
+        self.main_menu_observed_bounds.set(None);
+        self.submenu_trigger_bounds.set(None);
+
+        if clear_selection {
+            self.selected_index = None;
+        }
+
+        cx.notify();
+    }
+
+    fn open_submenu(
+        &mut self,
+        item_index: usize,
+        builder: Rc<dyn Fn(ContextMenu, &mut Window, &mut Context<ContextMenu>) -> ContextMenu>,
+        trigger: SubmenuOpenTrigger,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if matches!(
+            &self.submenu_state,
+            SubmenuState::Open(open_submenu) if open_submenu.item_index == item_index
+        ) {
+            return;
+        }
+
+        let (submenu, dismiss_subscription) =
+            Self::create_submenu(builder, cx.entity(), window, cx);
+
+        let flip_left = self
+            .main_menu_observed_bounds
+            .get()
+            .is_some_and(|bounds| bounds.right() + gpui::px(200.0) > window.viewport_size().width);
+
+        self.main_menu_observed_bounds.set(None);
+        self.submenu_trigger_bounds.set(None);
+
+        self.submenu_safety_threshold_x = None;
+        self.hover_target = HoverTarget::MainMenu;
+
+        // Opening with the keyboard briefly moves focus in a way that would otherwise blur and
+        // dismiss this menu.
+        if matches!(trigger, SubmenuOpenTrigger::Keyboard) {
+            self.ignore_blur_until = Some(Instant::now() + Duration::from_millis(150));
+        }
+
+        let trigger_bounds = self.submenu_trigger_bounds.get();
+
+        self.submenu_state = SubmenuState::Open(OpenSubmenu {
+            item_index,
+            entity: submenu,
+            trigger_bounds,
+            offset: None,
+            flip_left,
+            _dismiss_subscription: dismiss_subscription,
+        });
+
+        cx.notify();
     }
 
     pub fn on_action_dispatch(
@@ -823,7 +1226,231 @@ impl ContextMenu {
             ContextMenuItem::Entry(entry) => {
                 self.render_menu_entry(idx, entry, cx).into_any_element()
             }
+            ContextMenuItem::Submenu {
+                label,
+                icon,
+                icon_color,
+                ..
+            } => self
+                .render_submenu_item_trigger(idx, label.clone(), *icon, *icon_color, cx)
+                .into_any_element(),
         }
+    }
+
+    fn render_submenu_item_trigger(
+        &self,
+        idx: usize,
+        label: SharedString,
+        icon: Option<IconAsset>,
+        icon_color: Option<Color>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let toggle_state = Some(idx) == self.selected_index
+            || matches!(
+                &self.submenu_state,
+                SubmenuState::Open(open_submenu) if open_submenu.item_index == idx
+            );
+
+        gpui::div()
+            .id(("context-menu-submenu-trigger", idx))
+            .capture_any_mouse_down(cx.listener(move |this, event: &MouseDownEvent, _, _| {
+                // Keeps `on_hover(false)` from closing the submenu while it's being clicked.
+                if event.button == MouseButton::Left {
+                    this.submenu_trigger_mouse_down = true;
+                }
+            }))
+            .capture_any_mouse_up(cx.listener(move |this, event: &MouseUpEvent, _, _| {
+                if event.button == MouseButton::Left {
+                    this.submenu_trigger_mouse_down = false;
+                }
+            }))
+            .on_mouse_move(cx.listener(move |this, event: &MouseMoveEvent, _, cx| {
+                if matches!(&this.submenu_state, SubmenuState::Open(_))
+                    || this.selected_index == Some(idx)
+                {
+                    this.submenu_safety_threshold_x = Some(event.position.x - gpui::px(100.0));
+                }
+
+                cx.notify();
+            }))
+            .child(
+                ListItem::new(idx)
+                    .inset(true)
+                    .toggle_state(toggle_state)
+                    .child(
+                        gpui::canvas(
+                            {
+                                let trigger_bounds_cell = self.submenu_trigger_bounds.clone();
+                                move |bounds, _, _| {
+                                    if toggle_state {
+                                        trigger_bounds_cell.set(Some(bounds));
+                                    }
+                                }
+                            },
+                            |_, (), _, _| {},
+                        )
+                        .size_full()
+                        .absolute()
+                        .top_0()
+                        .left_0(),
+                    )
+                    .on_hover(cx.listener(move |this, hovered, window, cx| {
+                        let mouse_position = window.mouse_position();
+
+                        if *hovered {
+                            this.clear_selected();
+                            window.focus(&this.focus_handle.clone(), cx);
+                            this.hover_target = HoverTarget::MainMenu;
+                            this.submenu_safety_threshold_x =
+                                Some(mouse_position.x - gpui::px(50.0));
+
+                            if let Some(ContextMenuItem::Submenu { builder, .. }) =
+                                this.items.get(idx)
+                            {
+                                this.open_submenu(
+                                    idx,
+                                    builder.clone(),
+                                    SubmenuOpenTrigger::Pointer,
+                                    window,
+                                    cx,
+                                );
+                            }
+
+                            cx.notify();
+                        } else {
+                            if this.submenu_trigger_mouse_down {
+                                return;
+                            }
+
+                            let is_open_for_this_item = matches!(
+                                &this.submenu_state,
+                                SubmenuState::Open(open_submenu) if open_submenu.item_index == idx
+                            );
+                            let mouse_in_submenu_zone = this
+                                .padded_submenu_bounds()
+                                .is_some_and(|bounds| bounds.contains(&mouse_position));
+
+                            if is_open_for_this_item
+                                && this.hover_target != HoverTarget::Submenu
+                                && !mouse_in_submenu_zone
+                            {
+                                this.close_submenu(false, cx);
+                                this.clear_selected();
+                                window.focus(&this.focus_handle.clone(), cx);
+                                cx.notify();
+                            }
+                        }
+                    }))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if matches!(
+                            &this.submenu_state,
+                            SubmenuState::Open(open_submenu) if open_submenu.item_index == idx
+                        ) {
+                            return;
+                        }
+
+                        if let Some(ContextMenuItem::Submenu { builder, .. }) = this.items.get(idx)
+                        {
+                            this.open_submenu(
+                                idx,
+                                builder.clone(),
+                                SubmenuOpenTrigger::Pointer,
+                                window,
+                                cx,
+                            );
+                        }
+                    }))
+                    .child(
+                        gpui::div()
+                            .flex()
+                            .items_center()
+                            .w_full()
+                            .gap_2()
+                            .justify_between()
+                            .child(
+                                gpui::div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1p5()
+                                    .when_some(icon, |this, icon| {
+                                        this.child(
+                                            Icon::new(icon)
+                                                .size(IconSize::Small)
+                                                .color(icon_color.unwrap_or(Color::Muted)),
+                                        )
+                                    })
+                                    .child(Text::new(label).color(Color::Default)),
+                            )
+                            .child(
+                                Icon::new(IconAsset::CaretRight)
+                                    .size(IconSize::Small)
+                                    .color(Color::Muted),
+                            ),
+                    ),
+            )
+    }
+
+    fn padded_submenu_bounds(&self) -> Option<Bounds<Pixels>> {
+        let bounds = self.main_menu_observed_bounds.get()?;
+        Some(Bounds {
+            origin: Point {
+                x: bounds.origin.x - gpui::px(50.0),
+                y: bounds.origin.y - gpui::px(50.0),
+            },
+            size: Size {
+                width: bounds.size.width + gpui::px(100.0),
+                height: bounds.size.height + gpui::px(100.0),
+            },
+        })
+    }
+
+    fn render_submenu_container(
+        &self,
+        idx: usize,
+        submenu: Entity<ContextMenu>,
+        offset: Pixels,
+        flip_left: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let bounds_cell = self.main_menu_observed_bounds.clone();
+        let canvas = gpui::canvas(
+            move |bounds, _, _| {
+                bounds_cell.set(Some(bounds));
+            },
+            |_, (), _, _| {},
+        )
+        .size_full()
+        .absolute()
+        .top_0()
+        .left_0();
+
+        gpui::div()
+            .id(("submenu-container", idx))
+            .absolute()
+            .top(offset)
+            .when(flip_left, |this| this.right_full().mr_neg_0p5())
+            .when(!flip_left, |this| this.left_full().ml_neg_0p5())
+            .on_hover(cx.listener(|this, hovered, _, _| {
+                if *hovered {
+                    this.hover_target = HoverTarget::Submenu;
+                }
+            }))
+            .child(
+                gpui::anchored()
+                    .anchor(if flip_left {
+                        Anchor::TopRight
+                    } else {
+                        Anchor::TopLeft
+                    })
+                    .snap_to_window_with_margin(gpui::px(8.0))
+                    .child(
+                        gpui::div()
+                            .id(("submenu-hover-zone", idx))
+                            .occlude()
+                            .child(canvas)
+                            .child(submenu),
+                    ),
+            )
     }
 
     fn render_menu_entry(
@@ -896,11 +1523,49 @@ impl ContextMenu {
                     .inset(true)
                     .disabled(*disabled)
                     .toggle_state(Some(idx) == self.selected_index)
-                    .when(!*disabled, |item| {
-                        item.on_hover(cx.listener(|this, hovered, window, cx| {
+                    .when(self.main_menu.is_none() && !*disabled, |item| {
+                        item.on_hover(cx.listener(move |this, hovered, window, cx| {
                             if *hovered {
                                 this.clear_selected();
                                 window.focus(&this.focus_handle.clone(), cx);
+
+                                if let SubmenuState::Open(open_submenu) = &this.submenu_state
+                                    && open_submenu.item_index != idx
+                                {
+                                    this.close_submenu(false, cx);
+                                    cx.notify();
+                                }
+                            }
+                        }))
+                    })
+                    .when(self.main_menu.is_some(), |item| {
+                        item.on_hover(cx.listener(move |this, hovered, window, cx| {
+                            if *hovered {
+                                this.clear_selected();
+                                cx.notify();
+                            }
+
+                            if let Some(parent) = &this.main_menu {
+                                let mouse_position = window.mouse_position();
+                                parent.update(cx, |parent, cx| {
+                                    if *hovered {
+                                        parent.clear_selected();
+                                        parent.hover_target = HoverTarget::Submenu;
+                                    } else if matches!(&parent.submenu_state, SubmenuState::Open(_))
+                                    {
+                                        // Only close the submenu once the mouse is to the left of
+                                        // the safety threshold, not on every item exit.
+                                        let should_close = parent
+                                            .submenu_safety_threshold_x
+                                            .is_none_or(|threshold_x| {
+                                                mouse_position.x < threshold_x
+                                            });
+
+                                        if should_close {
+                                            parent.close_submenu(true, cx);
+                                        }
+                                    }
+                                });
                             }
                         }))
                     })
@@ -1026,7 +1691,58 @@ impl FluentBuilder for ContextMenu {}
 impl Render for ContextMenu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ui_font_size = ThemeSettings::get_global(cx).ui_font_size(cx);
-        WithRemSize::new(ui_font_size)
+
+        let mut focus_submenu = None;
+        let submenu_container = match &mut self.submenu_state {
+            SubmenuState::Open(open_submenu) => {
+                let computed_offset = if open_submenu.offset.is_none() {
+                    let menu_bounds = self.main_menu_observed_bounds.get();
+                    let trigger_bounds = open_submenu
+                        .trigger_bounds
+                        .or_else(|| self.submenu_trigger_bounds.get());
+
+                    match (menu_bounds, trigger_bounds) {
+                        (Some(menu_bounds), Some(trigger_bounds)) => {
+                            Some(trigger_bounds.origin.y - menu_bounds.origin.y)
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(offset) = open_submenu.offset.or(computed_offset) {
+                    if open_submenu.offset.is_none() {
+                        open_submenu.offset = Some(offset);
+                    }
+
+                    focus_submenu = Some(open_submenu.entity.read(cx).focus_handle.clone());
+                    Some((
+                        open_submenu.item_index,
+                        open_submenu.entity.clone(),
+                        offset,
+                        open_submenu.flip_left,
+                    ))
+                } else {
+                    None
+                }
+            }
+            SubmenuState::Closed => None,
+        };
+
+        let bounds_cell = self.main_menu_observed_bounds.clone();
+        let menu_bounds_measure = gpui::canvas(
+            move |bounds, _, _| {
+                bounds_cell.set(Some(bounds));
+            },
+            |_, (), _, _| {},
+        )
+        .size_full()
+        .absolute()
+        .top_0()
+        .left_0();
+
+        let menu = WithRemSize::new(ui_font_size)
             .occlude()
             .elevation_2(cx)
             .flex()
@@ -1038,6 +1754,7 @@ impl Render for ContextMenu {
                     .flex_col()
                     .max_h(crate::vh(0.75, window))
                     .flex_shrink_0()
+                    .child(menu_bounds_measure)
                     .when_some(self.fixed_width, |this, width| {
                         this.w(width).overflow_x_hidden()
                     })
@@ -1051,10 +1768,40 @@ impl Render for ContextMenu {
                     .on_action(cx.listener(ContextMenu::handle_select_last))
                     .on_action(cx.listener(ContextMenu::select_next))
                     .on_action(cx.listener(ContextMenu::select_previous))
+                    .on_action(cx.listener(ContextMenu::select_submenu_child))
+                    .on_action(cx.listener(ContextMenu::select_submenu_parent))
                     .on_action(cx.listener(ContextMenu::confirm))
                     .on_action(cx.listener(ContextMenu::secondary_confirm))
                     .on_action(cx.listener(ContextMenu::cancel))
-                    .on_mouse_down_out(cx.listener(|this, _event: &MouseDownEvent, window, cx| {
+                    .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                        if *hovered {
+                            this.hover_target = HoverTarget::MainMenu;
+                            if let Some(parent) = &this.main_menu {
+                                parent.update(cx, |parent, _| {
+                                    parent.hover_target = HoverTarget::Submenu;
+                                });
+                            }
+                        }
+                    }))
+                    .on_mouse_down_out(cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                        if matches!(&this.submenu_state, SubmenuState::Open(_))
+                            && this
+                                .padded_submenu_bounds()
+                                .is_some_and(|bounds| bounds.contains(&event.position))
+                        {
+                            return;
+                        }
+
+                        if let Some(parent) = &this.main_menu
+                            && parent
+                                .read(cx)
+                                .submenu_trigger_bounds
+                                .get()
+                                .is_some_and(|bounds| bounds.contains(&event.position))
+                        {
+                            return;
+                        }
+
                         this.cancel(&actions::menu::Cancel, window, cx);
                     }))
                     .when_some(self.end_slot_action.as_ref(), |element, action| {
@@ -1084,6 +1831,17 @@ impl Render for ContextMenu {
                                 .map(|(idx, item)| self.render_menu_item(idx, item, window, cx)),
                         ),
                     ),
-            )
+            );
+
+        if let Some(focus_handle) = focus_submenu.as_ref() {
+            window.focus(focus_handle, cx);
+        }
+
+        gpui::div().relative().child(menu).when_some(
+            submenu_container,
+            |this, (idx, submenu, offset, flip_left)| {
+                this.child(self.render_submenu_container(idx, submenu, offset, flip_left, cx))
+            },
+        )
     }
 }
