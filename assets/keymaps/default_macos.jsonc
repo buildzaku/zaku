@@ -34,6 +34,13 @@
     }
   },
   {
+    "context": "menu",
+    "bindings": {
+      "right": "menu::SelectChild",
+      "left": "menu::SelectParent"
+    }
+  },
+  {
     "context": "Workspace",
     "use_key_equivalents": true,
     "bindings": {

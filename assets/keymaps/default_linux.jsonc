@@ -38,6 +38,13 @@
     }
   },
   {
+    "context": "menu",
+    "bindings": {
+      "right": "menu::SelectChild",
+      "left": "menu::SelectParent"
+    }
+  },
+  {
     "context": "Workspace",
     "bindings": {
       "ctrl-b": "workspace::ToggleLeftDock",
