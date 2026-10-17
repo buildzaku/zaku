@@ -49,7 +49,7 @@
       "cmd-s": "workspace::Save",
       "cmd-enter": "workspace::SendRequest",
       "cmd-shift-e": "project_panel::ToggleFocus",
-      "cmd-e": "variables_panel::ToggleFocus",
+      "cmd-shift-v": "variables_panel::ToggleFocus",
       "cmd-shift-r": "response_panel::ToggleFocus",
       "cmd-k cmd-e": "environment_selector::Toggle"
     }

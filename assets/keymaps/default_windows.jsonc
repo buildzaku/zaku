@@ -51,7 +51,7 @@
       "ctrl-s": "workspace::Save",
       "ctrl-enter": "workspace::SendRequest",
       "ctrl-shift-e": "project_panel::ToggleFocus",
-      "ctrl-e": "variables_panel::ToggleFocus",
+      "ctrl-shift-v": "variables_panel::ToggleFocus",
       "ctrl-shift-r": "response_panel::ToggleFocus",
       "ctrl-k ctrl-e": "environment_selector::Toggle"
     }
