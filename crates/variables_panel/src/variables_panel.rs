@@ -12,7 +12,8 @@ use editor::{
 };
 use path::RelPath;
 use project::{
-    ConfigFileType, EnvironmentColor, Project, ProjectEntryId, ProjectPath, WorktreeId,
+    ConfigFileType, EnvironmentColor, Project, ProjectEntryId, ProjectEvent, ProjectPath, Worktree,
+    WorktreeId,
     git_store::{GitStoreEvent, RepositoryEvent},
     project_config_store::ProjectConfigStoreEvent,
 };
@@ -200,6 +201,18 @@ impl VariablesPanel {
             )
             .detach();
 
+            cx.subscribe(&project, |_, _, event: &ProjectEvent, cx| match event {
+                ProjectEvent::EntryMetadataUpdated(_) => cx.notify(),
+                ProjectEvent::ActiveEntryChanged(_)
+                | ProjectEvent::WorktreeAdded(_)
+                | ProjectEvent::WorktreeRemoved(_)
+                | ProjectEvent::WorktreeUpdatedEntries(_, _)
+                | ProjectEvent::DeletedEntry(_, _)
+                | ProjectEvent::Toast { .. }
+                | ProjectEvent::HideToast { .. } => {}
+            })
+            .detach();
+
             cx.subscribe(&git_store, |_, _, event: &GitStoreEvent, cx| match event {
                 GitStoreEvent::RepositoryUpdated(_, RepositoryEvent::StatusesChanged, _)
                 | GitStoreEvent::RepositoryAdded
@@ -224,7 +237,8 @@ impl VariablesPanel {
 
     fn entries(&self, cx: &App) -> Vec<VariablesListEntry> {
         let project = self.project.read(cx);
-        let environment_file_entries = project
+        let project_config_store = project.project_config_store().read(cx);
+        let mut environments = project
             .root_worktree(cx)
             .map(|worktree| {
                 worktree
@@ -233,26 +247,20 @@ impl VariablesPanel {
                     .filter(|entry| {
                         ConfigFileType::for_path(&entry.path) == Some(ConfigFileType::Environment)
                     })
-                    .map(|entry| (entry.id, entry.path.clone()))
+                    .filter_map(|entry| {
+                        let name = entry.path.file_stem()?;
+                        Some(EnvironmentEntry {
+                            entry_id: entry.id,
+                            path: entry.path.clone(),
+                            name: SharedString::from(name.to_string()),
+                            color: project_config_store
+                                .environment_file(name)
+                                .and_then(|environment_file| environment_file.environment.color),
+                        })
+                    })
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let mut environments = project
-            .project_config_store()
-            .read(cx)
-            .environments()
-            .filter_map(|(name, environment_file)| {
-                let (entry_id, path) = environment_file_entries
-                    .iter()
-                    .find(|(_, path)| path.file_stem() == Some(name))?;
-                Some(EnvironmentEntry {
-                    entry_id: *entry_id,
-                    path: path.clone(),
-                    name: SharedString::from(name.to_string()),
-                    color: environment_file.environment.color,
-                })
-            })
-            .collect::<Vec<_>>();
         environments.sort_by(|left, right| path::natural_sort(&left.name, &right.name));
 
         iter::once(VariablesListEntry::ProjectVariables)
@@ -262,6 +270,26 @@ impl VariablesPanel {
                     .map(VariablesListEntry::Environment),
             )
             .collect()
+    }
+
+    fn load_entry_metadata_for_environments(
+        &mut self,
+        worktree: &Entity<Worktree>,
+        cx: &mut Context<Self>,
+    ) {
+        let entries = worktree
+            .read(cx)
+            .child_entries(path::project_environments_folder_relative_path())
+            .filter(|entry| {
+                ConfigFileType::for_path(&entry.path) == Some(ConfigFileType::Environment)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        for entry in entries {
+            self.project
+                .update(cx, |project, cx| project.load_entry_metadata(&entry, cx));
+        }
     }
 
     fn index_for_selection(&self, cx: &App) -> Option<usize> {
@@ -464,11 +492,9 @@ impl VariablesPanel {
         });
         window.focus(&self.environment_name_editor.focus_handle(cx), cx);
         let environment_count = self
-            .project
-            .read(cx)
-            .project_config_store()
-            .read(cx)
-            .environments()
+            .entries(cx)
+            .iter()
+            .filter(|entry| matches!(entry, VariablesListEntry::Environment(_)))
             .count();
         self.scroll_handle.scroll_to_item(environment_count);
         cx.notify();
@@ -774,6 +800,10 @@ impl VariablesPanel {
         let is_ignored = project
             .entry_for_path(&project_path, cx)
             .is_some_and(|entry| entry.is_ignored);
+        let is_invalid = project
+            .entry_for_path(&project_path, cx)
+            .and_then(|entry| project.entry_metadata(entry))
+            .is_some_and(|metadata| metadata.is_invalid);
         let active_environment = project.project_config_store().read(cx).active_environment();
         let is_active = match &entry {
             VariablesListEntry::ProjectVariables => false,
@@ -814,7 +844,13 @@ impl VariablesPanel {
                 SharedString::from("Project Variables"),
             ),
             VariablesListEntry::Environment(environment) => (
-                environment_selector::environment_icon(environment.color, icon_color),
+                if is_invalid {
+                    Icon::new(IconAsset::WarningCircle)
+                        .size(IconSize::Small)
+                        .color(Color::Error)
+                } else {
+                    environment_selector::environment_icon(environment.color, icon_color)
+                },
                 environment.name,
             ),
         };
@@ -1028,6 +1064,9 @@ impl Panel for VariablesPanel {
 impl Render for VariablesPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let root_worktree = self.project.read(cx).root_worktree(cx);
+        if let Some(worktree) = &root_worktree {
+            self.load_entry_metadata_for_environments(worktree, cx);
+        }
         let worktree_id = root_worktree
             .as_ref()
             .map(|worktree| worktree.read(cx).id());
@@ -1203,6 +1242,7 @@ mod tests {
 
     use fs::{Fs, RemoveOptions, TempFs};
     use path::rel_path;
+    use project::EntryMetadata;
     use project_config_editor::ProjectConfigEditor;
     use settings::SettingsStore;
     use theme::LoadThemes;
@@ -1306,6 +1346,7 @@ mod tests {
                             color = "green"
                             variables = [{ name = "base_url", value = "http://localhost:8000" }]
                         "#},
+                        "Prod.toml": "[environment",
                         "Staging-9.toml": indoc! {r#"
                             [meta]
                             version = 1
@@ -1329,14 +1370,54 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
         let (workspace, cx) = build_workspace(&project, cx);
-        let panel = workspace.update_in(cx, VariablesPanel::new);
+        let panel = workspace.update_in(cx, |workspace, window, cx| {
+            let panel = VariablesPanel::new(workspace, window, cx);
+            workspace.add_panel(panel.clone(), DockPosition::Left, window, cx);
+            workspace.open_panel::<VariablesPanel>(window, cx);
+            panel
+        });
         cx.run_until_parked();
 
         assert_eq!(
             visible_entries_as_strings(&panel, cx),
-            &["Project Variables", "Dev", "Staging-9", "Staging-10"]
+            &[
+                "Project Variables",
+                "Dev",
+                "Prod",
+                "Staging-9",
+                "Staging-10"
+            ]
         );
+        project.read_with(cx, |project, cx| {
+            let dev_entry = project
+                .entry_for_path(
+                    &ProjectPath::from((worktree_id, rel_path(".zaku/environments/Dev.toml"))),
+                    cx,
+                )
+                .unwrap();
+            assert_eq!(
+                project.entry_metadata(dev_entry),
+                Some(&EntryMetadata {
+                    prefix: None,
+                    is_invalid: false,
+                })
+            );
+            let prod_entry = project
+                .entry_for_path(
+                    &ProjectPath::from((worktree_id, rel_path(".zaku/environments/Prod.toml"))),
+                    cx,
+                )
+                .unwrap();
+            assert_eq!(
+                project.entry_metadata(prod_entry),
+                Some(&EntryMetadata {
+                    prefix: None,
+                    is_invalid: true,
+                })
+            );
+        });
     }
 
     #[gpui::test]
@@ -1820,7 +1901,7 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, cx),
-            &["Project Variables", "Dev  <== selected"]
+            &["Project Variables", "Dev", "Prod  <== selected"]
         );
 
         panel.update_in(cx, |panel, window, cx| {
@@ -1915,7 +1996,7 @@ mod tests {
         });
         assert_eq!(
             visible_entries_as_strings(&panel, cx),
-            &["Project Variables", "Dev  <== selected"]
+            &["Project Variables", "Dev", "Prod  <== selected"]
         );
     }
 

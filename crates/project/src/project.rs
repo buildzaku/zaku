@@ -738,7 +738,9 @@ impl Project {
     }
 
     pub fn load_entry_metadata(&mut self, entry: &Entry, cx: &mut Context<Self>) {
-        if !entry.kind.is_file() || !entry.is_request {
+        let is_environment =
+            ConfigFileType::for_path(&entry.path) == Some(ConfigFileType::Environment);
+        if !entry.kind.is_file() || !(entry.is_request || is_environment) {
             return;
         }
 
@@ -764,12 +766,32 @@ impl Project {
         let entry_id = entry.id;
         let version_for_task = version.clone();
         let metadata_task = cx.spawn(async move |this, cx| {
-            let request_file = match load_file_task.await {
+            let metadata = match load_file_task.await {
                 Ok(loaded) => {
-                    let parse_task =
-                        cx.background_spawn(
-                            async move { worktree::parse_request_file(&loaded.text) },
-                        );
+                    let parse_task = cx.background_spawn(async move {
+                        if is_environment {
+                            EntryMetadata {
+                                prefix: None,
+                                is_invalid: matches!(
+                                    ConfigFileType::Environment.parse(&loaded.text),
+                                    ConfigFileState::Invalid(_)
+                                ),
+                            }
+                        } else {
+                            match worktree::parse_request_file(&loaded.text) {
+                                RequestFileState::Parsed(request_file) => EntryMetadata {
+                                    prefix: Some(worktree::request_method_short_name(
+                                        &request_file.http.method,
+                                    )),
+                                    is_invalid: false,
+                                },
+                                RequestFileState::Invalid(_) => EntryMetadata {
+                                    prefix: None,
+                                    is_invalid: true,
+                                },
+                            }
+                        }
+                    });
                     Some(parse_task.await)
                 }
                 Err(error) if is_not_found_error(&error) => None,
@@ -786,30 +808,13 @@ impl Project {
                     return;
                 }
 
-                match request_file {
-                    Some(RequestFileState::Parsed(request_file)) => {
+                match metadata {
+                    Some(metadata) => {
                         this.metadata_by_entry_id.insert(
                             entry_id,
                             EntryMetadataState::Loaded {
-                                version: version_for_task.clone(),
-                                metadata: EntryMetadata {
-                                    prefix: Some(worktree::request_method_short_name(
-                                        &request_file.http.method,
-                                    )),
-                                    is_invalid: false,
-                                },
-                            },
-                        );
-                    }
-                    Some(RequestFileState::Invalid(_)) => {
-                        this.metadata_by_entry_id.insert(
-                            entry_id,
-                            EntryMetadataState::Loaded {
-                                version: version_for_task.clone(),
-                                metadata: EntryMetadata {
-                                    prefix: None,
-                                    is_invalid: true,
-                                },
+                                version: version_for_task,
+                                metadata,
                             },
                         );
                     }
