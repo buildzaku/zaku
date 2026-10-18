@@ -1,7 +1,8 @@
+use anyhow::Context as _;
 use gpui::{
     Action, Anchor, App, ClickEvent, Context, DismissEvent, Div, Entity, FocusHandle, Focusable,
-    KeyContext, MouseDownEvent, Pixels, Point, ScrollHandle, SharedString, Stateful, Subscription,
-    Task, WeakEntity, Window, prelude::*,
+    KeyContext, MouseDownEvent, Pixels, Point, PromptLevel, ScrollHandle, SharedString, Stateful,
+    Subscription, Task, WeakEntity, Window, prelude::*,
 };
 use std::{iter, sync::Arc};
 use strum::IntoEnumIterator;
@@ -531,6 +532,154 @@ impl VariablesPanel {
         cx.notify();
     }
 
+    fn remove(
+        &mut self,
+        trash: bool,
+        skip_prompt: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(VariablesListEntry::Environment(environment)) = self
+            .index_for_selection(cx)
+            .and_then(|index| self.entries(cx).into_iter().nth(index))
+        else {
+            return;
+        };
+        let Some(file_name) = environment.path.file_name() else {
+            return;
+        };
+
+        let has_unsaved_changes = self.workspace.upgrade().is_some_and(|workspace| {
+            let pane = workspace.read(cx).pane().clone();
+            pane.read(cx).items().any(|item| {
+                item.is_dirty(cx) && item.project_entry_ids(cx).contains(&environment.entry_id)
+            })
+        });
+
+        let answer = if skip_prompt {
+            None
+        } else {
+            let operation = if trash { "Trash" } else { "Delete" };
+            let message_start = if trash {
+                "Do you want to trash"
+            } else {
+                "Are you sure you want to permanently delete"
+            };
+            let unsaved_warning = if has_unsaved_changes {
+                "\n\nIt has unsaved changes, which will be lost."
+            } else {
+                ""
+            };
+            let prompt = format!("{message_start} `{file_name}`?{unsaved_warning}");
+            let detail = (!trash).then_some("This cannot be undone.");
+            Some(window.prompt(
+                PromptLevel::Info,
+                &prompt,
+                detail,
+                &[operation, "Cancel"],
+                cx,
+            ))
+        };
+        let entry_id = environment.entry_id;
+        let name = environment.name;
+        let project_config_store = self.project.read(cx).project_config_store().clone();
+        let next_selection = self.find_next_selection_after_deletion(entry_id, cx);
+        cx.spawn_in(window, async move |panel, cx| {
+            if let Some(answer) = answer
+                && answer.await != Ok(0)
+            {
+                return anyhow::Ok(());
+            }
+
+            // Deactivate first so the active environment isn't briefly reported missing.
+            let was_active = project_config_store.update(cx, |project_config_store, cx| {
+                let is_active = project_config_store.active_environment() == Some(name.as_ref());
+                if is_active {
+                    project_config_store.activate_environment(None, cx);
+                }
+                is_active
+            });
+            let delete_task = panel.update(cx, |panel, cx| {
+                panel.project.update(cx, |project, cx| {
+                    project
+                        .delete_entry(entry_id, trash, cx)
+                        .context("no such entry")
+                })
+            })?;
+            let delete_result = match delete_task {
+                Ok(delete_task) => delete_task.await,
+                Err(error) => Err(error),
+            };
+            if let Err(error) = delete_result {
+                if was_active {
+                    project_config_store.update(cx, |project_config_store, cx| {
+                        project_config_store.activate_environment(Some(name.to_string()), cx);
+                    });
+                }
+                return Err(error);
+            }
+
+            panel.update(cx, |panel, cx| {
+                panel.selection = next_selection;
+                panel.autoscroll(cx);
+                cx.notify();
+            })?;
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    fn trash(
+        &mut self,
+        action: &actions::variables_panel::Trash,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.remove(true, action.skip_prompt, window, cx);
+    }
+
+    fn delete(
+        &mut self,
+        action: &actions::variables_panel::Delete,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.remove(false, action.skip_prompt, window, cx);
+    }
+
+    fn find_next_selection_after_deletion(
+        &self,
+        entry_id: ProjectEntryId,
+        cx: &App,
+    ) -> Option<SelectedEntry> {
+        let environment_entry_ids = self
+            .entries(cx)
+            .into_iter()
+            .filter_map(|entry| match entry {
+                VariablesListEntry::ProjectVariables => None,
+                VariablesListEntry::Environment(environment) => Some(environment.entry_id),
+            })
+            .collect::<Vec<_>>();
+        let entry_index = environment_entry_ids
+            .iter()
+            .position(|environment_entry_id| *environment_entry_id == entry_id)?;
+
+        if let Some(next_entry_id) = entry_index
+            .checked_add(1)
+            .and_then(|index| environment_entry_ids.get(index))
+        {
+            return Some(SelectedEntry::Environment(*next_entry_id));
+        }
+        if let Some(previous_entry_id) = entry_index
+            .checked_sub(1)
+            .and_then(|index| environment_entry_ids.get(index))
+        {
+            return Some(SelectedEntry::Environment(*previous_entry_id));
+        }
+
+        None
+    }
+
     fn deploy_context_menu(
         &mut self,
         position: Point<Pixels>,
@@ -558,6 +707,14 @@ impl VariablesPanel {
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
                 .action("Rename", Box::new(actions::variables_panel::Rename))
+                .action(
+                    "Trash",
+                    Box::new(actions::variables_panel::Trash { skip_prompt: false }),
+                )
+                .action(
+                    "Delete",
+                    Box::new(actions::variables_panel::Delete { skip_prompt: false }),
+                )
                 .separator()
                 .submenu("Color", move |mut menu, _, _| {
                     for color in iter::once(None).chain(EnvironmentColor::iter().map(Some)) {
@@ -1115,6 +1272,8 @@ impl Render for VariablesPanel {
             .on_action(cx.listener(Self::new_environment))
             .on_action(cx.listener(Self::open))
             .on_action(cx.listener(Self::rename))
+            .on_action(cx.listener(Self::trash))
+            .on_action(cx.listener(Self::delete))
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::cancel))
             .relative()

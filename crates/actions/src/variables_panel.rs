@@ -1,3 +1,25 @@
+use gpui::Action;
+use schemars::JsonSchema;
+use serde::Deserialize;
+
+/// Permanently delete the selected environment.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = variables_panel)]
+#[serde(deny_unknown_fields)]
+pub struct Delete {
+    #[serde(default)]
+    pub skip_prompt: bool,
+}
+
+/// Move the selected environment to the system trash.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = variables_panel)]
+#[serde(deny_unknown_fields)]
+pub struct Trash {
+    #[serde(default)]
+    pub skip_prompt: bool,
+}
+
 gpui::actions!(
     variables_panel,
     [

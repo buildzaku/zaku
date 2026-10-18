@@ -1244,21 +1244,9 @@ impl ProjectPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(task) = self.remove_impl(trash, skip_prompt, window, cx) {
-            task.detach_and_log_err(cx);
-        }
-    }
-
-    fn remove_impl(
-        &mut self,
-        trash: bool,
-        skip_prompt: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<Task<anyhow::Result<()>>> {
         let items_to_delete = self.disjoint_effective_entries(cx);
         if items_to_delete.is_empty() {
-            return None;
+            return;
         }
 
         let (dirty_buffers, file_paths) = {
@@ -1287,7 +1275,7 @@ impl ProjectPanel {
             (dirty_buffers, file_paths)
         };
         if file_paths.is_empty() {
-            return None;
+            return;
         }
 
         let answer = if skip_prompt {
@@ -1358,7 +1346,7 @@ impl ProjectPanel {
             ))
         };
         let next_selection = self.find_next_selection_after_deletion(&items_to_delete, cx);
-        Some(cx.spawn_in(window, async move |panel, cx| {
+        cx.spawn_in(window, async move |panel, cx| {
             if let Some(answer) = answer
                 && answer.await != Ok(0)
             {
@@ -1387,7 +1375,8 @@ impl ProjectPanel {
                 }
             })?;
             anyhow::Ok(())
-        }))
+        })
+        .detach_and_log_err(cx);
     }
 
     fn trash(
