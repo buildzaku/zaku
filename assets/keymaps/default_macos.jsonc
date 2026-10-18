@@ -120,7 +120,12 @@
       "shift-tab": null,
       "cmd-n": "variables_panel::NewEnvironment",
       "enter": "variables_panel::Rename",
-      "f2": "variables_panel::Rename"
+      "f2": "variables_panel::Rename",
+      "backspace": ["variables_panel::Trash", { "skip_prompt": false }],
+      "delete": ["variables_panel::Trash", { "skip_prompt": false }],
+      "cmd-backspace": ["variables_panel::Trash", { "skip_prompt": true }],
+      "cmd-delete": ["variables_panel::Delete", { "skip_prompt": false }],
+      "cmd-alt-backspace": ["variables_panel::Delete", { "skip_prompt": false }]
     }
   },
   {

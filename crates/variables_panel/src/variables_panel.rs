@@ -2477,6 +2477,227 @@ mod tests {
         );
     }
 
+    #[gpui::test]
+    async fn test_trash_environment(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                        "Prod.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "red"
+                            variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                        "#},
+                        "Staging.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "blue"
+                            variables = [{ name = "base_url", value = "https://staging.api.zaku.dev" }]
+                        "#},
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let project_config_store =
+            project.read_with(cx, |project, _| project.project_config_store().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, VariablesPanel::new);
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_first(&actions::menu::SelectFirst, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables  <== selected", "Dev", "Prod", "Staging"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_next(&actions::menu::SelectNext, window, cx);
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_next(&actions::menu::SelectNext, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev", "Prod  <== selected", "Staging"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.trash(
+                &actions::variables_panel::Trash { skip_prompt: true },
+                window,
+                cx,
+            );
+        });
+
+        project_config_store
+            .condition::<ProjectConfigStoreEvent>(cx, |project_config_store, _| {
+                project_config_store.environment_file("Prod").is_none()
+            })
+            .await;
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev", "Staging  <== selected"]
+        );
+        assert!(
+            temp_fs
+                .metadata("project/.zaku/environments/Dev.toml".as_ref())
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            temp_fs
+                .metadata("project/.zaku/environments/Prod.toml".as_ref())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            temp_fs
+                .metadata("project/.zaku/environments/Staging.toml".as_ref())
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[gpui::test]
+    async fn test_delete_environment(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                        "Prod.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "red"
+                            variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                        "#},
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let project_config_store =
+            project.read_with(cx, |project, _| project.project_config_store().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, VariablesPanel::new);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+        cx.run_until_parked();
+
+        project_config_store.update(cx, |project_config_store, cx| {
+            project_config_store.activate_environment(Some("Prod".to_string()), cx);
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_last(&actions::menu::SelectLast, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev", "Prod  <== selected"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open(&actions::variables_panel::Open, window, cx);
+        });
+        pane.condition::<PaneEvent>(cx, |pane, cx| {
+            pane.active_item()
+                .and_then(|item| item.project_path(cx))
+                .is_some_and(|project_path| {
+                    project_path.path.as_ref() == rel_path(".zaku/environments/Prod.toml")
+                })
+        })
+        .await;
+        assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 1);
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev", "Prod  <== selected  <== marked"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.delete(
+                &actions::variables_panel::Delete { skip_prompt: true },
+                window,
+                cx,
+            );
+        });
+
+        project_config_store
+            .condition::<ProjectConfigStoreEvent>(cx, |project_config_store, _| {
+                project_config_store.environment_file("Prod").is_none()
+            })
+            .await;
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables", "Dev  <== selected"]
+        );
+        assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 0);
+        project_config_store.read_with(cx, |project_config_store, _| {
+            assert_eq!(project_config_store.active_environment(), None);
+        });
+        assert!(
+            temp_fs
+                .metadata("project/.zaku/environments/Dev.toml".as_ref())
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            temp_fs
+                .metadata("project/.zaku/environments/Prod.toml".as_ref())
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
     #[test]
     fn test_is_valid_environment_name() {
         assert!(is_valid_environment_name("Dev"));
