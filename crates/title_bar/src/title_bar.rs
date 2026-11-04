@@ -12,7 +12,7 @@ use std::ffi::OsStr;
 use environment_selector::EnvironmentSelector;
 use path::PathStyle;
 use project::{
-    Project,
+    Project, ProjectEvent,
     git_store::{GitStoreEvent, RepositoryEvent},
     project_config_store::ProjectConfigStoreEvent,
     repo_identity_path,
@@ -52,6 +52,7 @@ pub struct TitleBar {
     recent_projects_handle: PopoverMenuHandle<RecentProjects>,
     environment_selector_handle: PopoverMenuHandle<EnvironmentSelector>,
     _workspace_subscription: Option<Subscription>,
+    _project_subscription: Option<Subscription>,
     _git_store_subscription: Option<Subscription>,
     _project_config_store_subscription: Option<Subscription>,
     _button_layout_subscription: Subscription,
@@ -77,6 +78,18 @@ impl TitleBar {
             .as_ref()
             .and_then(WeakEntity::upgrade)
             .map(|workspace_entity| cx.observe(&workspace_entity, |_, _, cx| cx.notify()));
+        let project_subscription = project.as_ref().map(|project| {
+            cx.subscribe(project, |_, _, event: &ProjectEvent, cx| match event {
+                ProjectEvent::EntryMetadataUpdated(_) => cx.notify(),
+                ProjectEvent::ActiveEntryChanged(_)
+                | ProjectEvent::WorktreeAdded(_)
+                | ProjectEvent::WorktreeRemoved(_)
+                | ProjectEvent::WorktreeUpdatedEntries(_, _)
+                | ProjectEvent::DeletedEntry(_, _)
+                | ProjectEvent::Toast { .. }
+                | ProjectEvent::HideToast { .. } => {}
+            })
+        });
         let git_store_subscription = git_store.map(|git_store| {
             cx.subscribe(&git_store, |_, _, event, cx| match event {
                 GitStoreEvent::ActiveRepositoryChanged(_)
@@ -104,6 +117,7 @@ impl TitleBar {
             recent_projects_handle: PopoverMenuHandle::default(),
             environment_selector_handle: PopoverMenuHandle::default(),
             _workspace_subscription: workspace_subscription,
+            _project_subscription: project_subscription,
             _git_store_subscription: git_store_subscription,
             _project_config_store_subscription: project_config_store_subscription,
             _button_layout_subscription: button_layout_subscription,
@@ -210,27 +224,53 @@ impl TitleBar {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let project = project.clone();
+        let active_environment_entry = project
+            .read(cx)
+            .project_config_store()
+            .read(cx)
+            .active_environment_entry(cx)
+            .cloned();
+        if let Some(entry) = &active_environment_entry {
+            project.update(cx, |project, cx| project.load_entry_metadata(entry, cx));
+        }
+        let is_active_environment_invalid = active_environment_entry
+            .as_ref()
+            .and_then(|entry| project.read(cx).entry_metadata(entry))
+            .is_some_and(|metadata| metadata.is_invalid);
         let project_config_store = project.read(cx).project_config_store().read(cx);
         let active_environment = project_config_store.active_environment();
-        let environment_file =
-            active_environment.and_then(|name| project_config_store.environment_file(name));
-        let environment_color =
-            environment_file.and_then(|environment_file| environment_file.environment.color);
-        let is_active_environment_missing = project_config_store.is_active_environment_missing();
-        let missing_environment_message = active_environment
+        let environment_color = active_environment
+            .and_then(|name| project_config_store.environment_file(name))
+            .and_then(|environment_file| environment_file.environment.color);
+        let is_active_environment_missing = project_config_store.is_active_environment_missing(cx);
+        let environment_message = active_environment
             .filter(|_| is_active_environment_missing)
             .map(|name| {
                 format!(
-                    "{}{}{name}.toml not found",
+                    "Missing environment file\n{}{}{}.toml",
                     path::project_environments_folder_relative_path().display(PathStyle::local()),
-                    PathStyle::local().primary_separator()
+                    PathStyle::local().primary_separator(),
+                    ui::utils::replace_control_characters(name)
                 )
+            })
+            .or_else(|| {
+                active_environment_entry
+                    .as_ref()
+                    .filter(|_| is_active_environment_invalid)
+                    .map(|entry| {
+                        format!(
+                            "Invalid environment file\n{}",
+                            ui::utils::replace_control_characters(
+                                &entry.path.display(PathStyle::local())
+                            )
+                        )
+                    })
             });
         let text_color = if self.environment_selector_handle.is_deployed() {
             Color::Accent
         } else if is_active_environment_missing {
             Color::Warning
-        } else if environment_file.is_some() {
+        } else if active_environment.is_some() {
             Color::Default
         } else {
             Color::Muted
@@ -239,6 +279,10 @@ impl TitleBar {
             Icon::new(IconAsset::Warning)
                 .size(IconSize::XSmall)
                 .color(text_color)
+        } else if is_active_environment_invalid {
+            Icon::new(IconAsset::WarningCircle)
+                .size(IconSize::Small)
+                .color(Color::Error)
         } else if active_environment.is_none() {
             Icon::new(IconAsset::SquareDashed)
                 .size(IconSize::XSmall)
@@ -277,7 +321,7 @@ impl TitleBar {
                                 .single_line(),
                             ),
                     ),
-                move |_, cx| match &missing_environment_message {
+                move |_, cx| match &environment_message {
                     Some(message) => Tooltip::with_meta(
                         "Environments",
                         Some(&actions::environment_selector::Toggle),

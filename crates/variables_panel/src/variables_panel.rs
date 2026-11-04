@@ -13,7 +13,7 @@ use editor::{
 };
 use path::RelPath;
 use project::{
-    ConfigFileType, EnvironmentColor, Project, ProjectEntryId, ProjectEvent, ProjectPath, Worktree,
+    ConfigFileType, EnvironmentColor, Project, ProjectEntryId, ProjectEvent, ProjectPath,
     WorktreeId,
     git_store::{GitStoreEvent, RepositoryEvent},
     project_config_store::ProjectConfigStoreEvent,
@@ -239,29 +239,20 @@ impl VariablesPanel {
     fn entries(&self, cx: &App) -> Vec<VariablesListEntry> {
         let project = self.project.read(cx);
         let project_config_store = project.project_config_store().read(cx);
-        let mut environments = project
-            .root_worktree(cx)
-            .map(|worktree| {
-                worktree
-                    .read(cx)
-                    .child_entries(path::project_environments_folder_relative_path())
-                    .filter(|entry| {
-                        ConfigFileType::for_path(&entry.path) == Some(ConfigFileType::Environment)
-                    })
-                    .filter_map(|entry| {
-                        let name = entry.path.file_stem()?;
-                        Some(EnvironmentEntry {
-                            entry_id: entry.id,
-                            path: entry.path.clone(),
-                            name: SharedString::from(name.to_string()),
-                            color: project_config_store
-                                .environment_file(name)
-                                .and_then(|environment_file| environment_file.environment.color),
-                        })
-                    })
-                    .collect::<Vec<_>>()
+        let mut environments = project_config_store
+            .environment_entries(cx)
+            .filter_map(|entry| {
+                let name = entry.path.file_stem()?;
+                Some(EnvironmentEntry {
+                    entry_id: entry.id,
+                    path: entry.path.clone(),
+                    name: SharedString::from(name.to_string()),
+                    color: project_config_store
+                        .environment_file(name)
+                        .and_then(|environment_file| environment_file.environment.color),
+                })
             })
-            .unwrap_or_default();
+            .collect::<Vec<_>>();
         environments.sort_by(|left, right| path::natural_sort(&left.name, &right.name));
 
         iter::once(VariablesListEntry::ProjectVariables)
@@ -273,17 +264,13 @@ impl VariablesPanel {
             .collect()
     }
 
-    fn load_entry_metadata_for_environments(
-        &mut self,
-        worktree: &Entity<Worktree>,
-        cx: &mut Context<Self>,
-    ) {
-        let entries = worktree
+    fn load_entry_metadata_for_environments(&mut self, cx: &mut Context<Self>) {
+        let entries = self
+            .project
             .read(cx)
-            .child_entries(path::project_environments_folder_relative_path())
-            .filter(|entry| {
-                ConfigFileType::for_path(&entry.path) == Some(ConfigFileType::Environment)
-            })
+            .project_config_store()
+            .read(cx)
+            .environment_entries(cx)
             .cloned()
             .collect::<Vec<_>>();
 
@@ -793,20 +780,17 @@ impl VariablesPanel {
             );
         }
 
-        let Some(worktree) = self.project.read(cx).root_worktree(cx) else {
-            return ValidationState::None;
-        };
         let edited_entry_id = self
             .edit_state
             .as_ref()
             .and_then(|edit_state| edit_state.entry_id);
-        let existing_name = worktree
+        let existing_name = self
+            .project
             .read(cx)
-            .child_entries(path::project_environments_folder_relative_path())
-            .filter(|entry| {
-                Some(entry.id) != edited_entry_id
-                    && ConfigFileType::for_path(&entry.path) == Some(ConfigFileType::Environment)
-            })
+            .project_config_store()
+            .read(cx)
+            .environment_entries(cx)
+            .filter(|entry| Some(entry.id) != edited_entry_id)
             .filter_map(|entry| entry.path.file_stem())
             .find(|existing_name| existing_name.eq_ignore_ascii_case(name))
             .map(ToString::to_string);
@@ -1220,10 +1204,8 @@ impl Panel for VariablesPanel {
 
 impl Render for VariablesPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.load_entry_metadata_for_environments(cx);
         let root_worktree = self.project.read(cx).root_worktree(cx);
-        if let Some(worktree) = &root_worktree {
-            self.load_entry_metadata_for_environments(worktree, cx);
-        }
         let worktree_id = root_worktree
             .as_ref()
             .map(|worktree| worktree.read(cx).id());

@@ -6,7 +6,7 @@ use gpui::{
 use std::{iter, sync::Arc};
 
 use picker::{Picker, PickerDelegate};
-use project::{EnvironmentColor, Project};
+use project::{EnvironmentColor, Project, ProjectEvent, ProjectPath};
 use ui::{
     ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, DynamicSpacing,
     HighlightedText, Icon, IconAsset, IconSize, KeyBinding, ListItem, ListItemSpacing,
@@ -119,6 +119,7 @@ impl Render for EnvironmentSelector {
 
 struct Environment {
     name: Option<String>,
+    project_path: Option<ProjectPath>,
     color: Option<EnvironmentColor>,
     is_missing: bool,
 }
@@ -131,15 +132,57 @@ pub struct EnvironmentSelectorDelegate {
 }
 
 impl EnvironmentSelectorDelegate {
-    fn new(project: Entity<Project>, cx: &App) -> Self {
+    fn new(project: Entity<Project>, cx: &mut Context<EnvironmentSelector>) -> Self {
+        let worktree_id = project
+            .read(cx)
+            .root_worktree(cx)
+            .map(|worktree| worktree.read(cx).id());
+        let environment_entries = project
+            .read(cx)
+            .project_config_store()
+            .read(cx)
+            .environment_entries(cx)
+            .cloned()
+            .collect::<Vec<_>>();
+        for entry in &environment_entries {
+            project.update(cx, |project, cx| project.load_entry_metadata(entry, cx));
+        }
+
+        cx.subscribe(
+            &project,
+            |environment_selector, _, event: &ProjectEvent, cx| match event {
+                ProjectEvent::EntryMetadataUpdated(_) => {
+                    environment_selector.picker.update(cx, |_, cx| cx.notify());
+                }
+                ProjectEvent::ActiveEntryChanged(_)
+                | ProjectEvent::WorktreeAdded(_)
+                | ProjectEvent::WorktreeRemoved(_)
+                | ProjectEvent::WorktreeUpdatedEntries(_, _)
+                | ProjectEvent::DeletedEntry(_, _)
+                | ProjectEvent::Toast { .. }
+                | ProjectEvent::HideToast { .. } => {}
+            },
+        )
+        .detach();
+
         let project_config_store = project.read(cx).project_config_store().read(cx);
-        let mut environment_files = project_config_store.environments().collect::<Vec<_>>();
+        let mut environment_files = environment_entries
+            .iter()
+            .filter_map(|entry| {
+                let project_path = ProjectPath {
+                    worktree_id: worktree_id?,
+                    path: entry.path.clone(),
+                };
+                Some((entry.path.file_stem()?, project_path))
+            })
+            .collect::<Vec<_>>();
         environment_files.sort_by(|(left, _), (right, _)| path::natural_sort(left, right));
         let missing_environment = project_config_store
             .active_environment()
-            .filter(|_| project_config_store.is_active_environment_missing())
+            .filter(|_| project_config_store.is_active_environment_missing(cx))
             .map(|name| Environment {
                 name: Some(name.to_string()),
+                project_path: None,
                 color: None,
                 is_missing: true,
             });
@@ -147,18 +190,20 @@ impl EnvironmentSelectorDelegate {
             .into_iter()
             .chain(iter::once(Environment {
                 name: None,
+                project_path: None,
                 color: None,
                 is_missing: false,
             }))
-            .chain(
-                environment_files
-                    .into_iter()
-                    .map(|(name, environment_file)| Environment {
-                        name: Some(name.to_string()),
-                        color: environment_file.environment.color,
-                        is_missing: false,
-                    }),
-            )
+            .chain(environment_files.into_iter().map(|(name, project_path)| {
+                Environment {
+                    name: Some(name.to_string()),
+                    project_path: Some(project_path),
+                    color: project_config_store
+                        .environment_file(name)
+                        .and_then(|environment_file| environment_file.environment.color),
+                    is_missing: false,
+                }
+            }))
             .collect();
 
         Self {
@@ -286,12 +331,14 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
     ) -> Option<Self::ListItem> {
         let string_match = self.matches.get(index)?;
         let environment = self.environments.get(string_match.candidate_id)?;
-        let active_environment = self
-            .project
-            .read(cx)
-            .project_config_store()
-            .read(cx)
-            .active_environment();
+        let project = self.project.read(cx);
+        let is_invalid = environment
+            .project_path
+            .as_ref()
+            .and_then(|project_path| project.entry_for_path(project_path, cx))
+            .and_then(|entry| project.entry_metadata(entry))
+            .is_some_and(|metadata| metadata.is_invalid);
+        let active_environment = project.project_config_store().read(cx).active_environment();
         let is_active =
             !environment.is_missing && environment.name.as_deref() == active_environment;
 
@@ -308,6 +355,10 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                     Icon::new(IconAsset::SquareDashed)
                         .size(IconSize::XSmall)
                         .color(Color::Default)
+                } else if is_invalid {
+                    Icon::new(IconAsset::WarningCircle)
+                        .size(IconSize::Small)
+                        .color(Color::Error)
                 } else {
                     environment_icon(environment.color, Color::Default)
                 })
