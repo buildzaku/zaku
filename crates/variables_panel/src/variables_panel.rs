@@ -113,7 +113,7 @@ pub struct VariablesPanel {
     workspace: WeakEntity<Workspace>,
     scroll_handle: ScrollHandle,
     selection: Option<SelectedEntry>,
-    active_entry: Option<SelectedEntry>,
+    marked_entry: Option<SelectedEntry>,
     context_menu: Option<(Entity<ContextMenu>, Point<Pixels>, Subscription)>,
     edit_state: Option<EditState>,
     environment_name_editor: Entity<Editor>,
@@ -134,7 +134,7 @@ impl VariablesPanel {
         let git_store = project.read(cx).git_store().clone();
         let workspace_entity = cx.entity();
         let workspace_handle = workspace.weak_handle();
-        let active_entry = workspace
+        let marked_entry = workspace
             .active_item(cx)
             .and_then(|item| item.project_path(cx))
             .and_then(|project_path| SelectedEntry::for_path(&project, &project_path.path, cx));
@@ -146,15 +146,15 @@ impl VariablesPanel {
                 window,
                 |this: &mut VariablesPanel, workspace, event, _, cx| match event {
                     WorkspaceEvent::ActiveItemChanged => {
-                        this.active_entry = workspace
+                        this.marked_entry = workspace
                             .read(cx)
                             .active_item(cx)
                             .and_then(|item| item.project_path(cx))
                             .and_then(|project_path| {
                                 SelectedEntry::for_path(&this.project, &project_path.path, cx)
                             });
-                        if let Some(active_entry) = this.active_entry {
-                            this.selection = Some(active_entry);
+                        if let Some(marked_entry) = this.marked_entry {
+                            this.selection = Some(marked_entry);
                             this.autoscroll(cx);
                         }
                         cx.notify();
@@ -228,7 +228,7 @@ impl VariablesPanel {
                 workspace: workspace_handle,
                 scroll_handle: ScrollHandle::new(),
                 selection: None,
-                active_entry,
+                marked_entry,
                 context_menu: None,
                 edit_state: None,
                 environment_name_editor,
@@ -1102,7 +1102,7 @@ impl VariablesPanel {
         let theme_colors = cx.theme().colors();
         let is_environment = matches!(entry, VariablesListEntry::Environment(_));
         let selected_entry = entry.selected_entry();
-        let is_marked = self.active_entry == Some(selected_entry);
+        let is_marked = self.marked_entry == Some(selected_entry);
         let is_selected = self.selection == Some(selected_entry);
         let project = self.project.read(cx);
         let git_status = project
@@ -1519,6 +1519,7 @@ impl Render for VariablesPanel {
 
                                                 cx.stop_propagation();
                                                 variables_panel.selection = None;
+                                                variables_panel.marked_entry = None;
                                                 window.focus(&variables_panel.focus_handle, cx);
 
                                                 if was_editing {
@@ -1546,6 +1547,7 @@ impl Render for VariablesPanel {
                                              window,
                                              cx| {
                                                 cx.stop_propagation();
+                                                variables_panel.marked_entry = None;
                                                 variables_panel.deploy_context_menu(
                                                     event.position,
                                                     None,
@@ -1681,7 +1683,7 @@ mod tests {
                     } else {
                         ""
                     };
-                    let marked = if panel.active_entry == selected_entry {
+                    let marked = if panel.marked_entry == selected_entry {
                         "  <== marked"
                     } else {
                         ""
