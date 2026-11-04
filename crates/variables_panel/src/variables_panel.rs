@@ -1,10 +1,10 @@
 use anyhow::Context as _;
 use gpui::{
     Action, Anchor, App, ClickEvent, ClipboardItem, Context, DismissEvent, Div, Entity,
-    FocusHandle, Focusable, KeyContext, MouseDownEvent, Pixels, Point, PromptLevel, ScrollHandle,
-    SharedString, Stateful, Subscription, Task, WeakEntity, Window, prelude::*,
+    FocusHandle, Focusable, KeyContext, MouseButton, MouseDownEvent, Pixels, Point, PromptLevel,
+    ScrollHandle, SharedString, Stateful, Subscription, Task, WeakEntity, Window, prelude::*,
 };
-use std::{iter, sync::Arc};
+use std::{iter, path::PathBuf, sync::Arc};
 use strum::IntoEnumIterator;
 
 use editor::{
@@ -288,6 +288,20 @@ impl VariablesPanel {
             VariablesListEntry::ProjectVariables => None,
             VariablesListEntry::Environment(environment) => Some(environment),
         }
+    }
+
+    fn reveal_in_file_manager_path(&self, cx: &App) -> Option<PathBuf> {
+        let worktree = self.project.read(cx).root_worktree(cx)?;
+        let worktree = worktree.read(cx);
+        let path = if self.selection.is_some() {
+            self.selected_environment(cx)?.path
+        } else {
+            worktree
+                .entry_for_path(path::project_environments_folder_relative_path())?
+                .path
+                .clone()
+        };
+        Some(worktree.absolutize(&path))
     }
 
     fn index_for_selection(&self, cx: &App) -> Option<usize> {
@@ -698,14 +712,25 @@ impl VariablesPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(environment) = self.selected_environment(cx) else {
-            return;
-        };
         let Some(worktree) = self.project.read(cx).root_worktree(cx) else {
             return;
         };
+        let worktree = worktree.read(cx);
+        let path = if self.selection.is_some() {
+            let Some(environment) = self.selected_environment(cx) else {
+                return;
+            };
+            environment.path
+        } else {
+            let Some(entry) =
+                worktree.entry_for_path(path::project_environments_folder_relative_path())
+            else {
+                return;
+            };
+            entry.path.clone()
+        };
 
-        let abs_path = worktree.read(cx).absolutize(&environment.path);
+        let abs_path = worktree.absolutize(&path);
         cx.write_to_clipboard(ClipboardItem::new_string(
             abs_path.to_string_lossy().to_string(),
         ));
@@ -733,16 +758,10 @@ impl VariablesPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(environment) = self.selected_environment(cx) else {
-            return;
-        };
-        let Some(worktree) = self.project.read(cx).root_worktree(cx) else {
-            return;
-        };
-
-        let abs_path = worktree.read(cx).absolutize(&environment.path);
-        self.project
-            .update(cx, |project, cx| project.reveal_path(&abs_path, cx));
+        if let Some(path) = self.reveal_in_file_manager_path(cx) {
+            self.project
+                .update(cx, |project, cx| project.reveal_path(&path, cx));
+        }
     }
 
     fn find_next_selection_after_deletion(
@@ -781,27 +800,35 @@ impl VariablesPanel {
     fn deploy_context_menu(
         &mut self,
         position: Point<Pixels>,
-        selected_entry: SelectedEntry,
+        selected_entry: Option<SelectedEntry>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(worktree) = self.project.read(cx).root_worktree(cx) else {
             return;
         };
-        let Some(VariablesListEntry::Environment(environment)) = self
-            .entries(cx)
-            .into_iter()
-            .find(|entry| entry.selected_entry() == selected_entry)
-        else {
-            return;
+        let environment = match selected_entry {
+            Some(selected_entry) => {
+                let Some(VariablesListEntry::Environment(environment)) = self
+                    .entries(cx)
+                    .into_iter()
+                    .find(|entry| entry.selected_entry() == selected_entry)
+                else {
+                    return;
+                };
+                Some(environment)
+            }
+            None => None,
         };
 
-        self.selection = Some(selected_entry);
+        self.selection = selected_entry;
+        let is_environment = environment.is_some();
+        let has_environments_folder = worktree
+            .read(cx)
+            .entry_for_path(path::project_environments_folder_relative_path())
+            .is_some();
         let project = self.project.clone();
-        let project_path = ProjectPath {
-            worktree_id: worktree.read(cx).id(),
-            path: environment.path,
-        };
+        let worktree_id = worktree.read(cx).id();
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
                 .action(
@@ -809,59 +836,74 @@ impl VariablesPanel {
                     Box::new(actions::variables_panel::NewEnvironment),
                 )
                 .separator()
-                .submenu("Color", move |mut menu, _, _| {
-                    for color in iter::once(None).chain(EnvironmentColor::iter().map(Some)) {
-                        let project = project.clone();
-                        let project_path = project_path.clone();
-                        let display_name = color.map_or("None", |color| color.display_name());
-                        menu = menu.toggleable_entry(
-                            display_name,
-                            color == environment.color,
-                            IconPosition::End,
-                            None,
-                            move |window, cx| {
-                                project
-                                    .update(cx, |project, cx| {
-                                        project.set_environment_color(
-                                            project_path.clone(),
-                                            color,
+                .when_some(environment, |menu, environment| {
+                    let project_path = ProjectPath {
+                        worktree_id,
+                        path: environment.path,
+                    };
+                    menu.submenu("Color", move |mut menu, _, _| {
+                        for color in iter::once(None).chain(EnvironmentColor::iter().map(Some)) {
+                            let project = project.clone();
+                            let project_path = project_path.clone();
+                            let display_name = color.map_or("None", |color| color.display_name());
+                            menu = menu.toggleable_entry(
+                                display_name,
+                                color == environment.color,
+                                IconPosition::End,
+                                None,
+                                move |window, cx| {
+                                    project
+                                        .update(cx, |project, cx| {
+                                            project.set_environment_color(
+                                                project_path.clone(),
+                                                color,
+                                                cx,
+                                            )
+                                        })
+                                        .detach_and_prompt_err(
+                                            "Failed to change color",
+                                            window,
                                             cx,
-                                        )
-                                    })
-                                    .detach_and_prompt_err(
-                                        "Failed to change color",
-                                        window,
-                                        cx,
-                                        |_, _, _| None,
-                                    );
-                            },
-                        );
-                    }
-                    menu
+                                            |_, _, _| None,
+                                        );
+                                },
+                            );
+                        }
+                        menu
+                    })
+                    .separator()
                 })
-                .separator()
-                .action(
+                .action_disabled_when(
+                    !has_environments_folder,
                     ui::utils::reveal_in_file_manager_title(),
                     Box::new(actions::variables_panel::RevealInFileManager),
                 )
+                .when(is_environment, |menu| {
+                    menu.separator()
+                        .action("Duplicate", Box::new(actions::variables_panel::Duplicate))
+                })
                 .separator()
-                .action("Duplicate", Box::new(actions::variables_panel::Duplicate))
-                .separator()
-                .action("Copy Path", Box::new(actions::workspace::CopyPath))
-                .action(
-                    "Copy Relative Path",
-                    Box::new(actions::workspace::CopyRelativePath),
+                .action_disabled_when(
+                    !has_environments_folder,
+                    "Copy Path",
+                    Box::new(actions::workspace::CopyPath),
                 )
-                .separator()
-                .action("Rename", Box::new(actions::variables_panel::Rename))
-                .action(
-                    "Trash",
-                    Box::new(actions::variables_panel::Trash { skip_prompt: false }),
-                )
-                .action(
-                    "Delete",
-                    Box::new(actions::variables_panel::Delete { skip_prompt: false }),
-                )
+                .when(is_environment, |menu| {
+                    menu.action(
+                        "Copy Relative Path",
+                        Box::new(actions::workspace::CopyRelativePath),
+                    )
+                    .separator()
+                    .action("Rename", Box::new(actions::variables_panel::Rename))
+                    .action(
+                        "Trash",
+                        Box::new(actions::variables_panel::Trash { skip_prompt: false }),
+                    )
+                    .action(
+                        "Delete",
+                        Box::new(actions::variables_panel::Delete { skip_prompt: false }),
+                    )
+                })
         });
 
         window.focus(&context_menu.focus_handle(cx), cx);
@@ -1201,7 +1243,7 @@ impl VariablesPanel {
                                 cx.stop_propagation();
                                 variables_panel.deploy_context_menu(
                                     event.position,
-                                    selected_entry,
+                                    Some(selected_entry),
                                     window,
                                     cx,
                                 );
@@ -1460,7 +1502,60 @@ impl Render for VariablesPanel {
                                 },
                             )
                             .children(environment_entries)
-                            .children(edit_entry),
+                            .children(edit_entry)
+                            .child(
+                                gpui::div()
+                                    .id("variables-panel-empty-space")
+                                    .flex_grow_1()
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(
+                                            |variables_panel,
+                                             event: &MouseDownEvent,
+                                             window,
+                                             cx| {
+                                                let was_editing =
+                                                    variables_panel.edit_state.is_some();
+
+                                                cx.stop_propagation();
+                                                variables_panel.selection = None;
+                                                window.focus(&variables_panel.focus_handle, cx);
+
+                                                if was_editing {
+                                                    cx.notify();
+                                                    return;
+                                                }
+
+                                                if event.click_count > 1 {
+                                                    variables_panel.new_environment(
+                                                        &actions::variables_panel::NewEnvironment,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                } else {
+                                                    cx.notify();
+                                                }
+                                            },
+                                        ),
+                                    )
+                                    .on_mouse_down(
+                                        MouseButton::Right,
+                                        cx.listener(
+                                            |variables_panel,
+                                             event: &MouseDownEvent,
+                                             window,
+                                             cx| {
+                                                cx.stop_propagation();
+                                                variables_panel.deploy_context_menu(
+                                                    event.position,
+                                                    None,
+                                                    window,
+                                                    cx,
+                                                );
+                                            },
+                                        ),
+                                    ),
+                            ),
                     )
                     .custom_scrollbars(
                         Scrollbars::new(ScrollAxes::Vertical)
@@ -2961,6 +3056,19 @@ mod tests {
         let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, VariablesPanel::new);
         cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.copy_path(&actions::workspace::CopyPath, window, cx);
+        });
+        assert_eq!(
+            cx.read_from_clipboard().and_then(|item| item.text()),
+            Some(
+                project_path
+                    .join(path!(".zaku/environments"))
+                    .to_string_lossy()
+                    .into_owned()
+            )
+        );
 
         panel.update_in(cx, |panel, window, cx| {
             panel.select_first(&actions::menu::SelectFirst, window, cx);
