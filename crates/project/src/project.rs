@@ -983,11 +983,6 @@ impl Project {
             .unwrap_or(false)
     }
 
-    pub fn absolutize(&self, path: &RelPath, cx: &App) -> Option<PathBuf> {
-        let root_worktree = self.root_worktree(cx)?;
-        Some(root_worktree.read(cx).absolutize(path))
-    }
-
     pub fn open_buffer_at(
         &mut self,
         abs_path: impl AsRef<Path>,

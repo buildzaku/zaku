@@ -112,15 +112,13 @@ impl Item for ProjectConfigEditor {
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
-        let project_path = self.project_path(cx)?;
-        self.project
-            .read(cx)
-            .absolute_path(&project_path, cx)
-            .map(|path| {
-                ui::utils::replace_control_characters(&path.compact().to_string_lossy())
-                    .into_owned()
-                    .into()
-            })
+        let file = self.buffer.read(cx).file();
+        let path = file.worktree.read(cx).absolutize(&file.path).compact();
+        Some(
+            ui::utils::replace_control_characters(&path.to_string_lossy())
+                .into_owned()
+                .into(),
+        )
     }
 
     fn for_each_project_item(

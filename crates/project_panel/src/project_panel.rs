@@ -1408,10 +1408,12 @@ impl ProjectPanel {
             self.effective_entries()
                 .into_iter()
                 .filter_map(|entry| {
-                    let project_path = project.path_for_entry(entry.0, cx)?;
+                    let entry_path = project.path_for_entry(entry.0, cx)?.path;
                     Some(
                         project
-                            .absolute_path(&project_path, cx)?
+                            .worktree_for_entry(entry.0, cx)?
+                            .read(cx)
+                            .absolutize(&entry_path)
                             .to_string_lossy()
                             .to_string(),
                     )
@@ -2056,10 +2058,13 @@ impl ProjectPanel {
         let paths = entries
             .iter()
             .filter_map(|entry| {
-                let project_path = project.path_for_entry(entry.0, cx)?;
+                let worktree = project.worktree_for_entry(entry.0, cx)?;
+                let worktree = worktree.read(cx);
+                let worktree_entry = worktree.entry_for_id(entry.0)?;
                 Some(
-                    project
-                        .absolute_path(&project_path, cx)?
+                    worktree
+                        .abs_path()
+                        .join(worktree_entry.path.as_std_path())
                         .to_string_lossy()
                         .to_string(),
                 )

@@ -1,8 +1,8 @@
 use anyhow::Context as _;
 use gpui::{
-    Action, Anchor, App, ClickEvent, Context, DismissEvent, Div, Entity, FocusHandle, Focusable,
-    KeyContext, MouseDownEvent, Pixels, Point, PromptLevel, ScrollHandle, SharedString, Stateful,
-    Subscription, Task, WeakEntity, Window, prelude::*,
+    Action, Anchor, App, ClickEvent, ClipboardItem, Context, DismissEvent, Div, Entity,
+    FocusHandle, Focusable, KeyContext, MouseDownEvent, Pixels, Point, PromptLevel, ScrollHandle,
+    SharedString, Stateful, Subscription, Task, WeakEntity, Window, prelude::*,
 };
 use std::{iter, sync::Arc};
 use strum::IntoEnumIterator;
@@ -280,6 +280,16 @@ impl VariablesPanel {
         }
     }
 
+    fn selected_environment(&self, cx: &App) -> Option<EnvironmentEntry> {
+        match self
+            .index_for_selection(cx)
+            .and_then(|index| self.entries(cx).into_iter().nth(index))?
+        {
+            VariablesListEntry::ProjectVariables => None,
+            VariablesListEntry::Environment(environment) => Some(environment),
+        }
+    }
+
     fn index_for_selection(&self, cx: &App) -> Option<usize> {
         let selection = self.selection?;
         self.entries(cx)
@@ -488,16 +498,67 @@ impl VariablesPanel {
         cx.notify();
     }
 
+    fn duplicate(
+        &mut self,
+        _: &actions::variables_panel::Duplicate,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(environment) = self.selected_environment(cx) else {
+            return;
+        };
+        let Some(worktree) = self.project.read(cx).root_worktree(cx) else {
+            return;
+        };
+
+        let project_config_store = self.project.read(cx).project_config_store().read(cx);
+        let mut new_name = format!("{} copy", environment.name);
+        let mut index = 1;
+        while project_config_store
+            .environment_entries(cx)
+            .filter_map(|entry| entry.path.file_stem())
+            .any(|existing_name| existing_name.eq_ignore_ascii_case(&new_name))
+        {
+            new_name = format!("{} copy {index}", environment.name);
+            index += 1;
+        }
+        let Some(new_path) = RelPath::from_unix_str(&format!("{new_name}.toml"))
+            .ok()
+            .map(|file_name| path::project_environments_folder_relative_path().join(file_name))
+        else {
+            return;
+        };
+        let new_project_path = ProjectPath {
+            worktree_id: worktree.read(cx).id(),
+            path: new_path.clone(),
+        };
+        let copy_task = self.project.update(cx, |project, cx| {
+            project.copy_entry(environment.entry_id, new_project_path, cx)
+        });
+
+        cx.spawn_in(window, async move |variables_panel, cx| {
+            let Some(new_entry) = copy_task.await? else {
+                return anyhow::Ok(());
+            };
+
+            variables_panel.update_in(cx, |variables_panel, window, cx| {
+                variables_panel.selection = Some(SelectedEntry::Environment(new_entry.id));
+                variables_panel.open_entry(new_path, false, false, window, cx);
+                cx.defer_in(window, |variables_panel, window, cx| {
+                    variables_panel.rename(&actions::variables_panel::Rename, window, cx);
+                });
+            })
+        })
+        .detach_and_log_err(cx);
+    }
+
     fn rename(
         &mut self,
         _: &actions::variables_panel::Rename,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(VariablesListEntry::Environment(environment)) = self
-            .index_for_selection(cx)
-            .and_then(|index| self.entries(cx).into_iter().nth(index))
-        else {
+        let Some(environment) = self.selected_environment(cx) else {
             return;
         };
 
@@ -526,10 +587,7 @@ impl VariablesPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(VariablesListEntry::Environment(environment)) = self
-            .index_for_selection(cx)
-            .and_then(|index| self.entries(cx).into_iter().nth(index))
-        else {
+        let Some(environment) = self.selected_environment(cx) else {
             return;
         };
         let Some(file_name) = environment.path.file_name() else {
@@ -634,6 +692,59 @@ impl VariablesPanel {
         self.remove(false, action.skip_prompt, window, cx);
     }
 
+    fn copy_path(
+        &mut self,
+        _: &actions::workspace::CopyPath,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(environment) = self.selected_environment(cx) else {
+            return;
+        };
+        let Some(worktree) = self.project.read(cx).root_worktree(cx) else {
+            return;
+        };
+
+        let abs_path = worktree.read(cx).absolutize(&environment.path);
+        cx.write_to_clipboard(ClipboardItem::new_string(
+            abs_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    fn copy_relative_path(
+        &mut self,
+        _: &actions::workspace::CopyRelativePath,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(environment) = self.selected_environment(cx) else {
+            return;
+        };
+
+        let path_style = self.project.read(cx).path_style(cx);
+        cx.write_to_clipboard(ClipboardItem::new_string(
+            environment.path.display(path_style).into_owned(),
+        ));
+    }
+
+    fn reveal_in_file_manager(
+        &mut self,
+        _: &actions::variables_panel::RevealInFileManager,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(environment) = self.selected_environment(cx) else {
+            return;
+        };
+        let Some(worktree) = self.project.read(cx).root_worktree(cx) else {
+            return;
+        };
+
+        let abs_path = worktree.read(cx).absolutize(&environment.path);
+        self.project
+            .update(cx, |project, cx| project.reveal_path(&abs_path, cx));
+    }
+
     fn find_next_selection_after_deletion(
         &self,
         entry_id: ProjectEntryId,
@@ -693,14 +804,9 @@ impl VariablesPanel {
         };
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
-                .action("Rename", Box::new(actions::variables_panel::Rename))
                 .action(
-                    "Trash",
-                    Box::new(actions::variables_panel::Trash { skip_prompt: false }),
-                )
-                .action(
-                    "Delete",
-                    Box::new(actions::variables_panel::Delete { skip_prompt: false }),
+                    "New Environment",
+                    Box::new(actions::variables_panel::NewEnvironment),
                 )
                 .separator()
                 .submenu("Color", move |mut menu, _, _| {
@@ -733,6 +839,29 @@ impl VariablesPanel {
                     }
                     menu
                 })
+                .separator()
+                .action(
+                    ui::utils::reveal_in_file_manager_title(),
+                    Box::new(actions::variables_panel::RevealInFileManager),
+                )
+                .separator()
+                .action("Duplicate", Box::new(actions::variables_panel::Duplicate))
+                .separator()
+                .action("Copy Path", Box::new(actions::workspace::CopyPath))
+                .action(
+                    "Copy Relative Path",
+                    Box::new(actions::workspace::CopyRelativePath),
+                )
+                .separator()
+                .action("Rename", Box::new(actions::variables_panel::Rename))
+                .action(
+                    "Trash",
+                    Box::new(actions::variables_panel::Trash { skip_prompt: false }),
+                )
+                .action(
+                    "Delete",
+                    Box::new(actions::variables_panel::Delete { skip_prompt: false }),
+                )
         });
 
         window.focus(&context_menu.focus_handle(cx), cx);
@@ -1252,10 +1381,14 @@ impl Render for VariablesPanel {
             .on_action(cx.listener(Self::select_first))
             .on_action(cx.listener(Self::select_last))
             .on_action(cx.listener(Self::new_environment))
+            .on_action(cx.listener(Self::duplicate))
             .on_action(cx.listener(Self::open))
             .on_action(cx.listener(Self::rename))
             .on_action(cx.listener(Self::trash))
             .on_action(cx.listener(Self::delete))
+            .on_action(cx.listener(Self::copy_path))
+            .on_action(cx.listener(Self::copy_relative_path))
+            .on_action(cx.listener(Self::reveal_in_file_manager))
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::cancel))
             .relative()
@@ -2142,6 +2275,115 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_duplicate_environment(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                        "Prod.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "red"
+                            variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                        "#},
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, VariablesPanel::new);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_first(&actions::menu::SelectFirst, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables  <== selected", "Dev", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_next(&actions::menu::SelectNext, window, cx);
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            panel.duplicate(&actions::variables_panel::Duplicate, window, cx);
+        });
+        pane.condition::<PaneEvent>(cx, |pane, cx| {
+            pane.active_item()
+                .and_then(|item| item.project_path(cx))
+                .is_some_and(|project_path| {
+                    project_path.path.as_ref() == rel_path(".zaku/environments/Dev copy.toml")
+                })
+        })
+        .await;
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.environment_name_editor.read(cx).is_focused(window));
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &[
+                "Project Variables",
+                "Dev",
+                "[EDITOR: 'Dev copy']  <== selected  <== marked",
+                "Prod",
+            ]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.cancel(&actions::menu::Cancel, window, cx);
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_previous(&actions::menu::SelectPrevious, window, cx);
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            panel.duplicate(&actions::variables_panel::Duplicate, window, cx);
+        });
+        pane.condition::<PaneEvent>(cx, |pane, cx| {
+            pane.active_item()
+                .and_then(|item| item.project_path(cx))
+                .is_some_and(|project_path| {
+                    project_path.path.as_ref() == rel_path(".zaku/environments/Dev copy 1.toml")
+                })
+        })
+        .await;
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &[
+                "Project Variables",
+                "Dev",
+                "Dev copy",
+                "[EDITOR: 'Dev copy 1']  <== selected  <== marked",
+                "Prod",
+            ]
+        );
+    }
+
+    #[gpui::test]
     async fn test_rename_environment(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
@@ -2677,6 +2919,79 @@ mod tests {
                 .await
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[gpui::test]
+    async fn test_copy_paths(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                        "#},
+                        "Prod.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "red"
+                            variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                        "#},
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, VariablesPanel::new);
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_first(&actions::menu::SelectFirst, window, cx);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &["Project Variables  <== selected", "Dev", "Prod"]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.select_next(&actions::menu::SelectNext, window, cx);
+        });
+        panel.update_in(cx, |panel, window, cx| {
+            panel.copy_relative_path(&actions::workspace::CopyRelativePath, window, cx);
+        });
+        assert_eq!(
+            cx.read_from_clipboard().and_then(|item| item.text()),
+            Some(path!(".zaku/environments/Dev.toml").to_owned())
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.copy_path(&actions::workspace::CopyPath, window, cx);
+        });
+        assert_eq!(
+            cx.read_from_clipboard().and_then(|item| item.text()),
+            Some(
+                project_path
+                    .join(path!(".zaku/environments/Dev.toml"))
+                    .to_string_lossy()
+                    .into_owned()
+            )
         );
     }
 

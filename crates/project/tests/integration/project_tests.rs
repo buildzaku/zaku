@@ -1093,39 +1093,6 @@ async fn test_find_or_create_worktree_replaces_config_files(cx: &mut TestAppCont
 }
 
 #[gpui::test]
-async fn test_absolute_path_resolves_relative_paths_against_current_root(cx: &mut TestAppContext) {
-    cx.executor().allow_parking();
-
-    let temp_fs = TempFs::new(cx.executor());
-    temp_fs.insert_tree(
-        path!("project"),
-        json!({
-            "nested": {
-                "request.toml": indoc! {"
-                    [meta]
-                    version = 1
-                "}
-            }
-        }),
-    );
-
-    let project_path = temp_fs.path().join("project");
-    let request_path = project_path.join("nested").join("request.toml");
-    let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-
-    let (resolved_request_path, resolved_project_path) = cx.update(|cx| {
-        let project = project.read(cx);
-        (
-            project.absolutize(rel_path("nested/request.toml"), cx),
-            project.absolutize(RelPath::empty(), cx),
-        )
-    });
-
-    assert_eq!(resolved_request_path, Some(request_path));
-    assert_eq!(resolved_project_path, Some(project_path));
-}
-
-#[gpui::test]
 async fn test_initial_scan_complete(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 

@@ -23,12 +23,16 @@ pub struct Trash {
 gpui::actions!(
     variables_panel,
     [
+        /// Duplicate the selected environment.
+        Duplicate,
         /// Create a new environment.
         NewEnvironment,
         /// Open the selected entry.
         Open,
         /// Rename the selected environment.
         Rename,
+        /// Reveal the selected environment in the system file manager.
+        RevealInFileManager,
         /// Toggle focus on the variables panel.
         ToggleFocus
     ]
