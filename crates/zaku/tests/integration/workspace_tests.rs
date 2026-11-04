@@ -13,7 +13,7 @@ use fs::{Fs, RemoveOptions, TempFs};
 use http_client::{AsyncBody, FakeHttpClient, Response, StatusCode};
 use path::rel_path;
 use picker::PickerDelegate;
-use project::ProjectPath;
+use project::{EntryMetadata, ProjectPath};
 use recent_projects::RecentProjects;
 use response_panel::ResponsePanel;
 use session::Session;
@@ -300,6 +300,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                         color = "green"
                         variables = [{ name = "base_url", value = "http://localhost:8000" }]
                     "#},
+                    "Prod.toml": "[environment",
                     "Staging-9.toml": indoc! {r#"
                         [meta]
                         version = 1
@@ -323,6 +324,7 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
 
     let project_path = temp_fs.path().join("project");
     let (open_result, worktree) = open_workspace(project_path.clone(), app_state.clone(), cx).await;
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
     cx.run_until_parked();
     open_result.workspace.update(cx, |workspace, cx| {
         workspace
@@ -354,11 +356,30 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
             vec![
                 (None, false),
                 (Some("Dev".to_string()), false),
+                (Some("Prod".to_string()), false),
                 (Some("Staging-9".to_string()), false),
                 (Some("Staging-10".to_string()), false),
             ]
         );
         assert_eq!(picker.delegate.selected_index(), 1);
+    });
+
+    cx.run_until_parked();
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        let project = workspace.project().read(cx);
+        let prod_entry = project
+            .entry_for_path(
+                &ProjectPath::from((worktree_id, rel_path(".zaku/environments/Prod.toml"))),
+                cx,
+            )
+            .unwrap();
+        assert_eq!(
+            project.entry_metadata(prod_entry),
+            Some(&EntryMetadata {
+                prefix: None,
+                is_invalid: true,
+            })
+        );
     });
 
     cx.dispatch_action(
@@ -394,11 +415,42 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
             vec![
                 (Some("Dev".to_string()), true),
                 (None, false),
+                (Some("Prod".to_string()), false),
                 (Some("Staging-9".to_string()), false),
                 (Some("Staging-10".to_string()), false),
             ]
         );
         assert_eq!(picker.delegate.selected_index(), 0);
+    });
+
+    cx.simulate_input(open_result.window.into(), "prod");
+    cx.dispatch_action(open_result.window.into(), actions::menu::Confirm);
+    cx.run_until_parked();
+
+    cx.dispatch_action(
+        open_result.window.into(),
+        actions::environment_selector::Toggle,
+    );
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<EnvironmentSelector>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+    picker.read_with(cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_environments(),
+            vec![
+                (None, false),
+                (Some("Prod".to_string()), false),
+                (Some("Staging-9".to_string()), false),
+                (Some("Staging-10".to_string()), false),
+            ]
+        );
+        assert_eq!(picker.delegate.selected_index(), 1);
     });
 
     cx.simulate_input(open_result.window.into(), "staging-10");
