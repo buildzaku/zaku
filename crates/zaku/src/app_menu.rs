@@ -60,6 +60,10 @@ pub fn app_menu(cx: &mut App) -> Vec<Menu> {
             name: "View".into(),
             disabled: false,
             items: vec![
+                MenuItem::action("Zoom In", actions::zaku::ZoomIn { persist: true }),
+                MenuItem::action("Zoom Out", actions::zaku::ZoomOut { persist: true }),
+                MenuItem::action("Reset Zoom", actions::zaku::ResetAllZoom { persist: true }),
+                MenuItem::separator(),
                 MenuItem::action("Toggle Left Dock", actions::workspace::ToggleLeftDock),
                 MenuItem::action("Toggle Bottom Dock", actions::workspace::ToggleBottomDock),
                 MenuItem::separator(),

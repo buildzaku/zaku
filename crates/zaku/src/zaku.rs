@@ -272,6 +272,46 @@ pub fn init(cx: &mut App) {
                         theme::reset_buffer_font_size(cx);
                     }
                 }
+            })
+            .register_action({
+                let fs = app_state.fs.clone();
+                move |_, action: &actions::zaku::ZoomIn, _, cx| {
+                    if action.persist {
+                        ::settings::update_settings_file(fs.clone(), cx, move |settings, cx| {
+                            let ui_font_size =
+                                ThemeSettings::get_global(cx).ui_font_size(cx) + gpui::px(1.0);
+                            let buffer_font_size =
+                                ThemeSettings::get_global(cx).buffer_font_size(cx) + gpui::px(1.0);
+                            settings.ui.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(ui_font_size)).into());
+                            settings.editor.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(buffer_font_size)).into());
+                        });
+                    } else {
+                        theme::adjust_ui_font_size(cx, |size| size + gpui::px(1.0));
+                        theme::adjust_buffer_font_size(cx, |size| size + gpui::px(1.0));
+                    }
+                }
+            })
+            .register_action({
+                let fs = app_state.fs.clone();
+                move |_, action: &actions::zaku::ZoomOut, _, cx| {
+                    if action.persist {
+                        ::settings::update_settings_file(fs.clone(), cx, move |settings, cx| {
+                            let ui_font_size =
+                                ThemeSettings::get_global(cx).ui_font_size(cx) - gpui::px(1.0);
+                            let buffer_font_size =
+                                ThemeSettings::get_global(cx).buffer_font_size(cx) - gpui::px(1.0);
+                            settings.ui.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(ui_font_size)).into());
+                            settings.editor.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(buffer_font_size)).into());
+                        });
+                    } else {
+                        theme::adjust_ui_font_size(cx, |size| size - gpui::px(1.0));
+                        theme::adjust_buffer_font_size(cx, |size| size - gpui::px(1.0));
+                    }
+                }
             });
     })
     .detach();

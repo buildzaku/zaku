@@ -65,6 +65,24 @@ pub struct ResetAllZoom {
     pub persist: bool,
 }
 
+/// Increase the user interface and editor font sizes.
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = zaku)]
+#[serde(deny_unknown_fields)]
+pub struct ZoomIn {
+    #[serde(default)]
+    pub persist: bool,
+}
+
+/// Decrease the user interface and editor font sizes.
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = zaku)]
+#[serde(deny_unknown_fields)]
+pub struct ZoomOut {
+    #[serde(default)]
+    pub persist: bool,
+}
+
 gpui::actions!(
     zaku,
     [
