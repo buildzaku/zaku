@@ -253,6 +253,21 @@ impl VariablesPanel {
                 })
             })
             .collect::<Vec<_>>();
+        if self
+            .edit_state
+            .as_ref()
+            .is_some_and(|edit_state| edit_state.is_new_entry())
+        {
+            environments.push(EnvironmentEntry {
+                entry_id: Self::NEW_ENTRY_ID,
+                path: path::project_environments_folder_relative_path().join(
+                    RelPath::from_unix_str("\0")
+                        .expect("new entry placeholder path should be valid"),
+                ),
+                name: SharedString::default(),
+                color: None,
+            });
+        }
         environments.sort_by(|left, right| path::natural_sort(&left.name, &right.name));
 
         iter::once(VariablesListEntry::ProjectVariables)
@@ -286,7 +301,9 @@ impl VariablesPanel {
             .and_then(|index| self.entries(cx).into_iter().nth(index))?
         {
             VariablesListEntry::ProjectVariables => None,
-            VariablesListEntry::Environment(environment) => Some(environment),
+            VariablesListEntry::Environment(environment) => {
+                (environment.entry_id != Self::NEW_ENTRY_ID).then_some(environment)
+            }
         }
     }
 
@@ -428,6 +445,9 @@ impl VariablesPanel {
         let Some(entry) = self
             .index_for_selection(cx)
             .and_then(|index| self.entries(cx).into_iter().nth(index))
+            .filter(|entry| {
+                entry.selected_entry() != SelectedEntry::Environment(Self::NEW_ENTRY_ID)
+            })
         else {
             return;
         };
@@ -503,12 +523,7 @@ impl VariablesPanel {
             editor.clear(window, cx);
         });
         window.focus(&self.environment_name_editor.focus_handle(cx), cx);
-        let environment_count = self
-            .entries(cx)
-            .iter()
-            .filter(|entry| matches!(entry, VariablesListEntry::Environment(_)))
-            .count();
-        self.scroll_handle.scroll_to_item(environment_count);
+        self.autoscroll(cx);
         cx.notify();
     }
 
@@ -1092,7 +1107,7 @@ impl VariablesPanel {
         };
         if let VariablesListEntry::Environment(environment) = &entry
             && let Some(edit_state) = self.edit_state.as_ref()
-            && edit_state.entry_id == Some(environment.entry_id)
+            && edit_state.entry_id.unwrap_or(Self::NEW_ENTRY_ID) == environment.entry_id
         {
             return self
                 .render_edit_entry(edit_state, environment.color, window, cx)
@@ -1400,11 +1415,6 @@ impl Render for VariablesPanel {
             .into_iter();
         let project_entry = entries.next();
         let environment_entries = entries.collect::<Vec<_>>();
-        let edit_entry = self
-            .edit_state
-            .as_ref()
-            .filter(|edit_state| edit_state.is_new_entry())
-            .map(|edit_state| self.render_edit_entry(edit_state, None, window, cx));
         let initial_load_completed = self
             .project
             .read(cx)
@@ -1480,9 +1490,7 @@ impl Render for VariablesPanel {
                             .overflow_y_scroll()
                             .track_scroll(&self.scroll_handle)
                             .when(
-                                initial_load_completed
-                                    && environment_entries.is_empty()
-                                    && edit_entry.is_none(),
+                                initial_load_completed && environment_entries.is_empty(),
                                 |this| {
                                     this.child(
                                         ListItem::new("variables-panel-no-environments")
@@ -1502,7 +1510,6 @@ impl Render for VariablesPanel {
                                 },
                             )
                             .children(environment_entries)
-                            .children(edit_entry)
                             .child(
                                 gpui::div()
                                     .id("variables-panel-empty-space")
@@ -1639,40 +1646,25 @@ mod tests {
         cx: &mut VisualTestContext,
     ) -> Vec<String> {
         panel.read_with(cx, |panel, cx| {
-            let edit_entry_name = |edit_state: &EditState| {
-                if let Some(name) = &edit_state.processing_name {
-                    format!("[PROCESSING: '{name}']")
-                } else {
-                    let name = panel.environment_name_editor.read(cx).text(cx);
-                    format!("[EDITOR: '{name}']")
-                }
-            };
-            let new_entry = panel
-                .edit_state
-                .as_ref()
-                .filter(|edit_state| edit_state.is_new_entry())
-                .map(|edit_state| {
-                    let name = edit_entry_name(edit_state);
-                    let selected = if panel.selection
-                        == Some(SelectedEntry::Environment(VariablesPanel::NEW_ENTRY_ID))
-                    {
-                        "  <== selected"
-                    } else {
-                        ""
-                    };
-                    format!("{name}{selected}")
-                });
-
             panel
                 .entries(cx)
                 .into_iter()
                 .map(|entry| {
                     let selected_entry = Some(entry.selected_entry());
                     let edit_state = panel.edit_state.as_ref().filter(|edit_state| {
-                        edit_state.entry_id.map(SelectedEntry::Environment) == selected_entry
+                        Some(SelectedEntry::Environment(
+                            edit_state.entry_id.unwrap_or(VariablesPanel::NEW_ENTRY_ID),
+                        )) == selected_entry
                     });
                     let name = match (edit_state, entry) {
-                        (Some(edit_state), _) => SharedString::from(edit_entry_name(edit_state)),
+                        (Some(edit_state), _) => {
+                            if let Some(name) = &edit_state.processing_name {
+                                SharedString::from(format!("[PROCESSING: '{name}']"))
+                            } else {
+                                let name = panel.environment_name_editor.read(cx).text(cx);
+                                SharedString::from(format!("[EDITOR: '{name}']"))
+                            }
+                        }
                         (None, VariablesListEntry::ProjectVariables) => {
                             SharedString::from("Project Variables")
                         }
@@ -1691,7 +1683,6 @@ mod tests {
 
                     format!("{name}{selected}{marked}")
                 })
-                .chain(new_entry)
                 .collect()
         })
     }
@@ -2278,6 +2269,15 @@ mod tests {
         panel.update_in(cx, |panel, window, cx| {
             panel.new_environment(&actions::variables_panel::NewEnvironment, window, cx);
         });
+        assert_eq!(
+            visible_entries_as_strings(&panel, cx),
+            &[
+                "Project Variables",
+                "[EDITOR: '']  <== selected",
+                "Dev",
+                "Prod"
+            ]
+        );
 
         panel.update_in(cx, |panel, _, cx| {
             panel.environment_name_editor.update(cx, |editor, cx| {
