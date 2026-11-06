@@ -47,7 +47,7 @@ impl AboutWindow {
 
     fn window_size(display_size: Option<Size<Pixels>>, cx: &App) -> Size<Pixels> {
         let ui_font_size = f32::from(ThemeSettings::get_global(cx).ui_font_size(cx));
-        let default_ui_font_size = f32::from(ThemeSettings::default().ui_font_size(cx));
+        let default_ui_font_size = f32::from(ThemeSettings::default().ui_font_size_settings());
         let scale_factor = (ui_font_size / default_ui_font_size).max(1.0);
         let window_size = MIN_WINDOW_SIZE.map(|axis| axis * scale_factor);
 
