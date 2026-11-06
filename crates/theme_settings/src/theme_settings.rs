@@ -44,8 +44,6 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
             theme::reset_ui_font_size(cx);
         }
 
-        reload_theme(cx);
-
         let current_mode = cx
             .global::<SettingsStore>()
             .content()
@@ -55,6 +53,7 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
             .expect("theme mode should be defaulted");
         if previous_mode != current_mode {
             previous_mode = current_mode;
+            reload_theme(cx);
             let value = current_mode;
             cx.defer(move |_| {
                 telemetry::event!("Settings Changed", setting = "theme.mode", value);
