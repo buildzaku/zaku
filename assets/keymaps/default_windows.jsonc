@@ -23,6 +23,10 @@
       "ctrl-shift-p": "command_palette::Toggle",
       "ctrl-k ctrl-o": "workspace::Open",
       "ctrl-r": "projects::OpenRecent",
+      "ctrl-=": ["zaku::ZoomIn", { "persist": true }],
+      "ctrl-shift-=": ["zaku::ZoomIn", { "persist": true }],
+      "ctrl--": ["zaku::ZoomOut", { "persist": true }],
+      "ctrl-0": ["zaku::ResetAllZoom", { "persist": true }],
       "ctrl-alt-,": "zaku::OpenSettingsFile",
       "ctrl-q": "zaku::Quit"
     }

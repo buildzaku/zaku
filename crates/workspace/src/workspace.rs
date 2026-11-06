@@ -633,7 +633,7 @@ pub fn open_new(app_state: Arc<AppState>, cx: &mut App) -> Task<anyhow::Result<(
 
 pub fn with_active_or_new_workspace(
     cx: &mut App,
-    updater: impl FnOnce(&mut Workspace, &mut Window, &mut Context<Workspace>) + Send + 'static,
+    update: impl FnOnce(&mut Workspace, &mut Window, &mut Context<Workspace>) + Send + 'static,
 ) {
     if let Some(root) = cx
         .active_window()
@@ -643,7 +643,7 @@ pub fn with_active_or_new_workspace(
             root.update(cx, |root, window, cx| {
                 let workspace = root.workspace().clone();
                 workspace.update(cx, |workspace, cx| {
-                    updater(workspace, window, cx);
+                    update(workspace, window, cx);
                 });
             })
             .log_err();
@@ -663,7 +663,7 @@ pub fn with_active_or_new_workspace(
                 cx.new(|cx| {
                     let workspace = Workspace::create(workspace_id, app_state, window, cx);
                     workspace.update(cx, |workspace, cx| {
-                        updater(workspace, window, cx);
+                        update(workspace, window, cx);
                     });
                     Root::new(workspace)
                 })

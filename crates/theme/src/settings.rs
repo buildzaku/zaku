@@ -1,4 +1,4 @@
-use gpui::{App, Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, Pixels, Window};
+use gpui::{App, Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, Global, Pixels, Window};
 use std::sync::Arc;
 
 use settings::{IntoGpui, RegisterSetting};
@@ -24,6 +24,14 @@ impl From<settings::UiDensity> for UiDensity {
     }
 }
 
+struct BufferFontSize(Pixels);
+
+impl Global for BufferFontSize {}
+
+struct UiFontSize(Pixels);
+
+impl Global for UiFontSize {}
+
 #[derive(Debug, Clone, PartialEq, RegisterSetting)]
 pub struct ThemeSettings {
     pub ui_density: UiDensity,
@@ -43,12 +51,26 @@ impl ThemeSettings {
         <Self as settings::Settings>::override_global(settings, cx);
     }
 
-    pub fn ui_font_size(&self, _cx: &App) -> Pixels {
-        clamp_font_size(self.ui_font_size)
+    pub fn ui_font_size(&self, cx: &App) -> Pixels {
+        let font_size = cx
+            .try_global::<UiFontSize>()
+            .map_or(self.ui_font_size, |size| size.0);
+        clamp_font_size(font_size)
     }
 
-    pub fn buffer_font_size(&self, _cx: &App) -> Pixels {
-        clamp_font_size(self.buffer_font_size)
+    pub fn buffer_font_size(&self, cx: &App) -> Pixels {
+        let font_size = cx
+            .try_global::<BufferFontSize>()
+            .map_or(self.buffer_font_size, |size| size.0);
+        clamp_font_size(font_size)
+    }
+
+    pub fn ui_font_size_settings(&self) -> Pixels {
+        self.ui_font_size
+    }
+
+    pub fn buffer_font_size_settings(&self) -> Pixels {
+        self.buffer_font_size
     }
 
     pub fn line_height(&self) -> f32 {
@@ -159,6 +181,22 @@ pub fn clamp_font_size(size: Pixels) -> Pixels {
     }
 }
 
+pub fn adjust_buffer_font_size(cx: &mut App, update: impl FnOnce(Pixels) -> Pixels) {
+    let buffer_font_size = ThemeSettings::get_global(cx).buffer_font_size;
+    let adjusted_size = cx
+        .try_global::<BufferFontSize>()
+        .map_or(buffer_font_size, |adjusted_size| adjusted_size.0);
+    cx.set_global(BufferFontSize(clamp_font_size(update(adjusted_size))));
+    cx.refresh_windows();
+}
+
+pub fn reset_buffer_font_size(cx: &mut App) {
+    if cx.has_global::<BufferFontSize>() {
+        cx.remove_global::<BufferFontSize>();
+        cx.refresh_windows();
+    }
+}
+
 pub fn setup_ui_font(window: &mut Window, cx: &mut App) -> Font {
     let (ui_font, ui_font_size) = {
         let settings = ThemeSettings::get_global(cx);
@@ -166,6 +204,22 @@ pub fn setup_ui_font(window: &mut Window, cx: &mut App) -> Font {
     };
     window.set_rem_size(ui_font_size);
     ui_font
+}
+
+pub fn adjust_ui_font_size(cx: &mut App, update: impl FnOnce(Pixels) -> Pixels) {
+    let ui_font_size = ThemeSettings::get_global(cx).ui_font_size(cx);
+    let adjusted_size = cx
+        .try_global::<UiFontSize>()
+        .map_or(ui_font_size, |adjusted_size| adjusted_size.0);
+    cx.set_global(UiFontSize(clamp_font_size(update(adjusted_size))));
+    cx.refresh_windows();
+}
+
+pub fn reset_ui_font_size(cx: &mut App) {
+    if cx.has_global::<UiFontSize>() {
+        cx.remove_global::<UiFontSize>();
+        cx.refresh_windows();
+    }
 }
 
 fn font_fallbacks_from_settings(

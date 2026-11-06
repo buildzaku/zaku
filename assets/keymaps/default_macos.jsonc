@@ -29,6 +29,10 @@
       "cmd-o": "workspace::Open",
       "alt-cmd-o": "projects::OpenRecent",
       "ctrl-r": "projects::OpenRecent",
+      "cmd-=": ["zaku::ZoomIn", { "persist": true }],
+      "cmd-+": ["zaku::ZoomIn", { "persist": true }],
+      "cmd--": ["zaku::ZoomOut", { "persist": true }],
+      "cmd-0": ["zaku::ResetAllZoom", { "persist": true }],
       "cmd-alt-,": "zaku::OpenSettingsFile",
       "cmd-q": "zaku::Quit"
     }

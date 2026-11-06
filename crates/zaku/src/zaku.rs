@@ -16,7 +16,7 @@ use ::settings::{SettingsStore, ThemeAppearanceMode, initial_user_keymap, initia
 use project_panel::ProjectPanel;
 use response_panel::ResponsePanel;
 use system_specs::SystemSpecs;
-use theme::{ActiveTheme, Appearance};
+use theme::{ActiveTheme, Appearance, ThemeSettings};
 use title_bar::TitleBar;
 use ui::StyledTypography;
 use variables_panel::VariablesPanel;
@@ -132,39 +132,187 @@ pub fn init(cx: &mut App) {
         let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
         workspace.add_panel(response_panel, DockPosition::Bottom, window, cx);
 
-        workspace.register_action(
-            |_, _: &actions::zaku::CopySystemSpecsIntoClipboard, window, cx| {
-                let specs = SystemSpecs::new(
-                    window,
-                    cx,
-                    client::telemetry::os_name(),
-                    client::telemetry::os_version(),
-                );
+        let app_state = workspace.app_state().clone();
+        workspace
+            .register_action(
+                |_, _: &actions::zaku::CopySystemSpecsIntoClipboard, window, cx| {
+                    let specs = SystemSpecs::new(
+                        window,
+                        cx,
+                        client::telemetry::os_name(),
+                        client::telemetry::os_version(),
+                    );
 
-                cx.spawn_in(window, async move |_, cx| {
-                    let specs = specs.await.to_string();
+                    cx.spawn_in(window, async move |_, cx| {
+                        let specs = specs.await.to_string();
 
-                    cx.update(|_, cx| {
-                        cx.write_to_clipboard(ClipboardItem::new_string(specs.clone()));
-                    })?;
+                        cx.update(|_, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(specs.clone()));
+                        })?;
 
-                    if let Err(error) = cx
-                        .prompt(
-                            PromptLevel::Info,
-                            "Copied into clipboard",
-                            Some(&specs),
-                            &["OK"],
-                        )
-                        .await
-                    {
-                        log::debug!("Failed to show copied system specs prompt: {error}");
+                        if let Err(error) = cx
+                            .prompt(
+                                PromptLevel::Info,
+                                "Copied into clipboard",
+                                Some(&specs),
+                                &["OK"],
+                            )
+                            .await
+                        {
+                            log::debug!("Failed to show copied system specs prompt: {error}");
+                        }
+
+                        anyhow::Ok(())
+                    })
+                    .detach_and_log_err(cx);
+                },
+            )
+            .register_action({
+                let fs = app_state.fs.clone();
+                move |_, action: &actions::zaku::IncreaseUiFontSize, _, cx| {
+                    if action.persist {
+                        ::settings::update_settings_file(fs.clone(), cx, move |settings, cx| {
+                            let ui_font_size =
+                                ThemeSettings::get_global(cx).ui_font_size(cx) + gpui::px(1.0);
+                            settings.ui.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(ui_font_size)).into());
+                        });
+                    } else {
+                        theme::adjust_ui_font_size(cx, |size| size + gpui::px(1.0));
                     }
-
-                    anyhow::Ok(())
-                })
-                .detach_and_log_err(cx);
-            },
-        );
+                }
+            })
+            .register_action({
+                let fs = app_state.fs.clone();
+                move |_, action: &actions::zaku::DecreaseUiFontSize, _, cx| {
+                    if action.persist {
+                        ::settings::update_settings_file(fs.clone(), cx, move |settings, cx| {
+                            let ui_font_size =
+                                ThemeSettings::get_global(cx).ui_font_size(cx) - gpui::px(1.0);
+                            settings.ui.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(ui_font_size)).into());
+                        });
+                    } else {
+                        theme::adjust_ui_font_size(cx, |size| size - gpui::px(1.0));
+                    }
+                }
+            })
+            .register_action({
+                let fs = app_state.fs.clone();
+                move |_, action: &actions::zaku::ResetUiFontSize, _, cx| {
+                    if action.persist {
+                        ::settings::update_settings_file(fs.clone(), cx, move |settings, _| {
+                            if let Some(ui) = settings.ui.as_mut() {
+                                ui.font_size = None;
+                            }
+                        });
+                    } else {
+                        theme::reset_ui_font_size(cx);
+                    }
+                }
+            })
+            .register_action({
+                let fs = app_state.fs.clone();
+                move |_, action: &actions::zaku::IncreaseBufferFontSize, _, cx| {
+                    if action.persist {
+                        ::settings::update_settings_file(fs.clone(), cx, move |settings, cx| {
+                            let buffer_font_size =
+                                ThemeSettings::get_global(cx).buffer_font_size(cx) + gpui::px(1.0);
+                            settings.editor.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(buffer_font_size)).into());
+                        });
+                    } else {
+                        theme::adjust_buffer_font_size(cx, |size| size + gpui::px(1.0));
+                    }
+                }
+            })
+            .register_action({
+                let fs = app_state.fs.clone();
+                move |_, action: &actions::zaku::DecreaseBufferFontSize, _, cx| {
+                    if action.persist {
+                        ::settings::update_settings_file(fs.clone(), cx, move |settings, cx| {
+                            let buffer_font_size =
+                                ThemeSettings::get_global(cx).buffer_font_size(cx) - gpui::px(1.0);
+                            settings.editor.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(buffer_font_size)).into());
+                        });
+                    } else {
+                        theme::adjust_buffer_font_size(cx, |size| size - gpui::px(1.0));
+                    }
+                }
+            })
+            .register_action({
+                let fs = app_state.fs.clone();
+                move |_, action: &actions::zaku::ResetBufferFontSize, _, cx| {
+                    if action.persist {
+                        ::settings::update_settings_file(fs.clone(), cx, move |settings, _| {
+                            if let Some(editor) = settings.editor.as_mut() {
+                                editor.font_size = None;
+                            }
+                        });
+                    } else {
+                        theme::reset_buffer_font_size(cx);
+                    }
+                }
+            })
+            .register_action({
+                let fs = app_state.fs.clone();
+                move |_, action: &actions::zaku::ResetAllZoom, _, cx| {
+                    if action.persist {
+                        ::settings::update_settings_file(fs.clone(), cx, move |settings, _| {
+                            if let Some(ui) = settings.ui.as_mut() {
+                                ui.font_size = None;
+                            }
+                            if let Some(editor) = settings.editor.as_mut() {
+                                editor.font_size = None;
+                            }
+                        });
+                    } else {
+                        theme::reset_ui_font_size(cx);
+                        theme::reset_buffer_font_size(cx);
+                    }
+                }
+            })
+            .register_action({
+                let fs = app_state.fs.clone();
+                move |_, action: &actions::zaku::ZoomIn, _, cx| {
+                    if action.persist {
+                        ::settings::update_settings_file(fs.clone(), cx, move |settings, cx| {
+                            let ui_font_size =
+                                ThemeSettings::get_global(cx).ui_font_size(cx) + gpui::px(1.0);
+                            let buffer_font_size =
+                                ThemeSettings::get_global(cx).buffer_font_size(cx) + gpui::px(1.0);
+                            settings.ui.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(ui_font_size)).into());
+                            settings.editor.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(buffer_font_size)).into());
+                        });
+                    } else {
+                        theme::adjust_ui_font_size(cx, |size| size + gpui::px(1.0));
+                        theme::adjust_buffer_font_size(cx, |size| size + gpui::px(1.0));
+                    }
+                }
+            })
+            .register_action({
+                let fs = app_state.fs.clone();
+                move |_, action: &actions::zaku::ZoomOut, _, cx| {
+                    if action.persist {
+                        ::settings::update_settings_file(fs.clone(), cx, move |settings, cx| {
+                            let ui_font_size =
+                                ThemeSettings::get_global(cx).ui_font_size(cx) - gpui::px(1.0);
+                            let buffer_font_size =
+                                ThemeSettings::get_global(cx).buffer_font_size(cx) - gpui::px(1.0);
+                            settings.ui.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(ui_font_size)).into());
+                            settings.editor.get_or_insert_default().font_size =
+                                Some(f32::from(theme::clamp_font_size(buffer_font_size)).into());
+                        });
+                    } else {
+                        theme::adjust_ui_font_size(cx, |size| size - gpui::px(1.0));
+                        theme::adjust_buffer_font_size(cx, |size| size - gpui::px(1.0));
+                    }
+                }
+            });
     })
     .detach();
 

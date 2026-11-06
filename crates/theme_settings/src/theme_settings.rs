@@ -4,7 +4,7 @@ use std::sync::Arc;
 use settings::{SettingsContent, SettingsStore, ThemeAppearanceMode};
 use theme::{
     Appearance, GlobalTheme, LoadThemes, SystemAppearance, Theme, ThemeFamily, ThemeRegistry,
-    default_theme,
+    ThemeSettings, default_theme,
 };
 
 pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
@@ -19,6 +19,9 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
 
     reload_theme(cx);
 
+    let settings = ThemeSettings::get_global(cx);
+    let mut previous_buffer_font_size_settings = settings.buffer_font_size_settings();
+    let mut previous_ui_font_size_settings = settings.ui_font_size_settings();
     let mut previous_mode = cx
         .global::<SettingsStore>()
         .content()
@@ -27,7 +30,19 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
         .and_then(|theme| theme.mode)
         .expect("theme mode should be defaulted");
     cx.observe_global::<SettingsStore>(move |cx| {
-        reload_theme(cx);
+        let settings = ThemeSettings::get_global(cx);
+        let current_buffer_font_size_settings = settings.buffer_font_size_settings();
+        let current_ui_font_size_settings = settings.ui_font_size_settings();
+
+        if current_buffer_font_size_settings != previous_buffer_font_size_settings {
+            previous_buffer_font_size_settings = current_buffer_font_size_settings;
+            theme::reset_buffer_font_size(cx);
+        }
+
+        if current_ui_font_size_settings != previous_ui_font_size_settings {
+            previous_ui_font_size_settings = current_ui_font_size_settings;
+            theme::reset_ui_font_size(cx);
+        }
 
         let current_mode = cx
             .global::<SettingsStore>()
@@ -38,6 +53,7 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
             .expect("theme mode should be defaulted");
         if previous_mode != current_mode {
             previous_mode = current_mode;
+            reload_theme(cx);
             let value = current_mode;
             cx.defer(move |_| {
                 telemetry::event!("Settings Changed", setting = "theme.mode", value);
