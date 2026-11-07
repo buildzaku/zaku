@@ -13,7 +13,7 @@ use fs::{Fs, RemoveOptions, TempFs};
 use http_client::{AsyncBody, FakeHttpClient, Response, StatusCode};
 use path::rel_path;
 use picker::PickerDelegate;
-use project::{EntryMetadata, ProjectPath};
+use project::{EntryMetadata, ProjectEvent, ProjectPath};
 use recent_projects::RecentProjects;
 use response_panel::ResponsePanel;
 use session::Session;
@@ -364,9 +364,21 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
         assert_eq!(picker.delegate.selected_index(), 1);
     });
 
-    cx.run_until_parked();
-    open_result.workspace.read_with(cx, |workspace, cx| {
-        let project = workspace.project().read(cx);
+    let project = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.project().clone());
+    project
+        .condition::<ProjectEvent>(cx, |project, cx| {
+            project
+                .entry_for_path(
+                    &ProjectPath::from((worktree_id, rel_path(".zaku/environments/Prod.toml"))),
+                    cx,
+                )
+                .and_then(|entry| project.entry_metadata(entry))
+                .is_some()
+        })
+        .await;
+    project.read_with(cx, |project, cx| {
         let prod_entry = project
             .entry_for_path(
                 &ProjectPath::from((worktree_id, rel_path(".zaku/environments/Prod.toml"))),

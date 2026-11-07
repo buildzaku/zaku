@@ -1752,6 +1752,22 @@ mod tests {
                 "Staging-10"
             ]
         );
+
+        project
+            .condition::<ProjectEvent>(cx, |project, cx| {
+                [
+                    ".zaku/environments/Dev.toml",
+                    ".zaku/environments/Prod.toml",
+                ]
+                .into_iter()
+                .all(|path| {
+                    project
+                        .entry_for_path(&ProjectPath::from((worktree_id, rel_path(path))), cx)
+                        .and_then(|entry| project.entry_metadata(entry))
+                        .is_some()
+                })
+            })
+            .await;
         project.read_with(cx, |project, cx| {
             let dev_entry = project
                 .entry_for_path(
