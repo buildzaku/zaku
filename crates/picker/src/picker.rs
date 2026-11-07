@@ -708,7 +708,7 @@ impl<D: PickerDelegate> Picker<D> {
                 })
             })
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                this.handle_click(index, event.modifiers().secondary(), window, cx);
+                this.handle_click(index, event.modifiers().secondary(cx), window, cx);
             }))
             .on_mouse_up(
                 MouseButton::Right,

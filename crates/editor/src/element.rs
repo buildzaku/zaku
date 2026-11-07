@@ -3,8 +3,8 @@ use gpui::{
     CursorStyle, DispatchPhase, Edges, Element, ElementId, ElementInputHandler, Entity,
     GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, LayoutId, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, PathBuilder, Pixels, Point,
-    ScrollDelta, ScrollWheelEvent, ShapedLine, SharedString, Size, Style, TextAlign, TextRun,
-    TextStyle, Window, prelude::*,
+    ScrollDelta, ScrollEvent, ShapedLine, SharedString, Size, Style, TextAlign, TextRun, TextStyle,
+    Window, prelude::*,
 };
 use num_traits::ToPrimitive;
 use smallvec::SmallVec;
@@ -783,7 +783,7 @@ impl EditorElement {
         window.on_mouse_event({
             let editor = editor.clone();
 
-            move |event: &ScrollWheelEvent, phase, window, cx| {
+            move |event: &ScrollEvent, phase, window, cx| {
                 if phase != DispatchPhase::Bubble {
                     return;
                 }

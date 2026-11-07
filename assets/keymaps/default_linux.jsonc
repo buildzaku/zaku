@@ -56,7 +56,7 @@
       "ctrl-s": "workspace::Save",
       "ctrl-enter": "workspace::SendRequest",
       "ctrl-shift-e": "project_panel::ToggleFocus",
-      "ctrl-e": "variables_panel::ToggleFocus",
+      "ctrl-shift-v": "variables_panel::ToggleFocus",
       "ctrl-shift-r": "response_panel::ToggleFocus",
       "ctrl-k ctrl-e": "environment_selector::Toggle"
     }
@@ -128,6 +128,25 @@
     "bindings": {
       "tab": null,
       "shift-tab": null,
+      "new": "variables_panel::NewEnvironment",
+      "ctrl-n": "variables_panel::NewEnvironment",
+      "alt-copy": "workspace::CopyPath",
+      "ctrl-alt-c": "workspace::CopyPath",
+      "alt-shift-copy": "workspace::CopyRelativePath",
+      "alt-ctrl-shift-c": "workspace::CopyRelativePath",
+      "enter": "variables_panel::Rename",
+      "f2": "variables_panel::Rename",
+      "alt-ctrl-r": "variables_panel::RevealInFileManager",
+      "backspace": ["variables_panel::Trash", { "skip_prompt": false }],
+      "delete": ["variables_panel::Trash", { "skip_prompt": false }],
+      "shift-delete": ["variables_panel::Delete", { "skip_prompt": false }],
+      "ctrl-backspace": ["variables_panel::Delete", { "skip_prompt": false }],
+      "ctrl-delete": ["variables_panel::Delete", { "skip_prompt": false }]
+    }
+  },
+  {
+    "context": "VariablesPanel && not_editing",
+    "bindings": {
       "space": "variables_panel::Open"
     }
   },

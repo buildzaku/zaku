@@ -35,7 +35,7 @@ impl ActionSequence {
                         match KeymapFile::build_keymap_action_from_value(&action, cx) {
                             Ok((action, _)) => Ok(action),
                             Err(error) => Err(ActionBuildError::BuildError {
-                                name: Self::name_for_type().to_string(),
+                                name: Self::name_for_type().into(),
                                 error: anyhow!("Error at sequence index {index}: {error}"),
                             }),
                         }
@@ -49,7 +49,7 @@ impl ActionSequence {
 
     fn expected_array_error() -> ActionBuildError {
         ActionBuildError::BuildError {
-            name: Self::name_for_type().to_string(),
+            name: Self::name_for_type().into(),
             error: anyhow!("expected array of actions"),
         }
     }
@@ -327,7 +327,7 @@ impl KeymapFile {
             context,
             use_key_equivalents,
             action_input_string.map(SharedString::from),
-            cx.keyboard_mapper().as_ref(),
+            cx,
         )
         .map_err(|InvalidKeystrokeError { keystroke }| {
             format!("Invalid keystroke {keystroke:?}. {KEYSTROKE_PARSE_EXPECTED_MESSAGE}")
@@ -368,7 +368,7 @@ impl KeymapFile {
             key_binding.predicate(),
             use_key_equivalents,
             key_binding.action_input(),
-            cx.keyboard_mapper().as_ref(),
+            cx,
         )
         .map_err(|InvalidKeystrokeError { keystroke }| {
             format!("Invalid keystroke {keystroke:?}. {KEYSTROKE_PARSE_EXPECTED_MESSAGE}")

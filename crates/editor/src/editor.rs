@@ -2433,7 +2433,7 @@ impl Editor {
     }
 
     fn key_context_internal(&self, _window: &mut Window, cx: &mut App) -> KeyContext {
-        let mut key_context = KeyContext::new_with_defaults();
+        let mut key_context = KeyContext::new_with_defaults(cx.platform_info().os);
         key_context.add("Editor");
         let mode = match self.mode {
             EditorMode::SingleLine => "single_line",

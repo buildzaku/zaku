@@ -503,7 +503,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
         temp_fs.insert_tree(
             path!("outside"),
             json!({
@@ -565,7 +565,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
         temp_fs.insert_tree(
             path!("config"),
             json!({

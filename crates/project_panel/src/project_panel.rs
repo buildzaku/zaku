@@ -128,7 +128,7 @@ pub enum ProjectPanelEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct SelectedEntry(ProjectEntryId);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum ValidationState {
     None,
     Warning(String),
@@ -284,31 +284,21 @@ impl ProjectPanel {
                         project_panel.populate_validation_error(cx);
                         project_panel.autoscroll(cx);
                     }
-                    EditorEvent::Blurred => {
-                        let Some(is_new_entry) = project_panel
+                    EditorEvent::Blurred if window.is_window_active() => {
+                        if project_panel
                             .tree_state
                             .edit_state
                             .as_ref()
-                            .and_then(|edit_state| {
-                                edit_state
-                                    .processing_file_name
-                                    .is_none()
-                                    .then_some(edit_state.is_new_entry())
-                            })
-                        else {
-                            return;
-                        };
-
-                        if is_new_entry {
+                            .is_some_and(|edit_state| edit_state.processing_file_name.is_none())
+                        {
                             match project_panel.confirm_edit(false, window, cx) {
                                 Some(task) => task.detach_and_log_err(cx),
                                 None => project_panel.discard_edit_state(window, cx),
                             }
-                        } else {
-                            project_panel.discard_edit_state(window, cx);
                         }
                     }
-                    EditorEvent::DirtyChanged
+                    EditorEvent::Blurred
+                    | EditorEvent::DirtyChanged
                     | EditorEvent::FileHandleChanged
                     | EditorEvent::Saved
                     | EditorEvent::TitleChanged => {}
@@ -427,7 +417,7 @@ impl ProjectPanel {
     }
 
     fn dispatch_context(&self, window: &Window, cx: &Context<Self>) -> KeyContext {
-        let mut dispatch_context = KeyContext::new_with_defaults();
+        let mut dispatch_context = KeyContext::new_with_defaults(cx.platform_info().os);
         dispatch_context.add(Self::PANEL_KEY);
         dispatch_context.add("menu");
 
@@ -1254,21 +1244,9 @@ impl ProjectPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(task) = self.remove_impl(trash, skip_prompt, window, cx) {
-            task.detach_and_log_err(cx);
-        }
-    }
-
-    fn remove_impl(
-        &mut self,
-        trash: bool,
-        skip_prompt: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<Task<anyhow::Result<()>>> {
         let items_to_delete = self.disjoint_effective_entries(cx);
         if items_to_delete.is_empty() {
-            return None;
+            return;
         }
 
         let (dirty_buffers, file_paths) = {
@@ -1297,7 +1275,7 @@ impl ProjectPanel {
             (dirty_buffers, file_paths)
         };
         if file_paths.is_empty() {
-            return None;
+            return;
         }
 
         let answer = if skip_prompt {
@@ -1368,7 +1346,7 @@ impl ProjectPanel {
             ))
         };
         let next_selection = self.find_next_selection_after_deletion(&items_to_delete, cx);
-        Some(cx.spawn_in(window, async move |panel, cx| {
+        cx.spawn_in(window, async move |panel, cx| {
             if let Some(answer) = answer
                 && answer.await != Ok(0)
             {
@@ -1397,7 +1375,8 @@ impl ProjectPanel {
                 }
             })?;
             anyhow::Ok(())
-        }))
+        })
+        .detach_and_log_err(cx);
     }
 
     fn trash(
@@ -1429,10 +1408,12 @@ impl ProjectPanel {
             self.effective_entries()
                 .into_iter()
                 .filter_map(|entry| {
-                    let project_path = project.path_for_entry(entry.0, cx)?;
+                    let entry_path = project.path_for_entry(entry.0, cx)?.path;
                     Some(
                         project
-                            .absolute_path(&project_path, cx)?
+                            .worktree_for_entry(entry.0, cx)?
+                            .read(cx)
+                            .absolutize(&entry_path)
                             .to_string_lossy()
                             .to_string(),
                     )
@@ -2077,10 +2058,13 @@ impl ProjectPanel {
         let paths = entries
             .iter()
             .filter_map(|entry| {
-                let project_path = project.path_for_entry(entry.0, cx)?;
+                let worktree = project.worktree_for_entry(entry.0, cx)?;
+                let worktree = worktree.read(cx);
+                let worktree_entry = worktree.entry_for_id(entry.0)?;
                 Some(
-                    project
-                        .absolute_path(&project_path, cx)?
+                    worktree
+                        .abs_path()
+                        .join(worktree_entry.path.as_std_path())
                         .to_string_lossy()
                         .to_string(),
                 )
@@ -2875,7 +2859,7 @@ impl Render for ProjectPanel {
                                              active_indent_guide: &IndentGuideLayout,
                                              window,
                                              cx| {
-                                                if !window.modifiers().secondary() {
+                                                if !window.modifiers().secondary(cx) {
                                                     return;
                                                 }
 
@@ -3466,32 +3450,6 @@ mod tests {
                 "Should have opened file, selected in project panel"
             );
         });
-    }
-
-    #[track_caller]
-    fn assert_validation_state(
-        panel: &Entity<ProjectPanel>,
-        expected: ValidationState,
-        cx: &mut VisualTestContext,
-    ) {
-        let actual = panel.update(cx, |panel, _| {
-            panel
-                .tree_state
-                .edit_state
-                .as_ref()
-                .unwrap()
-                .validation_state
-                .clone()
-        });
-
-        match (actual, expected) {
-            (ValidationState::None, ValidationState::None) => {}
-            (ValidationState::Warning(actual), ValidationState::Warning(expected))
-            | (ValidationState::Error(actual), ValidationState::Error(expected)) => {
-                assert_eq!(actual, expected);
-            }
-            (actual, expected) => panic!("Expected {expected:?}, got {actual:?}"),
-        }
     }
 
     #[gpui::test]
@@ -4086,11 +4044,17 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error("File or directory name must be provided.".to_string()),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error("File or directory name must be provided.".to_string())
+            );
+        });
         assert!(
             panel
                 .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
@@ -4103,11 +4067,17 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error("File or directory name must be provided.".to_string()),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error("File or directory name must be provided.".to_string())
+            );
+        });
         assert!(
             panel
                 .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
@@ -4120,13 +4090,19 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Warning(
-                "File name contains leading or trailing whitespace.".to_string(),
-            ),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Warning(
+                    "File name contains leading or trailing whitespace.".to_string(),
+                )
+            );
+        });
 
         panel.update_in(cx, |panel, _, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
@@ -4134,7 +4110,17 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(&panel, ValidationState::None, cx);
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::None
+            );
+        });
 
         panel.update_in(cx, |panel, _, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
@@ -4142,14 +4128,20 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error(
-                "File 'first.toml' already exists at location. Please choose a different name."
-                    .to_string(),
-            ),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error(
+                    "File 'first.toml' already exists at location. Please choose a different name."
+                        .to_string(),
+                )
+            );
+        });
 
         panel.update_in(cx, |panel, _, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
@@ -4157,14 +4149,20 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error(
-                "Directory 'first' already exists at location. Please choose a different name."
-                    .to_string(),
-            ),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error(
+                    "Directory 'first' already exists at location. Please choose a different name."
+                        .to_string(),
+                )
+            );
+        });
 
         panel.update_in(cx, |panel, _, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
@@ -4172,14 +4170,20 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error(
-                "File 'first.toml' already exists at location. Please choose a different name."
-                    .to_string(),
-            ),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error(
+                    "File 'first.toml' already exists at location. Please choose a different name."
+                        .to_string(),
+                )
+            );
+        });
 
         panel.update_in(cx, |panel, _, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
@@ -4187,11 +4191,17 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error("'.zaku' is a reserved name.".to_string()),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error("'.zaku' is a reserved name.".to_string())
+            );
+        });
         assert!(
             panel
                 .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
@@ -4204,11 +4214,17 @@ mod tests {
             });
         });
         cx.run_until_parked();
-        assert_validation_state(
-            &panel,
-            ValidationState::Error("'.zaku' is a reserved name.".to_string()),
-            cx,
-        );
+        panel.read_with(cx, |panel, _| {
+            assert_eq!(
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .unwrap()
+                    .validation_state,
+                ValidationState::Error("'.zaku' is a reserved name.".to_string())
+            );
+        });
         assert!(
             panel
                 .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
@@ -4281,11 +4297,7 @@ mod tests {
                     "File editing should have a single selection, but got: {file_name_selections:?}"
                 );
                 let file_name_selection = &file_name_selections[0];
-                assert_eq!(
-                    file_name_selection.start,
-                    MultiBufferOffset(0),
-                    "Should select from the beginning of the file name"
-                );
+                assert_eq!(file_name_selection.start, MultiBufferOffset(0));
                 assert_eq!(
                     file_name_selection.end,
                     MultiBufferOffset("first copy".len()),
@@ -4554,11 +4566,7 @@ mod tests {
                     "File editing should have a single selection, but got: {file_name_selections:?}"
                 );
                 let file_name_selection = &file_name_selections[0];
-                assert_eq!(
-                    file_name_selection.start,
-                    MultiBufferOffset(0),
-                    "Should select the file name from the start"
-                );
+                assert_eq!(file_name_selection.start, MultiBufferOffset(0));
                 assert_eq!(
                     file_name_selection.end,
                     MultiBufferOffset("first".len()),
@@ -4665,8 +4673,7 @@ mod tests {
                 "      first  <== selected",
                 "      second",
                 "      third",
-            ],
-            "File list should be unchanged after failed rename confirmation"
+            ]
         );
     }
 

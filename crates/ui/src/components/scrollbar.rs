@@ -3,7 +3,7 @@ use gpui::{
     Corners, CursorStyle, DispatchPhase, Div, Edges, ElementId, Entity, EntityId, Global,
     GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, IsZero, LayoutId, ListState,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Position,
-    ScrollHandle, ScrollWheelEvent, Size, Stateful, Style, Task, UniformListDecoration,
+    ScrollEvent, ScrollHandle, Size, Stateful, Style, Task, UniformListDecoration,
     UniformListScrollHandle, Window, prelude::*,
 };
 use smallvec::SmallVec;
@@ -240,8 +240,8 @@ impl ScrollAxes {
         T: Debug + Default + PartialEq + Clone,
     {
         match self {
-            Self::Horizontal => point.apply_along(ScrollbarAxis::Horizontal, |_| value),
-            Self::Vertical => point.apply_along(ScrollbarAxis::Vertical, |_| value),
+            Self::Horizontal => point.apply_along(ScrollbarAxis::Horizontal, |_| value.clone()),
+            Self::Vertical => point.apply_along(ScrollbarAxis::Vertical, |_| value.clone()),
             Self::Both => Point::new(value.clone(), value),
         }
     }
@@ -1385,7 +1385,7 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
             window.on_mouse_event({
                 let state = self.state.clone();
 
-                move |event: &ScrollWheelEvent, phase, window, cx| {
+                move |event: &ScrollEvent, phase, window, cx| {
                     state.update(cx, |state, cx| {
                         if phase.capture() && state.parent_hovered(window) {
                             state.update_hovered_thumb(event.position, window, cx);

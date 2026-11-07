@@ -1,5 +1,5 @@
 use gpui::{Pixels, WindowTextSystem};
-use std::sync::Arc;
+use std::rc::Rc;
 use text::{Bias, Point, SelectionGoal};
 
 use multi_buffer::{CharClassifier, MultiBufferOffset, MultiBufferSnapshot};
@@ -16,7 +16,7 @@ pub(crate) enum FindRange {
 }
 
 pub(crate) struct TextLayoutDetails {
-    pub(crate) text_system: Arc<WindowTextSystem>,
+    pub(crate) text_system: Rc<WindowTextSystem>,
     pub(crate) editor_style: EditorStyle,
     pub(crate) rem_size: Pixels,
 }
