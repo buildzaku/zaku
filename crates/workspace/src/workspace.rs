@@ -2749,7 +2749,7 @@ impl Workspace {
     }
 
     pub fn key_context(&self, cx: &App) -> KeyContext {
-        let mut context = KeyContext::new_with_defaults();
+        let mut context = KeyContext::new_with_defaults(cx.platform_info().os);
         context.add(KEY_CONTEXT);
         context.set("keyboard_layout", cx.keyboard_layout().name().to_string());
 

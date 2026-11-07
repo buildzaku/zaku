@@ -417,7 +417,7 @@ impl ProjectPanel {
     }
 
     fn dispatch_context(&self, window: &Window, cx: &Context<Self>) -> KeyContext {
-        let mut dispatch_context = KeyContext::new_with_defaults();
+        let mut dispatch_context = KeyContext::new_with_defaults(cx.platform_info().os);
         dispatch_context.add(Self::PANEL_KEY);
         dispatch_context.add("menu");
 
@@ -2859,7 +2859,7 @@ impl Render for ProjectPanel {
                                              active_indent_guide: &IndentGuideLayout,
                                              window,
                                              cx| {
-                                                if !window.modifiers().secondary() {
+                                                if !window.modifiers().secondary(cx) {
                                                     return;
                                                 }
 
