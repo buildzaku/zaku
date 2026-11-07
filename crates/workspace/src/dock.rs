@@ -412,8 +412,8 @@ impl Dock {
         }
     }
 
-    fn dispatch_context() -> KeyContext {
-        let mut dispatch_context = KeyContext::new_with_defaults();
+    fn dispatch_context(cx: &App) -> KeyContext {
+        let mut dispatch_context = KeyContext::new_with_defaults(cx.platform_info().os);
         dispatch_context.add("Dock");
         dispatch_context
     }
@@ -599,7 +599,7 @@ impl Render for Dock {
             let theme_colors = cx.theme().colors();
 
             gpui::div()
-                .key_context(Self::dispatch_context())
+                .key_context(Self::dispatch_context(cx))
                 .track_focus(&self.focus_handle)
                 .flex()
                 .bg(theme_colors.panel_background)
@@ -624,7 +624,7 @@ impl Render for Dock {
                 .child(create_resize_handle())
         } else {
             gpui::div()
-                .key_context(Self::dispatch_context())
+                .key_context(Self::dispatch_context(cx))
                 .track_focus(&self.focus_handle)
         }
     }

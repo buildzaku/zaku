@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{collections::HashMap, hash::BuildHasher, sync::Arc};
+use strum::EnumIter;
 
 use path::RelPath;
 
@@ -157,7 +158,7 @@ pub struct Variable {
     pub disabled: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
 #[serde(rename_all = "lowercase")]
 pub enum EnvironmentColor {
     Red,
@@ -166,6 +167,19 @@ pub enum EnvironmentColor {
     Green,
     Blue,
     Purple,
+}
+
+impl EnvironmentColor {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Red => "Red",
+            Self::Orange => "Orange",
+            Self::Yellow => "Yellow",
+            Self::Green => "Green",
+            Self::Blue => "Blue",
+            Self::Purple => "Purple",
+        }
+    }
 }
 
 pub fn parse_config_file<T: DeserializeOwned>(contents: &str) -> anyhow::Result<T> {

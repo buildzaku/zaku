@@ -35,6 +35,7 @@ use git::status::FileStatus;
 use language::{AvailableLanguage, Buffer, BufferEvent, Language, LanguageRegistry, PLAIN_TEXT};
 use path::{PathStyle, RelPath};
 use util::ResultExt;
+use worktree::{EnvironmentFile, ProjectFile};
 
 use crate::{
     buffer_store::{BufferStore, BufferStoreEvent, is_not_found_error},
@@ -737,7 +738,9 @@ impl Project {
     }
 
     pub fn load_entry_metadata(&mut self, entry: &Entry, cx: &mut Context<Self>) {
-        if !entry.kind.is_file() || !entry.is_request {
+        let is_environment =
+            ConfigFileType::for_path(&entry.path) == Some(ConfigFileType::Environment);
+        if !entry.kind.is_file() || !(entry.is_request || is_environment) {
             return;
         }
 
@@ -763,12 +766,32 @@ impl Project {
         let entry_id = entry.id;
         let version_for_task = version.clone();
         let metadata_task = cx.spawn(async move |this, cx| {
-            let request_file = match load_file_task.await {
+            let metadata = match load_file_task.await {
                 Ok(loaded) => {
-                    let parse_task =
-                        cx.background_spawn(
-                            async move { worktree::parse_request_file(&loaded.text) },
-                        );
+                    let parse_task = cx.background_spawn(async move {
+                        if is_environment {
+                            EntryMetadata {
+                                prefix: None,
+                                is_invalid: matches!(
+                                    ConfigFileType::Environment.parse(&loaded.text),
+                                    ConfigFileState::Invalid(_)
+                                ),
+                            }
+                        } else {
+                            match worktree::parse_request_file(&loaded.text) {
+                                RequestFileState::Parsed(request_file) => EntryMetadata {
+                                    prefix: Some(worktree::request_method_short_name(
+                                        &request_file.http.method,
+                                    )),
+                                    is_invalid: false,
+                                },
+                                RequestFileState::Invalid(_) => EntryMetadata {
+                                    prefix: None,
+                                    is_invalid: true,
+                                },
+                            }
+                        }
+                    });
                     Some(parse_task.await)
                 }
                 Err(error) if is_not_found_error(&error) => None,
@@ -785,30 +808,13 @@ impl Project {
                     return;
                 }
 
-                match request_file {
-                    Some(RequestFileState::Parsed(request_file)) => {
+                match metadata {
+                    Some(metadata) => {
                         this.metadata_by_entry_id.insert(
                             entry_id,
                             EntryMetadataState::Loaded {
-                                version: version_for_task.clone(),
-                                metadata: EntryMetadata {
-                                    prefix: Some(worktree::request_method_short_name(
-                                        &request_file.http.method,
-                                    )),
-                                    is_invalid: false,
-                                },
-                            },
-                        );
-                    }
-                    Some(RequestFileState::Invalid(_)) => {
-                        this.metadata_by_entry_id.insert(
-                            entry_id,
-                            EntryMetadataState::Loaded {
-                                version: version_for_task.clone(),
-                                metadata: EntryMetadata {
-                                    prefix: None,
-                                    is_invalid: true,
-                                },
+                                version: version_for_task,
+                                metadata,
                             },
                         );
                     }
@@ -883,8 +889,17 @@ impl Project {
             });
         }
 
+        let config_file_type = ConfigFileType::for_path(&project_path.path);
         let content_task = cx.background_spawn(async move {
-            let contents = worktree::to_pretty_toml(&RequestFile::default()).await?;
+            let contents = match config_file_type {
+                Some(ConfigFileType::Project) => {
+                    worktree::to_pretty_toml(&ProjectFile::default()).await?
+                }
+                Some(ConfigFileType::Environment) => {
+                    worktree::to_pretty_toml(&EnvironmentFile::default()).await?
+                }
+                None => worktree::to_pretty_toml(&RequestFile::default()).await?,
+            };
             anyhow::Ok(contents.into_bytes())
         });
 
@@ -966,11 +981,6 @@ impl Project {
                     .map(|entry| entry.id == entry_id)
             })
             .unwrap_or(false)
-    }
-
-    pub fn absolutize(&self, path: &RelPath, cx: &App) -> Option<PathBuf> {
-        let root_worktree = self.root_worktree(cx)?;
-        Some(root_worktree.read(cx).absolutize(path))
     }
 
     pub fn open_buffer_at(
@@ -1062,6 +1072,17 @@ impl Project {
     ) -> Task<anyhow::Result<()>> {
         self.project_config_buffer_store
             .update(cx, |store, cx| store.save_project_config_buffer(buffer, cx))
+    }
+
+    pub fn set_environment_color(
+        &self,
+        project_path: ProjectPath,
+        color: Option<EnvironmentColor>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        self.project_config_buffer_store.update(cx, |store, cx| {
+            store.set_environment_color(project_path, color, cx)
+        })
     }
 
     pub fn reload_project_config_buffer(

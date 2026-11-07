@@ -11,8 +11,8 @@ use path::RelPath;
 use project_config_buffer::ProjectConfigBuffer;
 use util::debug_panic;
 use worktree::{
-    ConfigFile, ConfigFileState, ConfigFileType, DiskState, File, PathChange, ProjectEntryId,
-    ProjectFile, Snapshot, Worktree, WorktreeEvent,
+    ConfigFile, ConfigFileState, ConfigFileType, DiskState, EnvironmentColor, EnvironmentFile,
+    File, PathChange, ProjectEntryId, ProjectFile, Snapshot, Worktree, WorktreeEvent,
 };
 
 use crate::{
@@ -232,6 +232,70 @@ impl ProjectConfigBufferStore {
                 }
                 buffer.did_save(version, mtime, cx);
             });
+            anyhow::Ok(())
+        })
+    }
+
+    pub fn set_environment_color(
+        &self,
+        project_path: ProjectPath,
+        color: Option<EnvironmentColor>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let Some(worktree) = self
+            .worktree_store
+            .read(cx)
+            .worktree_for_id(project_path.worktree_id, cx)
+        else {
+            return Task::ready(Err(anyhow!("no such worktree")));
+        };
+        let buffer = self.get_by_path(&project_path);
+        let load_file_task = worktree.update(cx, |worktree, cx| {
+            worktree.load_file(project_path.path.as_ref(), cx)
+        });
+
+        cx.spawn(async move |_, cx| {
+            let text = load_file_task.await?.text;
+            let parse_task = cx.background_spawn(async move {
+                worktree::parse_config_file::<EnvironmentFile>(&text)
+            });
+            let mut environment_file = parse_task.await?;
+            environment_file.environment.color = color;
+
+            // Update an open buffer before writing, so a reload triggered by the write doesn't
+            // see a version change and report a conflict.
+            let open_buffer = buffer.map(|buffer| {
+                let (version, was_dirty) = buffer.update(cx, |buffer, cx| {
+                    let version = buffer.version();
+                    if let ConfigFileState::Parsed(ConfigFile::Environment(buffer_file)) =
+                        buffer.config_file()
+                    {
+                        let mut buffer_file = buffer_file.clone();
+                        buffer_file.environment.color = color;
+                        buffer.set_config_file(
+                            ConfigFileState::Parsed(ConfigFile::Environment(buffer_file)),
+                            cx,
+                        );
+                    }
+                    (version, buffer.is_dirty())
+                });
+                (buffer, version, was_dirty)
+            });
+
+            let new_file = worktree
+                .update(cx, |worktree, cx| {
+                    worktree.write_toml_file(project_path.path, environment_file, cx)
+                })
+                .await?;
+            if let Some((buffer, version, was_dirty)) = open_buffer {
+                let mtime = new_file.disk_state.mtime();
+                buffer.update(cx, |buffer, cx| {
+                    if was_dirty {
+                        buffer.file_updated(new_file, cx);
+                    }
+                    buffer.did_save(version, mtime, cx);
+                });
+            }
             anyhow::Ok(())
         })
     }

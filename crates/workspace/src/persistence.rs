@@ -874,7 +874,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        temp_fs.insert_tree("project", json!(null));
+        temp_fs.insert_tree("project", json!({}));
 
         let workspace_db = WorkspaceDb::test_open("test_save_workspace_deduplicates_paths").await;
         workspace_db.clear_recent_workspaces().await.unwrap();
@@ -988,7 +988,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
         let (root, visual_cx) = cx.add_window_view(|window, cx| {
@@ -1078,10 +1078,10 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        temp_fs.insert_tree(path!("first"), json!(null));
-        temp_fs.insert_tree(path!("second"), json!(null));
-        temp_fs.insert_tree(path!("third"), json!(null));
-        temp_fs.insert_tree(path!("fourth"), json!(null));
+        temp_fs.insert_tree(path!("first"), json!({}));
+        temp_fs.insert_tree(path!("second"), json!({}));
+        temp_fs.insert_tree(path!("third"), json!({}));
+        temp_fs.insert_tree(path!("fourth"), json!({}));
 
         let workspace_db = WorkspaceDb::test_open("test_last_session_workspace_locations").await;
 
@@ -1152,7 +1152,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let workspace_db =
             WorkspaceDb::test_open("test_last_session_workspace_locations_skips_missing_paths")
@@ -1207,7 +1207,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state.clone(), cx);
 
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
@@ -1265,7 +1265,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state.clone(), cx);
 
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
@@ -1336,7 +1336,7 @@ mod tests {
         let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
         init_test(app_state.clone(), cx);
 
-        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(path!("project"), json!({}));
 
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();

@@ -37,6 +37,7 @@ serde = { workspace = true }
 settings = { workspace = true }
 smallvec = { workspace = true }
 smol = { workspace = true }
+strum = { workspace = true }
 sum_tree = { workspace = true }
 tokio = { workspace = true }
 tombi-cache = { workspace = true }
