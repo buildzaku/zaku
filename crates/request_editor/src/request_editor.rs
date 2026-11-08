@@ -4,33 +4,35 @@ mod persistence;
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
     Anchor, AnyElement, App, Context, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
-    FontWeight, ScrollHandle, SharedString, Subscription, Task, TextStyleRefinement, WeakEntity,
-    Window, prelude::*,
+    FontWeight, HighlightStyle, ScrollHandle, SharedString, Subscription, Task,
+    TextStyleRefinement, WeakEntity, Window, prelude::*,
 };
 use std::{
+    iter,
     rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use editor::{Editor, EditorEvent};
+use collections::HashMap;
+use editor::{Editor, EditorEvent, display_map::HighlightKey};
 use http_client::{
     AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url, http,
 };
-use input::{ErasedEditorEvent, InputField};
+use input::InputField;
 use language::{Buffer, PLAIN_TEXT};
-use multi_buffer::MultiBuffer;
+use multi_buffer::{MultiBuffer, MultiBufferOffset};
 use path::PathStyle;
 use project::{
     Project, ProjectPath, RequestBuffer, RequestBufferEvent, RequestFile, RequestFileBody,
     RequestFileBodyType, RequestFileFormField, RequestFileHeader, RequestFileHttp, RequestFileMeta,
-    RequestFileParam, RequestFileState,
+    RequestFileParam, RequestFileState, project_config_store::ProjectConfigStoreEvent,
 };
 use response_panel::{
     Response, ResponseCookie, ResponseHeader, ResponsePanel, ResponsePanelTab, ResponseState,
     format_json,
 };
-use theme::ActiveTheme;
+use theme::{ActiveTheme, GlobalTheme};
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
     DropdownVariant, DynamicSpacing, FixedWidth, IconAsset, IconButton, IconPosition, IconSize,
@@ -293,6 +295,18 @@ struct RequestHttp {
     form_url_encoded: Vec<KeyValueRow>,
 }
 
+impl RequestHttp {
+    fn url_editor(&self, cx: &App) -> Entity<Editor> {
+        self.url
+            .read(cx)
+            .editor()
+            .as_any()
+            .downcast_ref::<Entity<Editor>>()
+            .expect("url input should be backed by an editor")
+            .clone()
+    }
+}
+
 struct Request {
     meta: RequestMeta,
     http: RequestHttp,
@@ -380,6 +394,25 @@ impl Request {
                 form_url_encoded,
             },
         })
+    }
+
+    fn editors(&self, cx: &App) -> Vec<(Entity<Editor>, bool)> {
+        iter::once((self.http.url_editor(cx), false))
+            .chain(
+                self.http
+                    .params
+                    .iter()
+                    .chain(&self.http.headers)
+                    .chain(&self.http.form_url_encoded)
+                    .flat_map(|row| {
+                        [
+                            (row.key.clone(), row.disabled),
+                            (row.value.clone(), row.disabled),
+                        ]
+                    }),
+            )
+            .chain(self.http.body.iter().map(|body| (body.editor(), false)))
+            .collect()
     }
 }
 
@@ -613,6 +646,57 @@ fn new_kv_row(
     }
 }
 
+fn highlight_variables(
+    editor: &Entity<Editor>,
+    variables: Option<&HashMap<String, String>>,
+    cx: &mut App,
+) {
+    editor.update(cx, |editor, cx| {
+        let mut defined_ranges = Vec::new();
+        let mut undefined_ranges = Vec::new();
+        if let Some(variables) = variables {
+            let snapshot = editor.buffer_snapshot(cx);
+            let text = snapshot.text();
+            for (range, name) in project::variable_ranges_in_str(&text) {
+                let range = snapshot.anchor_after(&MultiBufferOffset(range.start))
+                    ..snapshot.anchor_before(&MultiBufferOffset(range.end));
+                if variables.contains_key(name) {
+                    defined_ranges.push(range);
+                } else {
+                    undefined_ranges.push(range);
+                }
+            }
+        }
+
+        for (key, color, ranges) in [
+            (
+                HighlightKey::VariableDefined,
+                Color::Created,
+                defined_ranges,
+            ),
+            (
+                HighlightKey::VariableUndefined,
+                Color::Deleted,
+                undefined_ranges,
+            ),
+        ] {
+            if ranges.is_empty() {
+                editor.clear_highlights(key, cx);
+            } else {
+                editor.highlight_text(
+                    key,
+                    ranges,
+                    HighlightStyle {
+                        color: Some(color.color(cx)),
+                        ..Default::default()
+                    },
+                    cx,
+                );
+            }
+        }
+    });
+}
+
 fn input_box(editor: &Entity<Editor>, disabled: bool, cx: &mut App) -> Div {
     let text_style = TextStyleRefinement {
         color: Some(cx.theme().colors().text),
@@ -670,6 +754,8 @@ pub struct RequestEditor {
     body_subscription: Option<Subscription>,
     response_subscription: Option<Subscription>,
     _buffer_subscription: Subscription,
+    _project_config_store_subscription: Subscription,
+    _theme_subscription: Subscription,
 }
 
 impl RequestEditor {
@@ -698,7 +784,8 @@ impl RequestEditor {
                     }
                 }
                 RequestBufferEvent::FileHandleChanged => {
-                    if let Err(error) = request_editor.update(cx, |_, cx| {
+                    if let Err(error) = request_editor.update(cx, |request_editor, cx| {
+                        request_editor.update_variable_highlights(cx);
                         cx.emit(RequestEditorEvent::TitleChanged);
                         cx.emit(RequestEditorEvent::FileHandleChanged);
                         cx.notify();
@@ -724,6 +811,7 @@ impl RequestEditor {
                         request_editor.input_subscriptions = input_subscriptions;
                         request_editor.body_subscription = body_subscription;
                         request_editor.set_language_for_body(cx);
+                        request_editor.update_variable_highlights(cx);
                         cx.emit(RequestEditorEvent::TitleChanged);
                         cx.notify();
                     }) {
@@ -733,6 +821,21 @@ impl RequestEditor {
                 RequestBufferEvent::ReloadNeeded => {}
             },
         );
+        let project_config_store = project.read(cx).project_config_store().clone();
+        let project_config_store_subscription = cx.subscribe(
+            &project_config_store,
+            |request_editor, _, event: &ProjectConfigStoreEvent, cx| match event {
+                ProjectConfigStoreEvent::ConfigFileUpdated(_)
+                | ProjectConfigStoreEvent::ConfigFilesLoaded
+                | ProjectConfigStoreEvent::ActiveEnvironmentChanged => {
+                    request_editor.update_variable_highlights(cx);
+                }
+            },
+        );
+        let theme_subscription =
+            cx.observe_global_in::<GlobalTheme>(window, |request_editor, _, cx| {
+                request_editor.update_variable_highlights(cx);
+            });
 
         let this = Self {
             focus_handle,
@@ -753,8 +856,11 @@ impl RequestEditor {
             body_subscription,
             response_subscription: None,
             _buffer_subscription: buffer_subscription,
+            _project_config_store_subscription: project_config_store_subscription,
+            _theme_subscription: theme_subscription,
         };
         this.set_language_for_body(cx);
+        this.update_variable_highlights(cx);
         this
     }
 
@@ -853,7 +959,11 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> Vec<Subscription> {
         let mut subscriptions = Vec::new();
-        subscriptions.push(Self::subscribe_to_input(&request.http.url, window, cx));
+        subscriptions.push(Self::subscribe_to_editor(
+            &request.http.url_editor(cx),
+            window,
+            cx,
+        ));
         for row in request
             .http
             .params
@@ -867,43 +977,66 @@ impl RequestEditor {
         subscriptions
     }
 
-    fn subscribe_to_input(
-        input: &Entity<InputField>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Subscription {
-        let request_editor = cx.weak_entity();
-        let editor = input.read(cx).editor().clone();
-        editor.subscribe(
-            Box::new(move |event, _window, cx| {
-                if event == ErasedEditorEvent::BufferEdited
-                    && let Err(error) = request_editor.update(cx, |request_editor, cx| {
-                        request_editor.mark_edited(cx);
-                    })
-                {
-                    log::debug!("Failed to update request editor edit state: {error:?}");
-                }
-            }),
-            window,
-            cx,
-        )
-    }
-
     fn subscribe_to_editor(
         editor: &Entity<Editor>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Subscription {
         let request_editor = cx.weak_entity();
-        window.subscribe(editor, cx, move |_, event: &EditorEvent, _, cx| {
+        window.subscribe(editor, cx, move |editor, event: &EditorEvent, _, cx| {
             if *event == EditorEvent::BufferEdited
                 && let Err(error) = request_editor.update(cx, |request_editor, cx| {
                     request_editor.mark_edited(cx);
+                    request_editor.update_variable_highlights_for_editor(&editor, cx);
                 })
             {
                 log::debug!("Failed to update request editor edit state: {error:?}");
             }
         })
+    }
+
+    fn loaded_variables(&self, cx: &App) -> Option<HashMap<String, String>> {
+        let project_config_store = self.project.read(cx).project_config_store().read(cx);
+        // Config files are still loading, so color nothing.
+        if !project_config_store.initial_load_completed() {
+            return None;
+        }
+
+        Some(
+            self.project_path(cx)
+                .map(|request_path| project_config_store.variables_for_request(&request_path))
+                .unwrap_or_default(),
+        )
+    }
+
+    fn update_variable_highlights(&self, cx: &mut Context<Self>) {
+        let RequestEditorState::Ready(request) = &self.request else {
+            return;
+        };
+
+        let variables = self.loaded_variables(cx);
+        for (editor, disabled) in request.editors(cx) {
+            self::highlight_variables(&editor, variables.as_ref().filter(|_| !disabled), cx);
+        }
+    }
+
+    fn update_variable_highlights_for_editor(
+        &self,
+        editor: &Entity<Editor>,
+        cx: &mut Context<Self>,
+    ) {
+        let RequestEditorState::Ready(request) = &self.request else {
+            return;
+        };
+
+        if let Some((editor, disabled)) = request
+            .editors(cx)
+            .into_iter()
+            .find(|(candidate_editor, _)| candidate_editor == editor)
+        {
+            let variables = self.loaded_variables(cx);
+            self::highlight_variables(&editor, variables.as_ref().filter(|_| !disabled), cx);
+        }
     }
 
     fn set_language_for_body(&self, cx: &mut Context<Self>) {
@@ -1828,6 +1961,7 @@ impl RequestEditor {
                         {
                             row.set_disabled(disabled, cx);
                             request_editor.mark_edited(cx);
+                            request_editor.update_variable_highlights(cx);
                         }
                     },
                 ));

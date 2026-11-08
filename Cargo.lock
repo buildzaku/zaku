@@ -6688,6 +6688,7 @@ version = "26.1.0-dev"
 dependencies = [
  "actions",
  "anyhow",
+ "collections 26.1.0-dev",
  "cookie",
  "db",
  "editor",
