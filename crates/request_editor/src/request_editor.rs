@@ -4,8 +4,8 @@ mod persistence;
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
     Anchor, AnyElement, App, Context, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
-    FontWeight, HighlightStyle, ScrollHandle, SharedString, Subscription, Task,
-    TextStyleRefinement, WeakEntity, Window, prelude::*,
+    FontWeight, ScrollHandle, SharedString, Subscription, Task, TextStyleRefinement, WeakEntity,
+    Window, prelude::*,
 };
 use std::{
     iter,
@@ -15,13 +15,13 @@ use std::{
 };
 
 use collections::HashMap;
-use editor::{Editor, EditorEvent, display_map::HighlightKey};
+use editor::{Editor, EditorEvent};
 use http_client::{
     AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url, http,
 };
 use input::InputField;
 use language::{Buffer, PLAIN_TEXT};
-use multi_buffer::{MultiBuffer, MultiBufferOffset};
+use multi_buffer::MultiBuffer;
 use path::PathStyle;
 use project::{
     Project, ProjectPath, RequestBuffer, RequestBufferEvent, RequestFile, RequestFileBody,
@@ -646,57 +646,6 @@ fn new_kv_row(
     }
 }
 
-fn highlight_variables(
-    editor: &Entity<Editor>,
-    variables: Option<&HashMap<String, String>>,
-    cx: &mut App,
-) {
-    editor.update(cx, |editor, cx| {
-        let mut defined_ranges = Vec::new();
-        let mut undefined_ranges = Vec::new();
-        if let Some(variables) = variables {
-            let snapshot = editor.buffer_snapshot(cx);
-            let text = snapshot.text();
-            for (range, name) in project::variable_ranges_in_str(&text) {
-                let range = snapshot.anchor_after(&MultiBufferOffset(range.start))
-                    ..snapshot.anchor_before(&MultiBufferOffset(range.end));
-                if variables.contains_key(name) {
-                    defined_ranges.push(range);
-                } else {
-                    undefined_ranges.push(range);
-                }
-            }
-        }
-
-        for (key, color, ranges) in [
-            (
-                HighlightKey::VariableDefined,
-                Color::Created,
-                defined_ranges,
-            ),
-            (
-                HighlightKey::VariableUndefined,
-                Color::Deleted,
-                undefined_ranges,
-            ),
-        ] {
-            if ranges.is_empty() {
-                editor.clear_highlights(key, cx);
-            } else {
-                editor.highlight_text(
-                    key,
-                    ranges,
-                    HighlightStyle {
-                        color: Some(color.color(cx)),
-                        ..Default::default()
-                    },
-                    cx,
-                );
-            }
-        }
-    });
-}
-
 fn input_box(editor: &Entity<Editor>, disabled: bool, cx: &mut App) -> Div {
     let text_style = TextStyleRefinement {
         color: Some(cx.theme().colors().text),
@@ -1016,7 +965,9 @@ impl RequestEditor {
 
         let variables = self.loaded_variables(cx);
         for (editor, disabled) in request.editors(cx) {
-            self::highlight_variables(&editor, variables.as_ref().filter(|_| !disabled), cx);
+            editor.update(cx, |editor, cx| {
+                editor.highlight_variables(variables.as_ref().filter(|_| !disabled), cx);
+            });
         }
     }
 
@@ -1035,7 +986,9 @@ impl RequestEditor {
             .find(|(candidate_editor, _)| candidate_editor == editor)
         {
             let variables = self.loaded_variables(cx);
-            self::highlight_variables(&editor, variables.as_ref().filter(|_| !disabled), cx);
+            editor.update(cx, |editor, cx| {
+                editor.highlight_variables(variables.as_ref().filter(|_| !disabled), cx);
+            });
         }
     }
 

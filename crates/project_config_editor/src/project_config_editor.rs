@@ -11,8 +11,9 @@ use editor::{Editor, EditorEvent};
 use path::PathStyle;
 use project::{
     ConfigFile, ConfigFileState, ConfigFileType, EnvironmentColor, Project, ProjectConfigBuffer,
-    ProjectConfigBufferEvent, ProjectPath, Variable,
+    ProjectConfigBufferEvent, ProjectPath, Variable, project_config_store::ProjectConfigStoreEvent,
 };
+use theme::GlobalTheme;
 use ui::{
     ActiveTheme, Button, ButtonCommon, ButtonSize, ButtonVariant, Checkbox, Clickable, Color,
     FixedWidth, IconAsset, IconButton, IconSize, ScrollAxes, Scrollbars, Text, TextCommon,
@@ -179,6 +180,8 @@ pub struct ProjectConfigEditor {
     saved_variables: Option<Vec<Variable>>,
     variables_scroll_handle: ScrollHandle,
     _buffer_subscription: Subscription,
+    _project_config_store_subscription: Subscription,
+    _theme_subscription: Subscription,
 }
 
 impl ProjectConfigEditor {
@@ -214,6 +217,7 @@ impl ProjectConfigEditor {
                             Self::state_from_config_file(config_file, window, cx);
                         project_config_editor.state = state;
                         project_config_editor.saved_variables = saved_variables;
+                        project_config_editor.update_variable_highlights(cx);
                         cx.emit(ProjectConfigEditorEvent::TitleChanged);
                         cx.notify();
                     }
@@ -221,8 +225,23 @@ impl ProjectConfigEditor {
                 }
             },
         );
+        let project_config_store = project.read(cx).project_config_store().clone();
+        let project_config_store_subscription = cx.subscribe(
+            &project_config_store,
+            |project_config_editor, _, event: &ProjectConfigStoreEvent, cx| match event {
+                ProjectConfigStoreEvent::ConfigFileUpdated(_)
+                | ProjectConfigStoreEvent::ConfigFilesLoaded
+                | ProjectConfigStoreEvent::ActiveEnvironmentChanged => {
+                    project_config_editor.update_variable_highlights(cx);
+                }
+            },
+        );
+        let theme_subscription =
+            cx.observe_global_in::<GlobalTheme>(window, |project_config_editor, _, cx| {
+                project_config_editor.update_variable_highlights(cx);
+            });
 
-        Self {
+        let this = Self {
             focus_handle: cx.focus_handle(),
             project,
             buffer,
@@ -230,7 +249,11 @@ impl ProjectConfigEditor {
             saved_variables,
             variables_scroll_handle: ScrollHandle::new(),
             _buffer_subscription: buffer_subscription,
-        }
+            _project_config_store_subscription: project_config_store_subscription,
+            _theme_subscription: theme_subscription,
+        };
+        this.update_variable_highlights(cx);
+        this
     }
 
     fn state_from_config_file(
@@ -327,7 +350,49 @@ impl ProjectConfigEditor {
         if dirty_changed {
             cx.emit(ProjectConfigEditorEvent::DirtyChanged);
         }
+        self.update_variable_highlights(cx);
         cx.notify();
+    }
+
+    fn loaded_variables(&self, rows: &[VariableRow], cx: &App) -> Option<HashMap<String, String>> {
+        let project_config_store = self.project.read(cx).project_config_store().read(cx);
+        // Config files are still loading, so color nothing.
+        if !project_config_store.initial_load_completed() {
+            return None;
+        }
+
+        let other_scope_variables = match self.buffer.read(cx).file_type() {
+            ConfigFileType::Project => project_config_store
+                .active_environment()
+                .and_then(|name| project_config_store.environment_file(name))
+                .map(|environment_file| environment_file.environment.variables.as_slice()),
+            ConfigFileType::Environment => project_config_store
+                .project_file()
+                .map(|project_file| project_file.request.variables.as_slice()),
+        };
+        Some(
+            other_scope_variables
+                .unwrap_or_default()
+                .iter()
+                .cloned()
+                .chain(self::variables_from_rows(rows, cx))
+                .filter(|variable| !variable.disabled)
+                .map(|variable| (variable.name, variable.value))
+                .collect(),
+        )
+    }
+
+    fn update_variable_highlights(&self, cx: &mut Context<Self>) {
+        let ProjectConfigEditorState::Ready(rows) = &self.state else {
+            return;
+        };
+
+        let variables = self.loaded_variables(rows, cx);
+        for row in rows {
+            row.value.update(cx, |editor, cx| {
+                editor.highlight_variables(variables.as_ref().filter(|_| !row.disabled), cx);
+            });
+        }
     }
 
     fn project_path(&self, cx: &App) -> Option<ProjectPath> {

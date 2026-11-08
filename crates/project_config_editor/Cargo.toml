@@ -26,6 +26,7 @@ gpui = { workspace = true }
 path = { workspace = true }
 project = { workspace = true }
 settings = { workspace = true }
+theme = { workspace = true }
 ui = { workspace = true }
 util = { workspace = true }
 workspace = { workspace = true }
@@ -39,7 +40,6 @@ path = { workspace = true, features = ["test"] }
 project = { workspace = true, features = ["test"] }
 serde_json = { workspace = true }
 settings = { workspace = true, features = ["test"] }
-theme = { workspace = true }
 util_macros = { workspace = true }
 workspace = { workspace = true, features = ["test"] }
 worktree = { workspace = true, features = ["test"] }
