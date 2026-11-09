@@ -408,6 +408,36 @@ mod tests {
     }
 
     #[test]
+    fn test_variable_ranges_in_str() {
+        assert_eq!(
+            variable_ranges_in_str("{{base_url}}/users/{{user_id}}").collect::<Vec<_>>(),
+            vec![(0..12, "base_url"), (19..30, "user_id")]
+        );
+        assert_eq!(
+            variable_ranges_in_str("{{ host }}").collect::<Vec<_>>(),
+            vec![(0..10, " host ")]
+        );
+
+        assert_eq!(
+            variable_ranges_in_str("https://{{host").collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            variable_ranges_in_str("{{host}/{{user_id}}").collect::<Vec<_>>(),
+            vec![(8..19, "user_id")]
+        );
+        assert_eq!(
+            variable_ranges_in_str("{{}}/{{host}}").collect::<Vec<_>>(),
+            vec![(5..13, "host")]
+        );
+
+        assert_eq!(
+            variable_ranges_in_str("Zürich {{city}}").collect::<Vec<_>>(),
+            vec![(8..16, "city")]
+        );
+    }
+
+    #[test]
     fn test_substitute_variables_in_str() {
         let variables = [
             ("host", "api.zaku.dev"),
