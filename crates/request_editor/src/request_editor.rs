@@ -2257,6 +2257,7 @@ mod tests {
     use serde_json::json;
     use std::{cell::RefCell, io, rc::Rc};
 
+    use editor::{display_map::HighlightKey, test::editor_test_context::EditorTestContext};
     use fs::{Fs, TempFs};
     use http_client::{FakeHttpClient, Response, StatusCode};
     use path::rel_path;
@@ -3734,5 +3735,209 @@ mod tests {
             request_editor.read_with(cx, |editor, cx| editor.title(cx).to_string()),
             "renamed"
         );
+    }
+
+    #[gpui::test]
+    async fn test_variable_highlights_in_request_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "project.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [request]
+                        variables = [
+                          { name = "base_url", value = "https://api.zaku.dev" },
+                          { name = "debug_level", value = "1" }
+                        ]
+                    "#},
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            variables = [{ name = "token", value = "test-token" }]
+                        "#}
+                    }
+                },
+                "foo": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "{{server_url}}/users/{{user_id}}"
+                        params = [{ name = "debug", value = "{{debug_level}}", disabled = true }]
+                        headers = [{ name = "Authorization", value = "Bearer {{token}}" }]
+                    "#}
+                },
+                "users": {
+                    ".zaku": {
+                        "folder.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [request]
+                            variables = [{ name = "user_id", value = "1" }]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap());
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        cx.run_until_parked();
+        let (workspace, _, cx) = build_workspace(&project, cx);
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path("foo/request.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        let (url_editor, param_editor, header_editor) =
+            request_editor.read_with(cx, |editor, cx| {
+                let RequestEditorState::Ready(request) = &editor.request else {
+                    panic!("expected request editor to be ready");
+                };
+                (
+                    request.http.url_editor(cx),
+                    request.http.params[0].value.clone(),
+                    request.http.headers[0].value.clone(),
+                )
+            });
+        let mut url_cx = EditorTestContext::for_editor_in(url_editor, cx);
+        let mut param_cx = EditorTestContext::for_editor_in(param_editor, cx);
+        let mut header_cx = EditorTestContext::for_editor_in(header_editor, cx);
+        url_cx.assert_variable_highlights(
+            "«{{server_url}}»/users/«{{user_id}}»",
+            [
+                HighlightKey::VariableUndefined,
+                HighlightKey::VariableUndefined,
+            ],
+        );
+        param_cx.assert_variable_highlights("{{debug_level}}", []);
+        header_cx
+            .assert_variable_highlights("Bearer «{{token}}»", [HighlightKey::VariableUndefined]);
+
+        let buffer = request_editor.read_with(cx, |editor, _| editor.buffer.clone());
+        temp_fs
+            .write(
+                &project_path.join(path!("foo/request.toml")),
+                indoc! {br#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "{{base_url}}/users/{{user_id}}"
+                    params = [{ name = "debug", value = "{{debug_level}}", disabled = true }]
+                    headers = [{ name = "Authorization", value = "Bearer {{token}}" }]
+                "#},
+            )
+            .await
+            .unwrap();
+        worktree.flush_fs_events(cx).await;
+        buffer
+            .condition::<RequestBufferEvent>(cx, |buffer, _| {
+                matches!(
+                    buffer.request_file(),
+                    RequestFileState::Parsed(request_file)
+                        if request_file.http.url == "{{base_url}}/users/{{user_id}}"
+                )
+            })
+            .await;
+
+        let (url_editor, param_editor, header_editor) =
+            request_editor.read_with(cx, |editor, cx| {
+                let RequestEditorState::Ready(request) = &editor.request else {
+                    panic!("expected request editor to be ready");
+                };
+                (
+                    request.http.url_editor(cx),
+                    request.http.params[0].value.clone(),
+                    request.http.headers[0].value.clone(),
+                )
+            });
+        let mut url_cx = EditorTestContext::for_editor_in(url_editor, cx);
+        let mut param_cx = EditorTestContext::for_editor_in(param_editor, cx);
+        let mut header_cx = EditorTestContext::for_editor_in(header_editor, cx);
+        url_cx.assert_variable_highlights(
+            "«{{base_url}}»/users/«{{user_id}}»",
+            [
+                HighlightKey::VariableDefined,
+                HighlightKey::VariableUndefined,
+            ],
+        );
+
+        let entry_id = project
+            .read_with(cx, |project, cx| {
+                project
+                    .entry_for_path(&(worktree_id, rel_path("foo/request.toml")).into(), cx)
+                    .map(|entry| entry.id)
+            })
+            .unwrap();
+        project
+            .update(cx, |project, cx| {
+                project.rename_entry(
+                    entry_id,
+                    (worktree_id, rel_path("users/request.toml")).into(),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        url_cx.assert_variable_highlights(
+            "«{{base_url}}»/users/«{{user_id}}»",
+            [HighlightKey::VariableDefined, HighlightKey::VariableDefined],
+        );
+
+        project.update(cx, |project, cx| {
+            project
+                .project_config_store()
+                .clone()
+                .update(cx, |project_config_store, cx| {
+                    project_config_store.activate_environment(Some("Dev".to_string()), cx);
+                });
+        });
+
+        header_cx.assert_variable_highlights("Bearer «{{token}}»", [HighlightKey::VariableDefined]);
+
+        header_cx.update_editor(|editor, _, cx| {
+            editor.set_text("Bearer {{api_key}}", cx);
+        });
+
+        header_cx
+            .assert_variable_highlights("Bearer «{{api_key}}»", [HighlightKey::VariableUndefined]);
+
+        let checkbox_bounds = cx.debug_bounds("CHECKBOX-param-checkbox-0").unwrap();
+        cx.simulate_click(checkbox_bounds.center(), Modifiers::default());
+
+        param_cx.assert_variable_highlights("«{{debug_level}}»", [HighlightKey::VariableDefined]);
     }
 }

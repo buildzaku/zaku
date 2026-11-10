@@ -7,6 +7,8 @@ mod movement;
 mod persistence;
 mod scroll;
 mod selections_collection;
+#[cfg(any(test, feature = "test"))]
+pub mod test;
 
 pub use editor_settings::{CurrentLineHighlight, EditorSettings, Gutter};
 pub use element::EditorElement;

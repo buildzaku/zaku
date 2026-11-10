@@ -641,6 +641,7 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
 
+    use editor::{display_map::HighlightKey, test::editor_test_context::EditorTestContext};
     use fs::{Fs, TempFs};
     use path::rel_path;
     use settings::SettingsStore;
@@ -1198,5 +1199,139 @@ mod tests {
             );
             assert!(editor.can_save(cx));
         });
+    }
+
+    #[gpui::test]
+    async fn test_variable_highlights_in_project_config_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "project.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [request]
+                        variables = [
+                          { name = "base_url", value = "https://api.zaku.dev" },
+                          { name = "query", value = "user:{{user_id}}" }
+                        ]
+                    "#},
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            variables = [
+                              { name = "host", value = "localhost:8000" },
+                              { name = "base_url", value = "http://{{host}}" },
+                              { name = "user_id", value = "{{base_url}}/{{version}}" },
+                              { name = "timeout", value = "{{base_url}}/debug", disabled = true }
+                            ]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        cx.run_until_parked();
+        let (workspace, cx) = build_workspace(&project, cx);
+
+        let dev_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/environments/Dev.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        let (variable1_name_editor, variable2_editor, variable3_editor, variable4_editor) =
+            dev_editor.read_with(cx, |editor, _| {
+                let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                    panic!("expected project config editor to be ready");
+                };
+                (
+                    rows[0].name.clone(),
+                    rows[1].value.clone(),
+                    rows[2].value.clone(),
+                    rows[3].value.clone(),
+                )
+            });
+        let mut variable2_cx = EditorTestContext::for_editor_in(variable2_editor, cx);
+        let mut variable3_cx = EditorTestContext::for_editor_in(variable3_editor, cx);
+        let mut variable4_cx = EditorTestContext::for_editor_in(variable4_editor, cx);
+        variable2_cx
+            .assert_variable_highlights("http://«{{host}}»", [HighlightKey::VariableDefined]);
+        variable3_cx.assert_variable_highlights(
+            "«{{base_url}}»/«{{version}}»",
+            [
+                HighlightKey::VariableDefined,
+                HighlightKey::VariableUndefined,
+            ],
+        );
+        variable4_cx.assert_variable_highlights("{{base_url}}/debug", []);
+
+        variable1_name_editor.update(cx, |editor, cx| {
+            editor.set_text("hostname", cx);
+        });
+
+        variable2_cx
+            .assert_variable_highlights("http://«{{host}}»", [HighlightKey::VariableUndefined]);
+
+        let project_variables_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/project.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        let project_variable2_editor = project_variables_editor.read_with(cx, |editor, _| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            rows[1].value.clone()
+        });
+        let mut project_variable2_cx =
+            EditorTestContext::for_editor_in(project_variable2_editor, cx);
+        project_variable2_cx
+            .assert_variable_highlights("user:«{{user_id}}»", [HighlightKey::VariableUndefined]);
+
+        project.update(cx, |project, cx| {
+            project
+                .project_config_store()
+                .clone()
+                .update(cx, |project_config_store, cx| {
+                    project_config_store.activate_environment(Some("Dev".to_string()), cx);
+                });
+        });
+
+        project_variable2_cx
+            .assert_variable_highlights("user:«{{user_id}}»", [HighlightKey::VariableDefined]);
     }
 }
