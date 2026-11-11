@@ -8,29 +8,31 @@ use gpui::{
     Window, prelude::*,
 };
 use std::{
+    iter,
     rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
 
+use collections::HashMap;
 use editor::{Editor, EditorEvent};
 use http_client::{
     AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url, http,
 };
-use input::{ErasedEditorEvent, InputField};
+use input::InputField;
 use language::{Buffer, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use path::PathStyle;
 use project::{
     Project, ProjectPath, RequestBuffer, RequestBufferEvent, RequestFile, RequestFileBody,
     RequestFileBodyType, RequestFileFormField, RequestFileHeader, RequestFileHttp, RequestFileMeta,
-    RequestFileParam, RequestFileState,
+    RequestFileParam, RequestFileState, project_config_store::ProjectConfigStoreEvent,
 };
 use response_panel::{
     Response, ResponseCookie, ResponseHeader, ResponsePanel, ResponsePanelTab, ResponseState,
     format_json,
 };
-use theme::ActiveTheme;
+use theme::{ActiveTheme, GlobalTheme};
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
     DropdownVariant, DynamicSpacing, FixedWidth, IconAsset, IconButton, IconPosition, IconSize,
@@ -293,6 +295,18 @@ struct RequestHttp {
     form_url_encoded: Vec<KeyValueRow>,
 }
 
+impl RequestHttp {
+    fn url_editor(&self, cx: &App) -> Entity<Editor> {
+        self.url
+            .read(cx)
+            .editor()
+            .as_any()
+            .downcast_ref::<Entity<Editor>>()
+            .expect("url input should be backed by an editor")
+            .clone()
+    }
+}
+
 struct Request {
     meta: RequestMeta,
     http: RequestHttp,
@@ -380,6 +394,25 @@ impl Request {
                 form_url_encoded,
             },
         })
+    }
+
+    fn editors(&self, cx: &App) -> Vec<(Entity<Editor>, bool)> {
+        iter::once((self.http.url_editor(cx), false))
+            .chain(
+                self.http
+                    .params
+                    .iter()
+                    .chain(&self.http.headers)
+                    .chain(&self.http.form_url_encoded)
+                    .flat_map(|row| {
+                        [
+                            (row.key.clone(), row.disabled),
+                            (row.value.clone(), row.disabled),
+                        ]
+                    }),
+            )
+            .chain(self.http.body.iter().map(|body| (body.editor(), false)))
+            .collect()
     }
 }
 
@@ -670,6 +703,8 @@ pub struct RequestEditor {
     body_subscription: Option<Subscription>,
     response_subscription: Option<Subscription>,
     _buffer_subscription: Subscription,
+    _project_config_store_subscription: Subscription,
+    _theme_subscription: Subscription,
 }
 
 impl RequestEditor {
@@ -698,7 +733,8 @@ impl RequestEditor {
                     }
                 }
                 RequestBufferEvent::FileHandleChanged => {
-                    if let Err(error) = request_editor.update(cx, |_, cx| {
+                    if let Err(error) = request_editor.update(cx, |request_editor, cx| {
+                        request_editor.update_variable_highlights(cx);
                         cx.emit(RequestEditorEvent::TitleChanged);
                         cx.emit(RequestEditorEvent::FileHandleChanged);
                         cx.notify();
@@ -724,6 +760,7 @@ impl RequestEditor {
                         request_editor.input_subscriptions = input_subscriptions;
                         request_editor.body_subscription = body_subscription;
                         request_editor.set_language_for_body(cx);
+                        request_editor.update_variable_highlights(cx);
                         cx.emit(RequestEditorEvent::TitleChanged);
                         cx.notify();
                     }) {
@@ -733,6 +770,21 @@ impl RequestEditor {
                 RequestBufferEvent::ReloadNeeded => {}
             },
         );
+        let project_config_store = project.read(cx).project_config_store().clone();
+        let project_config_store_subscription = cx.subscribe(
+            &project_config_store,
+            |request_editor, _, event: &ProjectConfigStoreEvent, cx| match event {
+                ProjectConfigStoreEvent::ConfigFileUpdated(_)
+                | ProjectConfigStoreEvent::ConfigFilesLoaded
+                | ProjectConfigStoreEvent::ActiveEnvironmentChanged => {
+                    request_editor.update_variable_highlights(cx);
+                }
+            },
+        );
+        let theme_subscription =
+            cx.observe_global_in::<GlobalTheme>(window, |request_editor, _, cx| {
+                request_editor.update_variable_highlights(cx);
+            });
 
         let this = Self {
             focus_handle,
@@ -753,8 +805,11 @@ impl RequestEditor {
             body_subscription,
             response_subscription: None,
             _buffer_subscription: buffer_subscription,
+            _project_config_store_subscription: project_config_store_subscription,
+            _theme_subscription: theme_subscription,
         };
         this.set_language_for_body(cx);
+        this.update_variable_highlights(cx);
         this
     }
 
@@ -853,7 +908,11 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> Vec<Subscription> {
         let mut subscriptions = Vec::new();
-        subscriptions.push(Self::subscribe_to_input(&request.http.url, window, cx));
+        subscriptions.push(Self::subscribe_to_editor(
+            &request.http.url_editor(cx),
+            window,
+            cx,
+        ));
         for row in request
             .http
             .params
@@ -867,43 +926,70 @@ impl RequestEditor {
         subscriptions
     }
 
-    fn subscribe_to_input(
-        input: &Entity<InputField>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Subscription {
-        let request_editor = cx.weak_entity();
-        let editor = input.read(cx).editor().clone();
-        editor.subscribe(
-            Box::new(move |event, _window, cx| {
-                if event == ErasedEditorEvent::BufferEdited
-                    && let Err(error) = request_editor.update(cx, |request_editor, cx| {
-                        request_editor.mark_edited(cx);
-                    })
-                {
-                    log::debug!("Failed to update request editor edit state: {error:?}");
-                }
-            }),
-            window,
-            cx,
-        )
-    }
-
     fn subscribe_to_editor(
         editor: &Entity<Editor>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Subscription {
         let request_editor = cx.weak_entity();
-        window.subscribe(editor, cx, move |_, event: &EditorEvent, _, cx| {
+        window.subscribe(editor, cx, move |editor, event: &EditorEvent, _, cx| {
             if *event == EditorEvent::BufferEdited
                 && let Err(error) = request_editor.update(cx, |request_editor, cx| {
                     request_editor.mark_edited(cx);
+                    request_editor.update_variable_highlights_for_editor(&editor, cx);
                 })
             {
                 log::debug!("Failed to update request editor edit state: {error:?}");
             }
         })
+    }
+
+    fn loaded_variables(&self, cx: &App) -> Option<HashMap<String, String>> {
+        let project_config_store = self.project.read(cx).project_config_store().read(cx);
+        // Config files are still loading, so color nothing.
+        if !project_config_store.initial_load_completed() {
+            return None;
+        }
+
+        Some(
+            self.project_path(cx)
+                .map(|request_path| project_config_store.variables_for_request(&request_path))
+                .unwrap_or_default(),
+        )
+    }
+
+    fn update_variable_highlights(&self, cx: &mut Context<Self>) {
+        let RequestEditorState::Ready(request) = &self.request else {
+            return;
+        };
+
+        let variables = self.loaded_variables(cx);
+        for (editor, disabled) in request.editors(cx) {
+            editor.update(cx, |editor, cx| {
+                editor.highlight_variables(variables.as_ref().filter(|_| !disabled), cx);
+            });
+        }
+    }
+
+    fn update_variable_highlights_for_editor(
+        &self,
+        editor: &Entity<Editor>,
+        cx: &mut Context<Self>,
+    ) {
+        let RequestEditorState::Ready(request) = &self.request else {
+            return;
+        };
+
+        if let Some((editor, disabled)) = request
+            .editors(cx)
+            .into_iter()
+            .find(|(candidate_editor, _)| candidate_editor == editor)
+        {
+            let variables = self.loaded_variables(cx);
+            editor.update(cx, |editor, cx| {
+                editor.highlight_variables(variables.as_ref().filter(|_| !disabled), cx);
+            });
+        }
     }
 
     fn set_language_for_body(&self, cx: &mut Context<Self>) {
@@ -1828,6 +1914,7 @@ impl RequestEditor {
                         {
                             row.set_disabled(disabled, cx);
                             request_editor.mark_edited(cx);
+                            request_editor.update_variable_highlights(cx);
                         }
                     },
                 ));
@@ -2170,6 +2257,7 @@ mod tests {
     use serde_json::json;
     use std::{cell::RefCell, io, rc::Rc};
 
+    use editor::{display_map::HighlightKey, test::editor_test_context::EditorTestContext};
     use fs::{Fs, TempFs};
     use http_client::{FakeHttpClient, Response, StatusCode};
     use path::rel_path;
@@ -3647,5 +3735,209 @@ mod tests {
             request_editor.read_with(cx, |editor, cx| editor.title(cx).to_string()),
             "renamed"
         );
+    }
+
+    #[gpui::test]
+    async fn test_variable_highlights_in_request_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "project.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [request]
+                        variables = [
+                          { name = "base_url", value = "https://api.zaku.dev" },
+                          { name = "debug_level", value = "1" }
+                        ]
+                    "#},
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            variables = [{ name = "token", value = "test-token" }]
+                        "#}
+                    }
+                },
+                "foo": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "{{server_url}}/users/{{user_id}}"
+                        params = [{ name = "debug", value = "{{debug_level}}", disabled = true }]
+                        headers = [{ name = "Authorization", value = "Bearer {{token}}" }]
+                    "#}
+                },
+                "users": {
+                    ".zaku": {
+                        "folder.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [request]
+                            variables = [{ name = "user_id", value = "1" }]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap());
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        cx.run_until_parked();
+        let (workspace, _, cx) = build_workspace(&project, cx);
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path("foo/request.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        let (url_editor, param_editor, header_editor) =
+            request_editor.read_with(cx, |editor, cx| {
+                let RequestEditorState::Ready(request) = &editor.request else {
+                    panic!("expected request editor to be ready");
+                };
+                (
+                    request.http.url_editor(cx),
+                    request.http.params[0].value.clone(),
+                    request.http.headers[0].value.clone(),
+                )
+            });
+        let mut url_cx = EditorTestContext::for_editor_in(url_editor, cx);
+        let mut param_cx = EditorTestContext::for_editor_in(param_editor, cx);
+        let mut header_cx = EditorTestContext::for_editor_in(header_editor, cx);
+        url_cx.assert_variable_highlights(
+            "«{{server_url}}»/users/«{{user_id}}»",
+            [
+                HighlightKey::VariableUndefined,
+                HighlightKey::VariableUndefined,
+            ],
+        );
+        param_cx.assert_variable_highlights("{{debug_level}}", []);
+        header_cx
+            .assert_variable_highlights("Bearer «{{token}}»", [HighlightKey::VariableUndefined]);
+
+        let buffer = request_editor.read_with(cx, |editor, _| editor.buffer.clone());
+        temp_fs
+            .write(
+                &project_path.join(path!("foo/request.toml")),
+                indoc! {br#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "{{base_url}}/users/{{user_id}}"
+                    params = [{ name = "debug", value = "{{debug_level}}", disabled = true }]
+                    headers = [{ name = "Authorization", value = "Bearer {{token}}" }]
+                "#},
+            )
+            .await
+            .unwrap();
+        worktree.flush_fs_events(cx).await;
+        buffer
+            .condition::<RequestBufferEvent>(cx, |buffer, _| {
+                matches!(
+                    buffer.request_file(),
+                    RequestFileState::Parsed(request_file)
+                        if request_file.http.url == "{{base_url}}/users/{{user_id}}"
+                )
+            })
+            .await;
+
+        let (url_editor, param_editor, header_editor) =
+            request_editor.read_with(cx, |editor, cx| {
+                let RequestEditorState::Ready(request) = &editor.request else {
+                    panic!("expected request editor to be ready");
+                };
+                (
+                    request.http.url_editor(cx),
+                    request.http.params[0].value.clone(),
+                    request.http.headers[0].value.clone(),
+                )
+            });
+        let mut url_cx = EditorTestContext::for_editor_in(url_editor, cx);
+        let mut param_cx = EditorTestContext::for_editor_in(param_editor, cx);
+        let mut header_cx = EditorTestContext::for_editor_in(header_editor, cx);
+        url_cx.assert_variable_highlights(
+            "«{{base_url}}»/users/«{{user_id}}»",
+            [
+                HighlightKey::VariableDefined,
+                HighlightKey::VariableUndefined,
+            ],
+        );
+
+        let entry_id = project
+            .read_with(cx, |project, cx| {
+                project
+                    .entry_for_path(&(worktree_id, rel_path("foo/request.toml")).into(), cx)
+                    .map(|entry| entry.id)
+            })
+            .unwrap();
+        project
+            .update(cx, |project, cx| {
+                project.rename_entry(
+                    entry_id,
+                    (worktree_id, rel_path("users/request.toml")).into(),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        url_cx.assert_variable_highlights(
+            "«{{base_url}}»/users/«{{user_id}}»",
+            [HighlightKey::VariableDefined, HighlightKey::VariableDefined],
+        );
+
+        project.update(cx, |project, cx| {
+            project
+                .project_config_store()
+                .clone()
+                .update(cx, |project_config_store, cx| {
+                    project_config_store.activate_environment(Some("Dev".to_string()), cx);
+                });
+        });
+
+        header_cx.assert_variable_highlights("Bearer «{{token}}»", [HighlightKey::VariableDefined]);
+
+        header_cx.update_editor(|editor, _, cx| {
+            editor.set_text("Bearer {{api_key}}", cx);
+        });
+
+        header_cx
+            .assert_variable_highlights("Bearer «{{api_key}}»", [HighlightKey::VariableUndefined]);
+
+        let checkbox_bounds = cx.debug_bounds("CHECKBOX-param-checkbox-0").unwrap();
+        cx.simulate_click(checkbox_bounds.center(), Modifiers::default());
+
+        param_cx.assert_variable_highlights("«{{debug_level}}»", [HighlightKey::VariableDefined]);
     }
 }

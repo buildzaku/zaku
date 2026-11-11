@@ -11,8 +11,9 @@ use editor::{Editor, EditorEvent};
 use path::PathStyle;
 use project::{
     ConfigFile, ConfigFileState, ConfigFileType, EnvironmentColor, Project, ProjectConfigBuffer,
-    ProjectConfigBufferEvent, ProjectPath, Variable,
+    ProjectConfigBufferEvent, ProjectPath, Variable, project_config_store::ProjectConfigStoreEvent,
 };
+use theme::GlobalTheme;
 use ui::{
     ActiveTheme, Button, ButtonCommon, ButtonSize, ButtonVariant, Checkbox, Clickable, Color,
     FixedWidth, IconAsset, IconButton, IconSize, ScrollAxes, Scrollbars, Text, TextCommon,
@@ -179,6 +180,8 @@ pub struct ProjectConfigEditor {
     saved_variables: Option<Vec<Variable>>,
     variables_scroll_handle: ScrollHandle,
     _buffer_subscription: Subscription,
+    _project_config_store_subscription: Subscription,
+    _theme_subscription: Subscription,
 }
 
 impl ProjectConfigEditor {
@@ -214,6 +217,7 @@ impl ProjectConfigEditor {
                             Self::state_from_config_file(config_file, window, cx);
                         project_config_editor.state = state;
                         project_config_editor.saved_variables = saved_variables;
+                        project_config_editor.update_variable_highlights(cx);
                         cx.emit(ProjectConfigEditorEvent::TitleChanged);
                         cx.notify();
                     }
@@ -221,8 +225,23 @@ impl ProjectConfigEditor {
                 }
             },
         );
+        let project_config_store = project.read(cx).project_config_store().clone();
+        let project_config_store_subscription = cx.subscribe(
+            &project_config_store,
+            |project_config_editor, _, event: &ProjectConfigStoreEvent, cx| match event {
+                ProjectConfigStoreEvent::ConfigFileUpdated(_)
+                | ProjectConfigStoreEvent::ConfigFilesLoaded
+                | ProjectConfigStoreEvent::ActiveEnvironmentChanged => {
+                    project_config_editor.update_variable_highlights(cx);
+                }
+            },
+        );
+        let theme_subscription =
+            cx.observe_global_in::<GlobalTheme>(window, |project_config_editor, _, cx| {
+                project_config_editor.update_variable_highlights(cx);
+            });
 
-        Self {
+        let this = Self {
             focus_handle: cx.focus_handle(),
             project,
             buffer,
@@ -230,7 +249,11 @@ impl ProjectConfigEditor {
             saved_variables,
             variables_scroll_handle: ScrollHandle::new(),
             _buffer_subscription: buffer_subscription,
-        }
+            _project_config_store_subscription: project_config_store_subscription,
+            _theme_subscription: theme_subscription,
+        };
+        this.update_variable_highlights(cx);
+        this
     }
 
     fn state_from_config_file(
@@ -327,7 +350,49 @@ impl ProjectConfigEditor {
         if dirty_changed {
             cx.emit(ProjectConfigEditorEvent::DirtyChanged);
         }
+        self.update_variable_highlights(cx);
         cx.notify();
+    }
+
+    fn loaded_variables(&self, rows: &[VariableRow], cx: &App) -> Option<HashMap<String, String>> {
+        let project_config_store = self.project.read(cx).project_config_store().read(cx);
+        // Config files are still loading, so color nothing.
+        if !project_config_store.initial_load_completed() {
+            return None;
+        }
+
+        let other_scope_variables = match self.buffer.read(cx).file_type() {
+            ConfigFileType::Project => project_config_store
+                .active_environment()
+                .and_then(|name| project_config_store.environment_file(name))
+                .map(|environment_file| environment_file.environment.variables.as_slice()),
+            ConfigFileType::Environment => project_config_store
+                .project_file()
+                .map(|project_file| project_file.request.variables.as_slice()),
+        };
+        Some(
+            other_scope_variables
+                .unwrap_or_default()
+                .iter()
+                .cloned()
+                .chain(self::variables_from_rows(rows, cx))
+                .filter(|variable| !variable.disabled)
+                .map(|variable| (variable.name, variable.value))
+                .collect(),
+        )
+    }
+
+    fn update_variable_highlights(&self, cx: &mut Context<Self>) {
+        let ProjectConfigEditorState::Ready(rows) = &self.state else {
+            return;
+        };
+
+        let variables = self.loaded_variables(rows, cx);
+        for row in rows {
+            row.value.update(cx, |editor, cx| {
+                editor.highlight_variables(variables.as_ref().filter(|_| !row.disabled), cx);
+            });
+        }
     }
 
     fn project_path(&self, cx: &App) -> Option<ProjectPath> {
@@ -576,6 +641,7 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
 
+    use editor::{display_map::HighlightKey, test::editor_test_context::EditorTestContext};
     use fs::{Fs, TempFs};
     use path::rel_path;
     use settings::SettingsStore;
@@ -1133,5 +1199,139 @@ mod tests {
             );
             assert!(editor.can_save(cx));
         });
+    }
+
+    #[gpui::test]
+    async fn test_variable_highlights_in_project_config_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "project.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [request]
+                        variables = [
+                          { name = "base_url", value = "https://api.zaku.dev" },
+                          { name = "query", value = "user:{{user_id}}" }
+                        ]
+                    "#},
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            variables = [
+                              { name = "host", value = "localhost:8000" },
+                              { name = "base_url", value = "http://{{host}}" },
+                              { name = "user_id", value = "{{base_url}}/{{version}}" },
+                              { name = "timeout", value = "{{base_url}}/debug", disabled = true }
+                            ]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        cx.run_until_parked();
+        let (workspace, cx) = build_workspace(&project, cx);
+
+        let dev_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/environments/Dev.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        let (variable1_name_editor, variable2_editor, variable3_editor, variable4_editor) =
+            dev_editor.read_with(cx, |editor, _| {
+                let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                    panic!("expected project config editor to be ready");
+                };
+                (
+                    rows[0].name.clone(),
+                    rows[1].value.clone(),
+                    rows[2].value.clone(),
+                    rows[3].value.clone(),
+                )
+            });
+        let mut variable2_cx = EditorTestContext::for_editor_in(variable2_editor, cx);
+        let mut variable3_cx = EditorTestContext::for_editor_in(variable3_editor, cx);
+        let mut variable4_cx = EditorTestContext::for_editor_in(variable4_editor, cx);
+        variable2_cx
+            .assert_variable_highlights("http://«{{host}}»", [HighlightKey::VariableDefined]);
+        variable3_cx.assert_variable_highlights(
+            "«{{base_url}}»/«{{version}}»",
+            [
+                HighlightKey::VariableDefined,
+                HighlightKey::VariableUndefined,
+            ],
+        );
+        variable4_cx.assert_variable_highlights("{{base_url}}/debug", []);
+
+        variable1_name_editor.update(cx, |editor, cx| {
+            editor.set_text("hostname", cx);
+        });
+
+        variable2_cx
+            .assert_variable_highlights("http://«{{host}}»", [HighlightKey::VariableUndefined]);
+
+        let project_variables_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/project.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        let project_variable2_editor = project_variables_editor.read_with(cx, |editor, _| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            rows[1].value.clone()
+        });
+        let mut project_variable2_cx =
+            EditorTestContext::for_editor_in(project_variable2_editor, cx);
+        project_variable2_cx
+            .assert_variable_highlights("user:«{{user_id}}»", [HighlightKey::VariableUndefined]);
+
+        project.update(cx, |project, cx| {
+            project
+                .project_config_store()
+                .clone()
+                .update(cx, |project_config_store, cx| {
+                    project_config_store.activate_environment(Some("Dev".to_string()), cx);
+                });
+        });
+
+        project_variable2_cx
+            .assert_variable_highlights("user:«{{user_id}}»", [HighlightKey::VariableDefined]);
     }
 }

@@ -38,6 +38,8 @@ pub trait ToDisplayPoint {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum HighlightKey {
     InputComposition,
+    VariableDefined,
+    VariableUndefined,
 }
 
 type TextHighlights = Arc<HashMap<HighlightKey, Arc<(HighlightStyle, Vec<Range<Anchor>>)>>>;

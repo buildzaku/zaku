@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::{collections::HashMap, hash::BuildHasher, sync::Arc};
+use std::{collections::HashMap, hash::BuildHasher, iter, ops::Range, sync::Arc};
 use strum::EnumIter;
 
 use path::RelPath;
@@ -202,6 +202,30 @@ pub fn parse_config_file<T: DeserializeOwned>(contents: &str) -> anyhow::Result<
     })
 }
 
+pub fn variable_ranges_in_str(text: &str) -> impl Iterator<Item = (Range<usize>, &str)> {
+    let mut rest = text;
+    iter::from_fn(move || {
+        while let Some((_, after_braces)) = rest.split_once("{{") {
+            let (name, after_name) = after_braces.split_once('}')?;
+            if name.is_empty() {
+                rest = after_braces;
+                continue;
+            }
+            // Every `{{` before this `}` would end at it too, so skip them instead of rescanning.
+            let Some(remainder) = after_name.strip_prefix('}') else {
+                rest = after_name;
+                continue;
+            };
+
+            let start = text.len() - after_braces.len() - "{{".len();
+            let end = text.len() - remainder.len();
+            rest = remainder;
+            return Some((start..end, name));
+        }
+        None
+    })
+}
+
 pub fn substitute_variables_in_str(
     text: &str,
     variables: &HashMap<String, String, impl BuildHasher>,
@@ -212,19 +236,12 @@ pub fn substitute_variables_in_str(
         resolving_names: &mut Vec<&'a str>,
     ) -> String {
         let mut substituted_text = String::with_capacity(text.len());
-        let mut rest = text;
-        while let Some((before_braces, after_braces)) = rest.split_once("{{") {
-            substituted_text.push_str(before_braces);
-            let Some((name, remainder)) = after_braces
-                .split_once('}')
-                .and_then(|(name, after_name)| Some((name, after_name.strip_prefix('}')?)))
-                .filter(|(name, _)| !name.is_empty())
-            else {
-                substituted_text.push_str("{{");
-                rest = after_braces;
-                continue;
-            };
-
+        let mut substituted_end = 0;
+        for (range, name) in self::variable_ranges_in_str(text) {
+            substituted_text.push_str(
+                text.get(substituted_end..range.start)
+                    .expect("variable range should be on char boundary"),
+            );
             match variables.get_key_value(name) {
                 // Self-referencing variables stay literal instead of recursing forever.
                 Some((name, value)) if !resolving_names.contains(&name.as_str()) => {
@@ -238,9 +255,12 @@ pub fn substitute_variables_in_str(
                     substituted_text.push_str("}}");
                 }
             }
-            rest = remainder;
+            substituted_end = range.end;
         }
-        substituted_text.push_str(rest);
+        substituted_text.push_str(
+            text.get(substituted_end..)
+                .expect("variable range should be on char boundary"),
+        );
         substituted_text
     }
 
@@ -385,6 +405,36 @@ mod tests {
 
         let error = parse_config_file::<ProjectFile>("").unwrap_err();
         assert_eq!(error.to_string(), "missing field `meta` at line 1 column 1");
+    }
+
+    #[test]
+    fn test_variable_ranges_in_str() {
+        assert_eq!(
+            variable_ranges_in_str("{{base_url}}/users/{{user_id}}").collect::<Vec<_>>(),
+            vec![(0..12, "base_url"), (19..30, "user_id")]
+        );
+        assert_eq!(
+            variable_ranges_in_str("{{ host }}").collect::<Vec<_>>(),
+            vec![(0..10, " host ")]
+        );
+
+        assert_eq!(
+            variable_ranges_in_str("https://{{host").collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            variable_ranges_in_str("{{host}/{{user_id}}").collect::<Vec<_>>(),
+            vec![(8..19, "user_id")]
+        );
+        assert_eq!(
+            variable_ranges_in_str("{{}}/{{host}}").collect::<Vec<_>>(),
+            vec![(5..13, "host")]
+        );
+
+        assert_eq!(
+            variable_ranges_in_str("Zürich {{city}}").collect::<Vec<_>>(),
+            vec![(8..16, "city")]
+        );
     }
 
     #[test]

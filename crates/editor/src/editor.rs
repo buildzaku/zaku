@@ -7,6 +7,8 @@ mod movement;
 mod persistence;
 mod scroll;
 mod selections_collection;
+#[cfg(any(test, feature = "test"))]
+pub mod test;
 
 pub use editor_settings::{CurrentLineHighlight, EditorSettings, Gutter};
 pub use element::EditorElement;
@@ -24,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
+    hash::BuildHasher,
     num::NonZeroU32,
     ops::{Deref, Range, RangeInclusive},
     path::PathBuf,
@@ -38,6 +41,7 @@ use language::{Buffer, BufferEvent, Capability};
 use multi_buffer::{Anchor, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset, ToPoint};
 use settings::{Settings, SettingsStore};
 use theme::{ActiveTheme, SyntaxTheme, ThemeSettings};
+use ui::Color;
 use util::ResultExt;
 
 use crate::{
@@ -2544,6 +2548,55 @@ impl Editor {
             .update(cx, |map, _| map.clear_highlights(key));
         if cleared {
             cx.notify();
+        }
+    }
+
+    pub fn highlight_variables(
+        &mut self,
+        variables: Option<&HashMap<String, String, impl BuildHasher>>,
+        cx: &mut Context<Self>,
+    ) {
+        let mut defined_ranges = Vec::new();
+        let mut undefined_ranges = Vec::new();
+        if let Some(variables) = variables {
+            let snapshot = self.buffer_snapshot(cx);
+            let text = snapshot.text();
+            for (range, name) in project::variable_ranges_in_str(&text) {
+                let range = snapshot.anchor_after(&MultiBufferOffset(range.start))
+                    ..snapshot.anchor_before(&MultiBufferOffset(range.end));
+                if variables.contains_key(name) {
+                    defined_ranges.push(range);
+                } else {
+                    undefined_ranges.push(range);
+                }
+            }
+        }
+
+        for (key, color, ranges) in [
+            (
+                HighlightKey::VariableDefined,
+                Color::Created,
+                defined_ranges,
+            ),
+            (
+                HighlightKey::VariableUndefined,
+                Color::Deleted,
+                undefined_ranges,
+            ),
+        ] {
+            if ranges.is_empty() {
+                self.clear_highlights(key, cx);
+            } else {
+                self.highlight_text(
+                    key,
+                    ranges,
+                    HighlightStyle {
+                        color: Some(color.color(cx)),
+                        ..Default::default()
+                    },
+                    cx,
+                );
+            }
         }
     }
 
