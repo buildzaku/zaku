@@ -599,8 +599,8 @@ impl VariablesPanel {
             validation_state: ValidationState::None,
         });
         self.environment_name_editor.update(cx, |editor, cx| {
-            editor.set_text(&name, cx);
-            editor.change_selections(SelectionEffects::default(), cx, |selections| {
+            editor.set_text(&name, window, cx);
+            editor.change_selections(SelectionEffects::default(), window, cx, |selections| {
                 selections.select_ranges([MultiBufferOffset(0)..MultiBufferOffset(name.len())]);
             });
         });
@@ -2200,7 +2200,7 @@ mod tests {
         panel
             .update_in(cx, |panel, window, cx| {
                 panel.environment_name_editor.update(cx, |editor, cx| {
-                    editor.set_text("Dev", cx);
+                    editor.set_text("Dev", window, cx);
                 });
                 panel.confirm_edit(true, window, cx).unwrap()
             })
@@ -2295,9 +2295,9 @@ mod tests {
             ]
         );
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.environment_name_editor.update(cx, |editor, cx| {
-                editor.set_text("   ", cx);
+                editor.set_text("   ", window, cx);
             });
         });
         panel.read_with(cx, |panel, _| {
@@ -2312,9 +2312,9 @@ mod tests {
                 .is_none()
         );
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.environment_name_editor.update(cx, |editor, cx| {
-                editor.set_text("Staging/2", cx);
+                editor.set_text("Staging/2", window, cx);
             });
         });
         panel.read_with(cx, |panel, _| {
@@ -2332,9 +2332,9 @@ mod tests {
                 .is_none()
         );
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.environment_name_editor.update(cx, |editor, cx| {
-                editor.set_text("dev", cx);
+                editor.set_text("dev", window, cx);
             });
         });
         panel.read_with(cx, |panel, _| {
@@ -2349,9 +2349,9 @@ mod tests {
                 .is_none()
         );
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.environment_name_editor.update(cx, |editor, cx| {
-                editor.set_text("Prod", cx);
+                editor.set_text("Prod", window, cx);
             });
         });
         panel.read_with(cx, |panel, _| {
@@ -2366,9 +2366,9 @@ mod tests {
                 .is_none()
         );
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.environment_name_editor.update(cx, |editor, cx| {
-                editor.set_text("Staging", cx);
+                editor.set_text("Staging", window, cx);
             });
         });
         panel.read_with(cx, |panel, _| {
@@ -2581,7 +2581,7 @@ mod tests {
                 assert_eq!(name_selection.start, MultiBufferOffset(0));
                 assert_eq!(name_selection.end, MultiBufferOffset("Dev".len()));
 
-                editor.set_text("Dev 2", cx);
+                editor.set_text("Dev 2", window, cx);
             });
             panel.confirm_edit(true, window, cx).unwrap()
         });
@@ -2696,9 +2696,9 @@ mod tests {
             &["Project Variables", "[EDITOR: 'Dev']  <== selected", "Prod"]
         );
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.environment_name_editor.update(cx, |editor, cx| {
-                editor.set_text("prod", cx);
+                editor.set_text("prod", window, cx);
             });
         });
         panel.read_with(cx, |panel, _| {
@@ -2720,9 +2720,9 @@ mod tests {
             );
         });
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.environment_name_editor.update(cx, |editor, cx| {
-                editor.set_text("Dev", cx);
+                editor.set_text("Dev", window, cx);
             });
         });
         panel.read_with(cx, |panel, _| {

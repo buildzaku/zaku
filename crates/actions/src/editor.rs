@@ -110,11 +110,30 @@ pub struct DeleteToPreviousSubwordStart {
     pub ignore_brackets: bool,
 }
 
+/// Confirm and accept the currently selected completion suggestion.
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = editor)]
+#[serde(deny_unknown_fields)]
+pub struct ConfirmCompletion {
+    #[serde(default)]
+    pub item_index: Option<usize>,
+}
+
 gpui::actions!(
     editor,
     [
         /// Delete the character before the cursor.
         Backspace,
+        /// Cancel the current operation.
+        Cancel,
+        /// Navigate to the first item in the context menu.
+        ContextMenuFirst,
+        /// Navigate to the last item in the context menu.
+        ContextMenuLast,
+        /// Navigate to the next item in the context menu.
+        ContextMenuNext,
+        /// Navigate to the previous item in the context menu.
+        ContextMenuPrevious,
         /// Copy selected text to the clipboard.
         Copy,
         /// Cut selected text to the clipboard.
@@ -175,6 +194,8 @@ gpui::actions!(
         SelectToPreviousSubwordStart,
         /// Extend selection to the start of the previous word.
         SelectToPreviousWordStart,
+        /// Show completion suggestions at the cursor position.
+        ShowCompletions,
         /// Undo the last edit.
         Undo,
         /// Undo the last selection change.

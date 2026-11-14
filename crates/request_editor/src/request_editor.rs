@@ -622,7 +622,7 @@ fn new_kv_row(
         let mut editor = Editor::single_line(window, cx);
         editor.set_placeholder_text("Key", cx);
         if let Some(key) = key {
-            editor.set_text(key, cx);
+            editor.set_text(key, window, cx);
         }
         editor
     });
@@ -635,7 +635,7 @@ fn new_kv_row(
         };
         editor.set_placeholder_text("Value", cx);
         if let Some(value) = value {
-            editor.set_text(value, cx);
+            editor.set_text(value, window, cx);
         }
         editor
     });
@@ -3400,20 +3400,20 @@ mod tests {
             assert!(!editor.is_dirty(cx));
         });
 
-        request_editor.update_in(cx, |editor, _, cx| {
+        request_editor.update_in(cx, |editor, window, cx| {
             let RequestEditorState::Ready(request) = &mut editor.request else {
                 panic!("expected request editor to be ready");
             };
             let row = request.http.form_url_encoded.first().unwrap();
             row.key.update(cx, |editor, cx| {
-                editor.set_text("bar", cx);
+                editor.set_text("bar", window, cx);
             });
             row.value.update(cx, |editor, cx| {
-                editor.set_text("baz", cx);
+                editor.set_text("baz", window, cx);
             });
             let row = request.http.form_url_encoded.last().unwrap();
             row.value.update(cx, |editor, cx| {
-                editor.set_text("the quick brown fox\njumps over the lazy dog", cx);
+                editor.set_text("the quick brown fox\njumps over the lazy dog", window, cx);
             });
         });
 
@@ -3928,8 +3928,8 @@ mod tests {
 
         header_cx.assert_variable_highlights("Bearer «{{token}}»", [HighlightKey::VariableDefined]);
 
-        header_cx.update_editor(|editor, _, cx| {
-            editor.set_text("Bearer {{api_key}}", cx);
+        header_cx.update_editor(|editor, window, cx| {
+            editor.set_text("Bearer {{api_key}}", window, cx);
         });
 
         header_cx

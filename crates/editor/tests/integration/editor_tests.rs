@@ -1052,8 +1052,8 @@ fn test_mouse_selection(cx: &mut TestAppContext) {
         fox
     "});
 
-    cx.update_editor(|editor, _, cx| {
-        editor.begin_selection(DisplayPoint::new(DisplayRow(2), 2), 1, cx);
+    cx.update_editor(|editor, window, cx| {
+        editor.begin_selection(DisplayPoint::new(DisplayRow(2), 2), 1, window, cx);
     });
     cx.update_editor(|editor, _, cx| {
         assert_eq!(
@@ -1062,8 +1062,8 @@ fn test_mouse_selection(cx: &mut TestAppContext) {
         );
     });
 
-    cx.update_editor(|editor, _, cx| {
-        editor.update_selection(DisplayPoint::new(DisplayRow(3), 3), cx);
+    cx.update_editor(|editor, window, cx| {
+        editor.update_selection(DisplayPoint::new(DisplayRow(3), 3), window, cx);
     });
     cx.update_editor(|editor, _, cx| {
         assert_eq!(
@@ -1072,8 +1072,8 @@ fn test_mouse_selection(cx: &mut TestAppContext) {
         );
     });
 
-    cx.update_editor(|editor, _, cx| {
-        editor.update_selection(DisplayPoint::new(DisplayRow(1), 1), cx);
+    cx.update_editor(|editor, window, cx| {
+        editor.update_selection(DisplayPoint::new(DisplayRow(1), 1), window, cx);
     });
     cx.update_editor(|editor, _, cx| {
         assert_eq!(
@@ -1082,9 +1082,9 @@ fn test_mouse_selection(cx: &mut TestAppContext) {
         );
     });
 
-    cx.update_editor(|editor, _, cx| {
-        editor.end_selection(cx);
-        editor.update_selection(DisplayPoint::new(DisplayRow(3), 3), cx);
+    cx.update_editor(|editor, window, cx| {
+        editor.end_selection(window, cx);
+        editor.update_selection(DisplayPoint::new(DisplayRow(3), 3), window, cx);
     });
     cx.update_editor(|editor, _, cx| {
         assert_eq!(
@@ -1093,9 +1093,9 @@ fn test_mouse_selection(cx: &mut TestAppContext) {
         );
     });
 
-    cx.update_editor(|editor, _, cx| {
-        editor.begin_selection(DisplayPoint::new(DisplayRow(3), 3), 1, cx);
-        editor.update_selection(DisplayPoint::new(DisplayRow(0), 0), cx);
+    cx.update_editor(|editor, window, cx| {
+        editor.begin_selection(DisplayPoint::new(DisplayRow(3), 3), 1, window, cx);
+        editor.update_selection(DisplayPoint::new(DisplayRow(0), 0), window, cx);
     });
     cx.update_editor(|editor, _, cx| {
         assert_eq!(
@@ -1104,8 +1104,8 @@ fn test_mouse_selection(cx: &mut TestAppContext) {
         );
     });
 
-    cx.update_editor(|editor, _, cx| {
-        editor.end_selection(cx);
+    cx.update_editor(|editor, window, cx| {
+        editor.end_selection(window, cx);
     });
     cx.update_editor(|editor, _, cx| {
         assert_eq!(
@@ -1127,9 +1127,9 @@ fn test_mouse_selection_beyond_end_of_buffer(cx: &mut TestAppContext) {
         fox\
     "});
 
-    cx.update_editor(|editor, _, cx| {
-        editor.begin_selection(DisplayPoint::new(DisplayRow(0), 1), 1, cx);
-        editor.update_selection(DisplayPoint::new(DisplayRow(4), 0), cx);
+    cx.update_editor(|editor, window, cx| {
+        editor.begin_selection(DisplayPoint::new(DisplayRow(0), 1), 1, window, cx);
+        editor.update_selection(DisplayPoint::new(DisplayRow(4), 0), window, cx);
     });
     cx.update_editor(|editor, _, cx| {
         assert_eq!(
@@ -1528,7 +1528,7 @@ fn test_set_text_normalizes_line_endings(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
-    cx.update_editor(|editor, _, cx| editor.set_text("foo\r\nbar\r\nbaz", cx));
+    cx.update_editor(|editor, window, cx| editor.set_text("foo\r\nbar\r\nbaz", window, cx));
     cx.assert_state("foo\nbar\nbazˇ");
 }
 

@@ -288,7 +288,7 @@ impl ProjectConfigEditor {
             let mut editor = Editor::single_line(window, cx);
             editor.set_placeholder_text("Name", cx);
             if let Some(variable) = variable {
-                editor.set_text(&variable.name, cx);
+                editor.set_text(&variable.name, window, cx);
             }
             editor
         });
@@ -296,7 +296,7 @@ impl ProjectConfigEditor {
             let mut editor = Editor::auto_height(1, Some(4), window, cx);
             editor.set_placeholder_text("Value", cx);
             if let Some(variable) = variable {
-                editor.set_text(&variable.value, cx);
+                editor.set_text(&variable.value, window, cx);
             }
             editor
         });
@@ -721,17 +721,17 @@ mod tests {
             assert!(!editor.is_dirty(cx));
         });
 
-        project_config_editor.update_in(cx, |editor, _, cx| {
+        project_config_editor.update_in(cx, |editor, window, cx| {
             let ProjectConfigEditorState::Ready(rows) = &editor.state else {
                 panic!("expected project config editor to be ready");
             };
             let row = rows.first().unwrap();
             row.value.update(cx, |editor, cx| {
-                editor.set_text("http://localhost:3000", cx);
+                editor.set_text("http://localhost:3000", window, cx);
             });
             let row = &rows[1];
             row.name.update(cx, |editor, cx| {
-                editor.set_text("account_id", cx);
+                editor.set_text("account_id", window, cx);
             });
         });
         let checkbox_bounds = cx.debug_bounds("CHECKBOX-variable-checkbox-2").unwrap();
@@ -812,16 +812,16 @@ mod tests {
 
         let add_button_bounds = cx.debug_bounds("BUTTON-variable-add").unwrap();
         cx.simulate_click(add_button_bounds.center(), Modifiers::default());
-        project_config_editor.update_in(cx, |editor, _, cx| {
+        project_config_editor.update_in(cx, |editor, window, cx| {
             let ProjectConfigEditorState::Ready(rows) = &editor.state else {
                 panic!("expected project config editor to be ready");
             };
             let row = rows.first().unwrap();
             row.name.update(cx, |editor, cx| {
-                editor.set_text("base_url", cx);
+                editor.set_text("base_url", window, cx);
             });
             row.value.update(cx, |editor, cx| {
-                editor.set_text("https://api.zaku.dev", cx);
+                editor.set_text("https://api.zaku.dev", window, cx);
             });
         });
 
@@ -903,13 +903,13 @@ mod tests {
             .downcast::<ProjectConfigEditor>()
             .unwrap();
 
-        project_config_editor.update_in(cx, |editor, _, cx| {
+        project_config_editor.update_in(cx, |editor, window, cx| {
             let ProjectConfigEditorState::Ready(rows) = &editor.state else {
                 panic!("expected project config editor to be ready");
             };
             let row = rows.first().unwrap();
             row.value.update(cx, |editor, cx| {
-                editor.set_text("http://localhost:4321", cx);
+                editor.set_text("http://localhost:4321", window, cx);
             });
         });
 
@@ -1009,13 +1009,13 @@ mod tests {
             .downcast::<ProjectConfigEditor>()
             .unwrap();
 
-        project_config_editor.update_in(cx, |editor, _, cx| {
+        project_config_editor.update_in(cx, |editor, window, cx| {
             let ProjectConfigEditorState::Ready(rows) = &editor.state else {
                 panic!("expected project config editor to be ready");
             };
             let row = rows.first().unwrap();
             row.name.update(cx, |editor, cx| {
-                editor.set_text("1st", cx);
+                editor.set_text("1st", window, cx);
             });
         });
 
@@ -1289,8 +1289,8 @@ mod tests {
         );
         variable4_cx.assert_variable_highlights("{{base_url}}/debug", []);
 
-        variable1_name_editor.update(cx, |editor, cx| {
-            editor.set_text("hostname", cx);
+        variable1_name_editor.update_in(cx, |editor, window, cx| {
+            editor.set_text("hostname", window, cx);
         });
 
         variable2_cx

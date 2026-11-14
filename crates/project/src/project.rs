@@ -26,6 +26,7 @@ use futures::{FutureExt, StreamExt};
 use gpui::TestAppContext;
 use gpui::{App, AppContext, Context, Entity, EventEmitter, SharedString, Task, TaskExt};
 use std::{
+    ops::Range,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -33,7 +34,10 @@ use std::{
 use collections::HashMap;
 use fs::{Fs, MTime};
 use git::status::FileStatus;
-use language::{AvailableLanguage, Buffer, BufferEvent, Language, LanguageRegistry, PLAIN_TEXT};
+use language::{
+    Anchor, AvailableLanguage, Buffer, BufferEvent, CodeLabel, Language, LanguageRegistry,
+    PLAIN_TEXT,
+};
 use path::{PathStyle, RelPath};
 use util::ResultExt;
 use worktree::{EnvironmentFile, ProjectFile};
@@ -240,6 +244,27 @@ impl ProjectItem for Buffer {
     fn is_dirty(&self) -> bool {
         self.is_dirty()
     }
+}
+
+#[derive(Clone)]
+pub struct Completion {
+    pub replace_range: Range<Anchor>,
+    pub new_text: String,
+    pub label: CodeLabel,
+    pub documentation: Option<CompletionDocumentation>,
+    pub match_start: Option<Anchor>,
+}
+
+impl Completion {
+    pub fn filter_text(&self) -> &str {
+        self.label.filter_text()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CompletionDocumentation {
+    pub single_line: SharedString,
+    pub plain_text: SharedString,
 }
 
 pub enum ProjectEvent {

@@ -94,6 +94,7 @@ dirs = { version = "6.0" }
 dunce = { version = "1.0" }
 embed-resource = { version = "3.0" }
 futures = { version = "0.3" }
+fuzzy = { git = "https://github.com/zed-industries/zed", rev = "9a8ab54db4", package = "fuzzy" }
 fuzzy_nucleo = {
   git = "https://github.com/zed-industries/zed",
   rev = "9a8ab54db4",
@@ -139,6 +140,7 @@ objc2-foundation = {
   default-features = false,
   features = ["NSProcessInfo", "NSString", "std"]
 }
+ordered-float = { version = "5.5" }
 oxc_allocator = {
   git = "https://github.com/oxc-project/oxc",
   rev = "ca7104f775",

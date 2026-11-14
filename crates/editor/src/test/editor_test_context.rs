@@ -106,12 +106,12 @@ impl EditorTestContext {
         let selection = ranges.pop().unwrap_or(0..0);
         assert!(ranges.is_empty(), "expected a single selection range");
 
-        self.update_editor(|editor, _, cx| {
+        self.update_editor(|editor, window, cx| {
             let text_buffer = cx.new(|cx| Buffer::local(text.as_str(), cx));
             let buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer.clone(), cx));
             editor.buffer = buffer.clone();
             editor.display_map = cx.new(|cx| DisplayMap::new(buffer, DEFAULT_TAB_SIZE, cx));
-            editor.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
+            editor.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
                 selections.select_ranges([
                     MultiBufferOffset(selection.start)..MultiBufferOffset(selection.end)
                 ]);

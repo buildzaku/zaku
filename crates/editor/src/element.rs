@@ -1,10 +1,10 @@
 use gpui::{
-    AbsoluteLength, Action, App, Axis, BorderStyle, Bounds, ContentMask, Context, Corners,
-    CursorStyle, DispatchPhase, Edges, Element, ElementId, ElementInputHandler, Entity,
-    GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, LayoutId, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, PathBuilder, Pixels, Point,
-    ScrollDelta, ScrollEvent, ShapedLine, SharedString, Size, Style, TextAlign, TextRun, TextStyle,
-    Window, prelude::*,
+    AbsoluteLength, Action, AnyElement, App, AvailableSpace, Axis, BorderStyle, Bounds,
+    ContentMask, Context, Corners, CursorStyle, DefiniteLength, DispatchPhase, Edges, Element,
+    ElementId, ElementInputHandler, Entity, GlobalElementId, Hitbox, HitboxBehavior, Hsla,
+    InspectorElementId, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    PaintQuad, PathBuilder, Pixels, Point, ScrollDelta, ScrollEvent, ShapedLine, SharedString,
+    Size, Style, TextAlign, TextRun, TextStyle, TextStyleRefinement, Window, prelude::*,
 };
 use num_traits::ToPrimitive;
 use smallvec::SmallVec;
@@ -23,12 +23,14 @@ use std::{
 use language::LanguageAwareStyling;
 use multi_buffer::{MultiBufferOffset, MultiBufferRow, RowInfo};
 use settings::Settings;
-use theme::ActiveTheme;
+use theme::{ActiveTheme, BufferLineHeight};
+use ui::POPOVER_Y_PADDING;
 use util::ResultExt;
 
 use crate::{
     CurrentLineHighlight, Editor, EditorMode, EditorSettings, EditorSnapshot, EditorStyle,
     GutterDimensions, MAX_LINE_LEN, ScrollbarDrag, SizingBehavior,
+    code_context_menus::{MENU_ASIDE_MAX_WIDTH, MENU_ASIDE_MIN_WIDTH, MENU_GAP},
     display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, TabPoint},
     scroll::ScrollOffset,
 };
@@ -304,6 +306,21 @@ impl EditorElement {
         register_action(editor, window, Editor::select_to_end_of_line);
         register_action(editor, window, Editor::delete_to_beginning_of_line);
         register_action(editor, window, Editor::delete_to_end_of_line);
+        register_action(editor, window, Editor::cancel);
+        register_action(editor, window, Editor::show_completions);
+        register_action(editor, window, Editor::context_menu_first);
+        register_action(editor, window, Editor::context_menu_prev);
+        register_action(editor, window, Editor::context_menu_next);
+        register_action(editor, window, Editor::context_menu_last);
+        register_action(
+            editor,
+            window,
+            |editor, action: &actions::editor::ConfirmCompletion, window, cx| {
+                if editor.confirm_completion(action, window, cx).is_none() {
+                    cx.propagate();
+                }
+            },
+        );
         register_action(
             editor,
             window,
@@ -311,6 +328,294 @@ impl EditorElement {
                 editor.handle_input(&action.0, window, cx);
             },
         );
+    }
+
+    fn layout_cursor_popovers(
+        &self,
+        line_height: Pixels,
+        text_hitbox: &Hitbox,
+        target_position: Point<Pixels>,
+        right_margin: Pixels,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if !self.editor.read(cx).context_menu_visible() {
+            return;
+        }
+
+        let min_menu_height = line_height * 3.0 + POPOVER_Y_PADDING;
+        let max_menu_height = line_height * 12.0 + POPOVER_Y_PADDING;
+
+        let viewport_bounds = Bounds::new(Point::default(), window.viewport_size()).extend(Edges {
+            right: -right_margin - MENU_GAP,
+            ..Default::default()
+        });
+
+        let Some((laid_out_popovers, y_flipped)) = self.layout_popovers_above_or_below_line(
+            target_position,
+            line_height,
+            min_menu_height,
+            max_menu_height,
+            text_hitbox,
+            viewport_bounds,
+            window,
+            cx,
+            |height, window, cx| {
+                let mut element = self
+                    .render_context_menu(line_height, height, window, cx)
+                    .expect("visible context menu should always render");
+                let size = element.layout_as_root(AvailableSpace::min_size(), window, cx);
+                vec![(element, size)]
+            },
+        ) else {
+            return;
+        };
+        let Some(&menu_bounds) = laid_out_popovers.first() else {
+            return;
+        };
+
+        // Choosing the aside position from the max size keeps it from jumping while filtering.
+        let mut max_target_bounds = menu_bounds;
+        max_target_bounds.size.height = max_menu_height;
+        if y_flipped {
+            max_target_bounds.origin.y -= max_menu_height - menu_bounds.size.height;
+        }
+
+        let mut extend_amount = Edges::all(MENU_GAP);
+        if y_flipped {
+            extend_amount.bottom = line_height;
+        } else {
+            extend_amount.top = line_height;
+        }
+        let target_bounds = menu_bounds.extend(extend_amount);
+        let max_target_bounds = max_target_bounds.extend(extend_amount);
+
+        self.layout_context_menu_aside(
+            y_flipped,
+            menu_bounds,
+            target_bounds,
+            max_target_bounds,
+            max_menu_height,
+            text_hitbox,
+            viewport_bounds,
+            window,
+            cx,
+        );
+    }
+
+    fn layout_popovers_above_or_below_line(
+        &self,
+        target_position: Point<Pixels>,
+        line_height: Pixels,
+        min_height: Pixels,
+        max_height: Pixels,
+        text_hitbox: &Hitbox,
+        viewport_bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        make_sized_popovers: impl FnOnce(
+            Pixels,
+            &mut Window,
+            &mut App,
+        ) -> Vec<(AnyElement, Size<Pixels>)>,
+    ) -> Option<(Vec<Bounds<Pixels>>, bool)> {
+        let text_style = TextStyleRefinement {
+            line_height: Some(DefiniteLength::Fraction(
+                BufferLineHeight::Comfortable.value(),
+            )),
+            ..Default::default()
+        };
+        window.with_text_style(Some(text_style), |window| {
+            let bottom_y_when_flipped = target_position.y - line_height;
+            let available_above = bottom_y_when_flipped - text_hitbox.top();
+            let available_below = text_hitbox.bottom() - target_position.y;
+            let y_overflows_below = max_height > available_below;
+            let mut y_flipped = y_overflows_below && available_above > available_below;
+            let mut height = cmp::min(
+                max_height,
+                if y_flipped {
+                    available_above
+                } else {
+                    available_below
+                },
+            );
+
+            if height < min_height {
+                let available_above = bottom_y_when_flipped;
+                let available_below = viewport_bounds.bottom() - target_position.y;
+                let (y_flipped_override, height_override) = if available_below > min_height {
+                    (false, min_height)
+                } else if available_above > min_height {
+                    (true, min_height)
+                } else if available_above > available_below {
+                    (true, available_above)
+                } else {
+                    (false, available_below)
+                };
+                y_flipped = y_flipped_override;
+                height = height_override;
+            }
+
+            let popovers = make_sized_popovers(height, window, cx);
+            if popovers.is_empty() {
+                return None;
+            }
+
+            let max_width = popovers
+                .iter()
+                .map(|(_, size)| size.width)
+                .max()
+                .unwrap_or_default();
+
+            let mut current_position = gpui::point(
+                target_position
+                    .x
+                    .min((viewport_bounds.right() - max_width).max(Pixels::ZERO)),
+                if y_flipped {
+                    bottom_y_when_flipped
+                } else {
+                    target_position.y
+                },
+            );
+
+            let mut laid_out_popovers = popovers
+                .into_iter()
+                .map(|(element, size)| {
+                    if y_flipped {
+                        current_position.y -= size.height;
+                    }
+                    let position = current_position;
+                    window.defer_draw(element, current_position, 1, None);
+                    if y_flipped {
+                        current_position.y -= MENU_GAP;
+                    } else {
+                        current_position.y += size.height + MENU_GAP;
+                    }
+                    Bounds::new(position, size)
+                })
+                .collect::<Vec<_>>();
+
+            if y_flipped {
+                laid_out_popovers.reverse();
+            }
+
+            Some((laid_out_popovers, y_flipped))
+        })
+    }
+
+    fn layout_context_menu_aside(
+        &self,
+        y_flipped: bool,
+        menu_bounds: Bounds<Pixels>,
+        target_bounds: Bounds<Pixels>,
+        max_target_bounds: Bounds<Pixels>,
+        max_height: Pixels,
+        text_hitbox: &Hitbox,
+        viewport_bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let available_within_viewport = target_bounds.space_within(&viewport_bounds);
+        let positioned_aside = if available_within_viewport.right >= MENU_ASIDE_MIN_WIDTH {
+            let max_width = cmp::min(
+                available_within_viewport.right - gpui::px(1.0),
+                MENU_ASIDE_MAX_WIDTH,
+            );
+            let Some(mut aside) = self.render_context_menu_aside(
+                gpui::size(max_width, max_height - POPOVER_Y_PADDING),
+                cx,
+            ) else {
+                return;
+            };
+            let size = aside.layout_as_root(AvailableSpace::min_size(), window, cx);
+            let right_position = gpui::point(target_bounds.right(), menu_bounds.origin.y);
+            Some((aside, right_position, size))
+        } else {
+            let max_size = gpui::size(
+                cmp::min(
+                    cmp::max(menu_bounds.size.width - gpui::px(2.0), MENU_ASIDE_MIN_WIDTH),
+                    viewport_bounds.right(),
+                ),
+                cmp::min(
+                    max_height,
+                    cmp::max(
+                        available_within_viewport.top,
+                        available_within_viewport.bottom,
+                    ),
+                ) - POPOVER_Y_PADDING,
+            );
+            let Some(mut aside) = self.render_context_menu_aside(max_size, cx) else {
+                return;
+            };
+            let actual_size = aside.layout_as_root(AvailableSpace::min_size(), window, cx);
+
+            let top_position = gpui::point(
+                menu_bounds.origin.x,
+                target_bounds.top() - actual_size.height,
+            );
+            let bottom_position = gpui::point(menu_bounds.origin.x, target_bounds.bottom());
+
+            let fit_within = |available: Edges<Pixels>, wanted: Size<Pixels>| {
+                let fits_above = wanted.height < available.top;
+                let fits_below = wanted.height < available.bottom;
+                if y_flipped {
+                    if fits_above {
+                        Some(top_position)
+                    } else if fits_below {
+                        Some(bottom_position)
+                    } else {
+                        None
+                    }
+                } else if fits_below {
+                    Some(bottom_position)
+                } else if fits_above {
+                    Some(top_position)
+                } else {
+                    None
+                }
+            };
+
+            let available_within_text = max_target_bounds.space_within(&text_hitbox.bounds);
+            let wanted = gpui::size(MENU_ASIDE_MAX_WIDTH, max_height);
+            fit_within(available_within_text, wanted)
+                .or_else(|| fit_within(max_target_bounds.space_within(&viewport_bounds), wanted))
+                .or_else(|| fit_within(available_within_viewport, actual_size))
+                .map(|position| (aside, position, actual_size))
+        };
+
+        if let Some((aside, position, _)) = positioned_aside {
+            window.defer_draw(aside, position, 2, None);
+        }
+    }
+
+    fn render_context_menu(
+        &self,
+        line_height: Pixels,
+        height: Pixels,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<AnyElement> {
+        let max_height_in_lines = ((height - POPOVER_Y_PADDING) / line_height)
+            .floor()
+            .max(0.0)
+            .to_u32()
+            .expect("max height in lines should fit in u32");
+        self.editor.update(cx, |editor, cx| {
+            editor.render_context_menu(max_height_in_lines, window, cx)
+        })
+    }
+
+    fn render_context_menu_aside(
+        &self,
+        max_size: Size<Pixels>,
+        cx: &mut App,
+    ) -> Option<AnyElement> {
+        if max_size.width < gpui::px(100.0) || max_size.height < gpui::px(12.0) {
+            None
+        } else {
+            self.editor
+                .update(cx, |editor, _| editor.render_context_menu_aside(max_size))
+        }
     }
 
     fn layout_scrollbars(
@@ -1094,6 +1399,9 @@ impl Element for EditorElement {
     ) -> (LayoutId, Self::RequestLayoutState) {
         let rem_size = self.rem_size(cx);
         window.with_rem_size(rem_size, |window| {
+            self.editor
+                .update(cx, |editor, _| editor.set_style(self.style.clone()));
+
             let mut style = Style::default();
             style.size.width = gpui::relative(1.0).into();
             let line_height = self.style.text.line_height_in_pixels(window.rem_size());
@@ -1511,6 +1819,19 @@ impl Element for EditorElement {
             let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
             let gutter_hitbox = window.insert_hitbox(gutter_bounds, HitboxBehavior::Normal);
             let text_hitbox = window.insert_hitbox(text_bounds, HitboxBehavior::Normal);
+            if let Some(cursor) = &cursor {
+                self.layout_cursor_popovers(
+                    line_height,
+                    &text_hitbox,
+                    gpui::point(
+                        cursor.bounds.left().max(content_bounds.left()),
+                        cursor.bounds.bottom(),
+                    ),
+                    scrollbar_width,
+                    window,
+                    cx,
+                );
+            }
             let row_infos = display_snapshot
                 .row_infos(DisplayRow(top_row))
                 .take(lines.len())
