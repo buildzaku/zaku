@@ -333,7 +333,6 @@ impl EditorElement {
     fn layout_cursor_popovers(
         &self,
         line_height: Pixels,
-        text_hitbox: &Hitbox,
         target_position: Point<Pixels>,
         right_margin: Pixels,
         window: &mut Window,
@@ -343,7 +342,6 @@ impl EditorElement {
             return;
         }
 
-        let min_menu_height = line_height * 3.0 + POPOVER_Y_PADDING;
         let max_menu_height = line_height * 12.0 + POPOVER_Y_PADDING;
 
         let viewport_bounds = Bounds::new(Point::default(), window.viewport_size()).extend(Edges {
@@ -354,9 +352,7 @@ impl EditorElement {
         let Some((laid_out_popovers, y_flipped)) = self.layout_popovers_above_or_below_line(
             target_position,
             line_height,
-            min_menu_height,
             max_menu_height,
-            text_hitbox,
             viewport_bounds,
             window,
             cx,
@@ -396,7 +392,6 @@ impl EditorElement {
             target_bounds,
             max_target_bounds,
             max_menu_height,
-            text_hitbox,
             viewport_bounds,
             window,
             cx,
@@ -407,9 +402,7 @@ impl EditorElement {
         &self,
         target_position: Point<Pixels>,
         line_height: Pixels,
-        min_height: Pixels,
         max_height: Pixels,
-        text_hitbox: &Hitbox,
         viewport_bounds: Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
@@ -427,11 +420,11 @@ impl EditorElement {
         };
         window.with_text_style(Some(text_style), |window| {
             let bottom_y_when_flipped = target_position.y - line_height;
-            let available_above = bottom_y_when_flipped - text_hitbox.top();
-            let available_below = text_hitbox.bottom() - target_position.y;
+            let available_above = bottom_y_when_flipped - viewport_bounds.top();
+            let available_below = viewport_bounds.bottom() - target_position.y;
             let y_overflows_below = max_height > available_below;
-            let mut y_flipped = y_overflows_below && available_above > available_below;
-            let mut height = cmp::min(
+            let y_flipped = y_overflows_below && available_above > available_below;
+            let height = cmp::min(
                 max_height,
                 if y_flipped {
                     available_above
@@ -439,22 +432,6 @@ impl EditorElement {
                     available_below
                 },
             );
-
-            if height < min_height {
-                let available_above = bottom_y_when_flipped;
-                let available_below = viewport_bounds.bottom() - target_position.y;
-                let (y_flipped_override, height_override) = if available_below > min_height {
-                    (false, min_height)
-                } else if available_above > min_height {
-                    (true, min_height)
-                } else if available_above > available_below {
-                    (true, available_above)
-                } else {
-                    (false, available_below)
-                };
-                y_flipped = y_flipped_override;
-                height = height_override;
-            }
 
             let popovers = make_sized_popovers(height, window, cx);
             if popovers.is_empty() {
@@ -510,17 +487,20 @@ impl EditorElement {
         target_bounds: Bounds<Pixels>,
         max_target_bounds: Bounds<Pixels>,
         max_height: Pixels,
-        text_hitbox: &Hitbox,
         viewport_bounds: Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
     ) {
         let available_within_viewport = target_bounds.space_within(&viewport_bounds);
-        let positioned_aside = if available_within_viewport.right >= MENU_ASIDE_MIN_WIDTH {
-            let max_width = cmp::min(
-                available_within_viewport.right - gpui::px(1.0),
-                MENU_ASIDE_MAX_WIDTH,
-            );
+        let fits_right = available_within_viewport.right >= MENU_ASIDE_MIN_WIDTH;
+        let fits_left = available_within_viewport.left >= MENU_ASIDE_MIN_WIDTH;
+        let positioned_aside = if fits_right || fits_left {
+            let available_width = if fits_right {
+                available_within_viewport.right
+            } else {
+                available_within_viewport.left
+            };
+            let max_width = cmp::min(available_width - gpui::px(1.0), MENU_ASIDE_MAX_WIDTH);
             let Some(mut aside) = self.render_context_menu_aside(
                 gpui::size(max_width, max_height - POPOVER_Y_PADDING),
                 cx,
@@ -528,8 +508,12 @@ impl EditorElement {
                 return;
             };
             let size = aside.layout_as_root(AvailableSpace::min_size(), window, cx);
-            let right_position = gpui::point(target_bounds.right(), menu_bounds.origin.y);
-            Some((aside, right_position, size))
+            let position = if fits_right {
+                gpui::point(target_bounds.right(), menu_bounds.origin.y)
+            } else {
+                gpui::point(target_bounds.left() - size.width, menu_bounds.origin.y)
+            };
+            Some((aside, position, size))
         } else {
             let max_size = gpui::size(
                 cmp::min(
@@ -575,10 +559,8 @@ impl EditorElement {
                 }
             };
 
-            let available_within_text = max_target_bounds.space_within(&text_hitbox.bounds);
             let wanted = gpui::size(MENU_ASIDE_MAX_WIDTH, max_height);
-            fit_within(available_within_text, wanted)
-                .or_else(|| fit_within(max_target_bounds.space_within(&viewport_bounds), wanted))
+            fit_within(max_target_bounds.space_within(&viewport_bounds), wanted)
                 .or_else(|| fit_within(available_within_viewport, actual_size))
                 .map(|position| (aside, position, actual_size))
         };
@@ -1822,7 +1804,6 @@ impl Element for EditorElement {
             if let Some(cursor) = &cursor {
                 self.layout_cursor_popovers(
                     line_height,
-                    &text_hitbox,
                     gpui::point(
                         cursor.bounds.left().max(content_bounds.left()),
                         cursor.bounds.bottom(),
