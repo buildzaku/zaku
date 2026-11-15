@@ -982,7 +982,7 @@ fn test_undo_redo_restores_cursor(cx: &mut TestAppContext) {
     let mut cx = EditorTestContext::new(cx);
 
     cx.set_state("Hello, woˇrld!");
-    cx.dispatch_action(actions::editor::HandleInput("d".to_string()));
+    cx.simulate_keystroke("d");
     cx.assert_state("Hello, wodˇrld!");
 
     cx.dispatch_action(actions::editor::Undo);
@@ -1216,7 +1216,7 @@ fn test_insert_with_old_selections(cx: &mut TestAppContext) {
     });
 
     cx.assert_state("a(ˇ), b(), c()");
-    cx.dispatch_action(actions::editor::HandleInput("Z".to_string()));
+    cx.simulate_keystroke("Z");
     cx.assert_state("a(Zˇ), b(), c()");
 }
 
@@ -1356,7 +1356,7 @@ fn test_vertical_autoscroll_on_undo_redo(cx: &mut TestAppContext) {
         ten
     "});
 
-    cx.dispatch_action(actions::editor::HandleInput("5".to_string()));
+    cx.simulate_keystroke("5");
     cx.assert_state(indoc! {"
         one
         two

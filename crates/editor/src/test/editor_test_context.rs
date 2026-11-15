@@ -1,5 +1,6 @@
 use gpui::{
-    Action, AnyWindowHandle, Context, Entity, TestAppContext, VisualTestContext, Window, prelude::*,
+    Action, AnyWindowHandle, Context, Entity, Keystroke, TestAppContext, VisualTestContext, Window,
+    prelude::*,
 };
 use std::{
     collections::BTreeMap,
@@ -94,6 +95,13 @@ impl EditorTestContext {
         A: Action,
     {
         self.cx.dispatch_action(action);
+    }
+
+    pub fn simulate_keystroke(&mut self, keystroke_text: &str) {
+        let os = self.cx.read(|cx| cx.platform_info().os);
+        let keystroke =
+            Keystroke::parse_with_os(keystroke_text, os).expect("keystroke should parse");
+        self.cx.dispatch_keystroke(self.window, keystroke);
     }
 
     #[track_caller]

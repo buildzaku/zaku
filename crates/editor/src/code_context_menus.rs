@@ -469,3 +469,163 @@ fn exact_case_match_count(query: &str, string_match: &StringMatch) -> usize {
 
     exact_matches
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::TestAppContext;
+    use text::BufferId;
+
+    use language::CodeLabel;
+
+    struct CompletionBuilder;
+
+    impl CompletionBuilder {
+        fn variable(label: &str) -> Completion {
+            Completion {
+                replace_range: text::Anchor::min_max_range_for_buffer(BufferId::new(1).unwrap()),
+                new_text: label.to_string(),
+                label: CodeLabel::plain(label.to_string(), None),
+                documentation: None,
+                match_start: None,
+            }
+        }
+    }
+
+    async fn filter_and_sort_matches(
+        query: &str,
+        completions: &[Completion],
+        cx: &mut TestAppContext,
+    ) -> Vec<StringMatch> {
+        let candidates: Arc<[StringMatchCandidate]> = completions
+            .iter()
+            .enumerate()
+            .map(|(id, completion)| StringMatchCandidate::new(id, completion.filter_text()))
+            .collect();
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        let background_executor = cx.executor();
+        let matches = fuzzy::match_strings(
+            &candidates,
+            query,
+            query.chars().any(|character| character.is_uppercase()),
+            false,
+            100,
+            &cancel_flag,
+            background_executor,
+        )
+        .await;
+        CompletionsMenu::sort_string_matches(matches, Some(query), completions)
+    }
+
+    #[gpui::test]
+    async fn test_sort_exact(cx: &mut TestAppContext) {
+        let completions = vec![
+            CompletionBuilder::variable("token"),
+            CompletionBuilder::variable("access_token"),
+            CompletionBuilder::variable("refresh_token"),
+            CompletionBuilder::variable("token_url"),
+        ];
+        let matches = filter_and_sort_matches("token", &completions, cx).await;
+        assert_eq!(matches[0].string, "token");
+    }
+
+    #[gpui::test]
+    async fn test_sort_positions(cx: &mut TestAppContext) {
+        let completions = vec![
+            CompletionBuilder::variable("db-host"),
+            CompletionBuilder::variable("db-primary-host"),
+            CompletionBuilder::variable("db-replica-host"),
+        ];
+
+        let matches = filter_and_sort_matches("db-host", &completions, cx).await;
+        assert_eq!(matches[0].string, "db-host");
+
+        let matches = filter_and_sort_matches("dbhost", &completions, cx).await;
+        assert_eq!(matches[0].string, "db-host");
+    }
+
+    #[gpui::test]
+    async fn test_case_sensitive_match_tie_breaker(cx: &mut TestAppContext) {
+        let completions = vec![
+            CompletionBuilder::variable("api_key"),
+            CompletionBuilder::variable("API_KEY"),
+        ];
+
+        let matches = filter_and_sort_matches("a", &completions, cx).await;
+        assert_eq!(
+            matches
+                .iter()
+                .map(|string_match| string_match.string.as_str())
+                .collect::<Vec<_>>(),
+            vec!["api_key", "API_KEY"]
+        );
+
+        let matches = filter_and_sort_matches("A", &completions, cx).await;
+        assert_eq!(
+            matches
+                .iter()
+                .map(|string_match| string_match.string.as_str())
+                .collect::<Vec<_>>(),
+            vec!["API_KEY", "api_key"]
+        );
+
+        let matches = filter_and_sort_matches("ap", &completions, cx).await;
+        assert_eq!(
+            matches
+                .iter()
+                .map(|string_match| string_match.string.as_str())
+                .collect::<Vec<_>>(),
+            vec!["api_key", "API_KEY"]
+        );
+
+        let matches = filter_and_sort_matches("AP", &completions, cx).await;
+        assert_eq!(
+            matches
+                .iter()
+                .map(|string_match| string_match.string.as_str())
+                .collect::<Vec<_>>(),
+            vec!["API_KEY", "api_key"]
+        );
+
+        let completions = vec![
+            CompletionBuilder::variable("apiKey"),
+            CompletionBuilder::variable("ApiKey"),
+        ];
+
+        let matches = filter_and_sort_matches("Ap", &completions, cx).await;
+        assert_eq!(
+            matches
+                .iter()
+                .map(|string_match| string_match.string.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ApiKey", "apiKey"]
+        );
+
+        let matches = filter_and_sort_matches("ap", &completions, cx).await;
+        assert_eq!(
+            matches
+                .iter()
+                .map(|string_match| string_match.string.as_str())
+                .collect::<Vec<_>>(),
+            vec!["apiKey", "ApiKey"]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_fuzzy_over_sort_positions(cx: &mut TestAppContext) {
+        let completions = vec![
+            CompletionBuilder::variable("full_request_log"),
+            CompletionBuilder::variable("default_retry_limit"),
+            CompletionBuilder::variable("api_url"),
+            CompletionBuilder::variable("base_url"),
+            CompletionBuilder::variable("callback_url"),
+        ];
+
+        let matches = filter_and_sort_matches("url", &completions, cx).await;
+
+        assert_eq!(matches[0].string, "api_url");
+        assert_eq!(matches[1].string, "base_url");
+        assert_eq!(matches[2].string, "callback_url");
+    }
+}

@@ -321,3 +321,279 @@ pub(crate) fn split_words(text: &str) -> impl Iterator<Item = &str> + '_ {
             }
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::TestAppContext;
+    use std::{
+        ops::Range,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+    use text::ToOffset as _;
+
+    use actions::editor::{Backspace, ContextMenuFirst, ContextMenuLast, MoveLeft};
+    use language::CodeLabel;
+    use multi_buffer::CharClassifier;
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+    use util::test::{TextRangeMarker, marked_text_ranges_by};
+
+    use crate::test::editor_test_context::EditorTestContext;
+
+    fn init_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test_new(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+            crate::init(cx);
+        });
+    }
+
+    struct FakeCompletionMenuProvider {
+        complete_from_offset: usize,
+        replace_range: Range<usize>,
+        completions: Vec<&'static str>,
+        counter: Arc<AtomicUsize>,
+    }
+
+    impl CompletionProvider for FakeCompletionMenuProvider {
+        fn completions(
+            &self,
+            buffer: &Entity<Buffer>,
+            buffer_position: text::Anchor,
+            _: &mut Window,
+            cx: &mut Context<Editor>,
+        ) -> Task<anyhow::Result<Vec<Completion>>> {
+            let buffer = buffer.read(cx);
+            assert_eq!(buffer_position.to_offset(buffer), self.complete_from_offset);
+            self.counter.fetch_add(1, Ordering::Release);
+
+            let replace_range = buffer.anchor_before(self.replace_range.start)
+                ..buffer.anchor_after(self.replace_range.end);
+            Task::ready(Ok(self
+                .completions
+                .iter()
+                .map(|completion_text| Completion {
+                    replace_range: replace_range.clone(),
+                    new_text: completion_text.to_string(),
+                    label: CodeLabel::plain(completion_text.to_string(), None),
+                    documentation: None,
+                    match_start: None,
+                })
+                .collect()))
+        }
+
+        fn is_completion_trigger(
+            &self,
+            buffer: &Entity<Buffer>,
+            position: language::Anchor,
+            text: &str,
+            cx: &mut Context<Editor>,
+        ) -> bool {
+            let mut chars = text.chars();
+            let Some(character) = chars.next() else {
+                return false;
+            };
+            if chars.next().is_some() {
+                return false;
+            }
+
+            if CharClassifier::default().is_word(character) {
+                return true;
+            }
+
+            character == '{'
+                && buffer
+                    .read(cx)
+                    .reversed_chars_at(position)
+                    .take(2)
+                    .eq(['{', '{'])
+        }
+    }
+
+    fn handle_completion_request(
+        marked_string: &str,
+        completions: Vec<&'static str>,
+        counter: Arc<AtomicUsize>,
+        cx: &mut EditorTestContext,
+    ) {
+        let complete_from_marker: TextRangeMarker = '|'.into();
+        let replace_range_marker: TextRangeMarker = ('<', '>').into();
+        let (_, mut marked_ranges) = marked_text_ranges_by(
+            marked_string,
+            vec![complete_from_marker.clone(), replace_range_marker.clone()],
+        );
+
+        let complete_from_offset = marked_ranges.remove(&complete_from_marker).unwrap()[0].start;
+        let replace_range = marked_ranges.remove(&replace_range_marker).unwrap()[0].clone();
+
+        cx.update_editor(|editor, _, _| {
+            editor.set_completion_provider(Some(Rc::new(FakeCompletionMenuProvider {
+                complete_from_offset,
+                replace_range,
+                completions,
+                counter,
+            })));
+        });
+    }
+
+    fn check_displayed_completions(expected: &[&str], cx: &mut EditorTestContext) {
+        cx.update_editor(|editor, _, _| {
+            if let Some(menu) = editor.context_menu.borrow().as_ref() {
+                let entries = menu.entries.borrow();
+                let entries = entries
+                    .iter()
+                    .map(|string_match| string_match.string.as_str())
+                    .collect::<Vec<_>>();
+                assert_eq!(entries, expected);
+            } else {
+                panic!("expected completions menu");
+            }
+        });
+    }
+
+    fn completion_menu_entries(menu: &CompletionsMenu) -> Vec<String> {
+        let entries = menu.entries.borrow();
+        entries
+            .iter()
+            .map(|string_match| string_match.string.clone())
+            .collect()
+    }
+
+    #[gpui::test]
+    fn test_completion_first_last(cx: &mut TestAppContext) {
+        init_test(cx);
+        let mut cx = EditorTestContext::new(cx);
+
+        cx.set_state("{ˇ");
+        handle_completion_request(
+            "{{|<>",
+            vec!["base_url", "token"],
+            Arc::new(AtomicUsize::new(0)),
+            &mut cx,
+        );
+        cx.simulate_keystroke("{");
+        cx.run_until_parked();
+
+        cx.update_editor(|editor, _, _| {
+            if let Some(menu) = editor.context_menu.borrow().as_ref() {
+                assert_eq!(completion_menu_entries(menu), &["base_url", "token"]);
+            } else {
+                panic!("expected completion menu to be open");
+            }
+        });
+
+        cx.update_editor(|editor, window, cx| {
+            editor.context_menu_last(&ContextMenuLast, window, cx);
+            if let Some(menu) = editor.context_menu.borrow().as_ref() {
+                assert_eq!(menu.selected_item, 1);
+            } else {
+                panic!("expected completion menu to stay open after ContextMenuLast");
+            }
+        });
+
+        cx.update_editor(|editor, window, cx| {
+            editor.context_menu_first(&ContextMenuFirst, window, cx);
+            if let Some(menu) = editor.context_menu.borrow().as_ref() {
+                assert_eq!(menu.selected_item, 0);
+            } else {
+                panic!("expected completion menu to stay open after ContextMenuFirst");
+            }
+        });
+    }
+
+    #[gpui::test]
+    fn test_completion_reuse(cx: &mut TestAppContext) {
+        init_test(cx);
+        let mut cx = EditorTestContext::new(cx);
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        cx.set_state("{ˇ");
+        handle_completion_request(
+            "{{|<>",
+            vec!["team_id", "timeout", "token"],
+            counter.clone(),
+            &mut cx,
+        );
+        cx.simulate_keystroke("{");
+        cx.run_until_parked();
+        assert_eq!(counter.load(Ordering::Acquire), 1);
+        cx.assert_state("{{ˇ");
+        check_displayed_completions(&["team_id", "timeout", "token"], &mut cx);
+
+        cx.simulate_keystroke("t");
+        cx.run_until_parked();
+        assert_eq!(counter.load(Ordering::Acquire), 1);
+        cx.assert_state("{{tˇ");
+        check_displayed_completions(&["team_id", "timeout", "token"], &mut cx);
+
+        cx.simulate_keystroke("o");
+        cx.run_until_parked();
+        assert_eq!(counter.load(Ordering::Acquire), 1);
+        cx.assert_state("{{toˇ");
+        check_displayed_completions(&["token", "timeout"], &mut cx);
+
+        cx.simulate_keystroke("k");
+        cx.run_until_parked();
+        assert_eq!(counter.load(Ordering::Acquire), 1);
+        cx.assert_state("{{tokˇ");
+        check_displayed_completions(&["token"], &mut cx);
+
+        cx.update_editor(|editor, window, cx| {
+            editor.backspace(&Backspace, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(counter.load(Ordering::Acquire), 1);
+        cx.assert_state("{{toˇ");
+        check_displayed_completions(&["token", "timeout"], &mut cx);
+
+        cx.update_editor(|editor, window, cx| {
+            editor.move_left(&MoveLeft, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(counter.load(Ordering::Acquire), 1);
+        cx.assert_state("{{tˇo");
+        cx.update_editor(|editor, _, _| {
+            assert!(!editor.context_menu_visible());
+        });
+
+        handle_completion_request(
+            "{{<to|>o",
+            vec!["timeout", "token"],
+            counter.clone(),
+            &mut cx,
+        );
+        cx.simulate_keystroke("o");
+        cx.run_until_parked();
+        assert_eq!(counter.load(Ordering::Acquire), 2);
+        cx.assert_state("{{toˇo");
+        check_displayed_completions(&["token", "timeout"], &mut cx);
+
+        // The query shrinks from "to" to "t", so the menu queries again.
+        handle_completion_request(
+            "{{<t|>o",
+            vec!["team_id", "timeout", "token"],
+            counter.clone(),
+            &mut cx,
+        );
+        cx.update_editor(|editor, window, cx| {
+            editor.backspace(&Backspace, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(counter.load(Ordering::Acquire), 3);
+        cx.assert_state("{{tˇo");
+        check_displayed_completions(&["team_id", "timeout", "token"], &mut cx);
+
+        cx.update_editor(|editor, window, cx| {
+            editor.backspace(&Backspace, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(counter.load(Ordering::Acquire), 3);
+        cx.assert_state("{{ˇo");
+        cx.update_editor(|editor, _, _| {
+            assert!(!editor.context_menu_visible());
+        });
+    }
+}
