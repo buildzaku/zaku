@@ -33,7 +33,7 @@ pub(crate) const MENU_GAP: Pixels = gpui::px(4.0);
 pub(crate) const MENU_ASIDE_X_PADDING: Pixels = gpui::px(16.0);
 pub(crate) const MENU_ASIDE_MIN_WIDTH: Pixels = gpui::px(260.0);
 pub(crate) const MENU_ASIDE_MAX_WIDTH: Pixels = gpui::px(500.0);
-const COMPLETION_MENU_MIN_WIDTH: Pixels = gpui::px(280.0);
+const COMPLETION_MENU_MIN_WIDTH: Pixels = gpui::px(150.0);
 const COMPLETION_MENU_MAX_WIDTH: Pixels = gpui::px(540.0);
 
 pub(crate) struct CompletionsMenu {
