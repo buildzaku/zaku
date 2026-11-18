@@ -1,9 +1,11 @@
 mod base;
+mod copy_button;
 mod icon_button;
 mod link_button;
 mod styled_icon;
 
 pub use base::*;
+pub use copy_button::*;
 pub use icon_button::*;
 pub use link_button::*;
 
