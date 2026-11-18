@@ -16,8 +16,8 @@ pub use worktree::{
     ProjectEntryId, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileFormField,
     RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState,
     Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet, UpdatedGitRepository, Variable,
-    Worktree, WorktreeId, request_method_short_name, substitute_variables_in_str,
-    variable_ranges_in_str,
+    Worktree, WorktreeId, is_variable_name_char, request_method_short_name,
+    substitute_variables_in_str, variable_ranges_in_str,
 };
 
 use anyhow::anyhow;

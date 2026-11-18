@@ -11,11 +11,15 @@ mod scroll;
 mod selections_collection;
 #[cfg(any(test, feature = "test"))]
 pub mod test;
+mod variable_completion_provider;
 
 pub use completions::CompletionProvider;
 pub use editor_settings::{CurrentLineHighlight, EditorSettings, Gutter};
 pub use element::EditorElement;
 pub use multi_buffer::{MultiBufferOffset, MultiBufferOffsetUtf16};
+pub use variable_completion_provider::{
+    VariableCompletionProvider, VariableCompletionProviderDelegate,
+};
 
 use gpui::{
     AnyElement, App, Axis, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
@@ -30,7 +34,6 @@ use std::{
     borrow::Cow,
     cell::RefCell,
     collections::{HashMap, VecDeque},
-    hash::BuildHasher,
     num::NonZeroU32,
     ops::{Deref, Range, RangeInclusive},
     path::PathBuf,
@@ -46,6 +49,7 @@ use multi_buffer::{
     Anchor, CharKind, CharScopeContext, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset,
     ToPoint,
 };
+use project::{Variable, project_config_store::VariableScope};
 use settings::{Settings, SettingsStore};
 use theme::{ActiveTheme, SyntaxTheme, ThemeSettings};
 use ui::Color;
@@ -602,13 +606,15 @@ impl Editor {
         cx.notify();
     }
 
-    fn on_blur(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.selecting = false;
         self.clear_highlights(HighlightKey::InputComposition, cx);
         self.ime_transaction = None;
         self.hide_context_menu(cx);
         cx.emit(EditorEvent::Blurred);
-        cx.notify();
+        // Blur listeners run while the window is drawing, which ignores `notify`, so redraw
+        // once the frame is done.
+        cx.defer_in(window, |_, _, cx| cx.notify());
     }
 
     pub fn buffer_snapshot(&self, cx: &App) -> MultiBufferSnapshot {
@@ -2621,9 +2627,10 @@ impl Editor {
     }
 
     fn render_context_menu_aside(&mut self, max_size: Size<Pixels>) -> Option<AnyElement> {
+        let style = self.style.as_ref()?;
         self.context_menu.borrow_mut().as_mut().and_then(|menu| {
             if menu.visible() {
-                menu.render_aside(max_size)
+                menu.render_aside(style, max_size)
             } else {
                 None
             }
@@ -2787,7 +2794,7 @@ impl Editor {
 
     pub fn highlight_variables(
         &mut self,
-        variables: Option<&HashMap<String, String, impl BuildHasher>>,
+        variables: Option<&[(VariableScope, Variable)]>,
         cx: &mut Context<Self>,
     ) {
         let mut defined_ranges = Vec::new();
@@ -2798,7 +2805,7 @@ impl Editor {
             for (range, name) in project::variable_ranges_in_str(&text) {
                 let range = snapshot.anchor_after(&MultiBufferOffset(range.start))
                     ..snapshot.anchor_before(&MultiBufferOffset(range.end));
-                if variables.contains_key(name) {
+                if variables.iter().any(|(_, variable)| variable.name == name) {
                     defined_ranges.push(range);
                 } else {
                     undefined_ranges.push(range);

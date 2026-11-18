@@ -14,8 +14,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use collections::HashMap;
-use editor::{Editor, EditorEvent};
+use editor::{
+    CompletionProvider, Editor, EditorEvent, VariableCompletionProvider,
+    VariableCompletionProviderDelegate,
+};
 use http_client::{
     AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url, http,
 };
@@ -26,7 +28,8 @@ use path::PathStyle;
 use project::{
     Project, ProjectPath, RequestBuffer, RequestBufferEvent, RequestFile, RequestFileBody,
     RequestFileBodyType, RequestFileFormField, RequestFileHeader, RequestFileHttp, RequestFileMeta,
-    RequestFileParam, RequestFileState, project_config_store::ProjectConfigStoreEvent,
+    RequestFileParam, RequestFileState, Variable,
+    project_config_store::{ProjectConfigStoreEvent, VariableScope},
 };
 use response_panel::{
     Response, ResponseCookie, ResponseHeader, ResponsePanel, ResponsePanelTab, ResponseState,
@@ -315,6 +318,7 @@ struct Request {
 impl Request {
     fn from_request_file(
         request_file: &RequestFile,
+        completion_provider: &Rc<dyn CompletionProvider>,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Self, String> {
@@ -334,6 +338,7 @@ impl Request {
                 Some(&param.name),
                 Some(&param.value),
                 RequestKvKind::Param,
+                completion_provider,
                 window,
                 cx,
             );
@@ -346,6 +351,7 @@ impl Request {
                 Some(&header.name),
                 Some(&header.value),
                 RequestKvKind::Header,
+                completion_provider,
                 window,
                 cx,
             );
@@ -365,13 +371,21 @@ impl Request {
                 | RequestFileBody::Json { data }
                 | RequestFileBody::Html { data }
                 | RequestFileBody::Xml { data },
-            ) => body = Some(RequestBody::new(data.clone(), window, cx)),
+            ) => {
+                body = Some(RequestBody::new(
+                    data.clone(),
+                    completion_provider,
+                    window,
+                    cx,
+                ));
+            }
             Some(RequestFileBody::FormUrlEncoded { data }) => {
                 for field in data {
                     let mut row = self::new_kv_row(
                         Some(&field.name),
                         Some(&field.value),
                         RequestKvKind::FormUrlEncoded,
+                        completion_provider,
                         window,
                         cx,
                     );
@@ -382,17 +396,22 @@ impl Request {
             None => {}
         }
 
+        let http = RequestHttp {
+            method,
+            url,
+            params,
+            headers,
+            body_type,
+            body,
+            form_url_encoded,
+        };
+        http.url_editor(cx).update(cx, |editor, _| {
+            editor.set_completion_provider(Some(completion_provider.clone()));
+        });
+
         Ok(Self {
             meta: request_file.meta.clone(),
-            http: RequestHttp {
-                method,
-                url,
-                params,
-                headers,
-                body_type,
-                body,
-                form_url_encoded,
-            },
+            http,
         })
     }
 
@@ -490,14 +509,23 @@ struct RequestBody {
 }
 
 impl RequestBody {
-    fn new(data: impl Into<String>, window: &mut Window, cx: &mut App) -> Self {
+    fn new(
+        data: impl Into<String>,
+        completion_provider: &Rc<dyn CompletionProvider>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self {
         let data = data.into();
         let payload = cx.new(move |cx| {
             let buffer =
                 cx.new(move |cx| Buffer::local(data, cx).with_language(PLAIN_TEXT.clone(), cx));
             MultiBuffer::singleton(buffer, cx)
         });
-        let editor = cx.new(|cx| Editor::for_multibuffer(payload.clone(), window, cx));
+        let editor = cx.new(|cx| {
+            let mut editor = Editor::for_multibuffer(payload.clone(), window, cx);
+            editor.set_completion_provider(Some(completion_provider.clone()));
+            editor
+        });
 
         Self { editor, payload }
     }
@@ -615,12 +643,14 @@ fn new_kv_row(
     key: Option<&str>,
     value: Option<&str>,
     kind: RequestKvKind,
+    completion_provider: &Rc<dyn CompletionProvider>,
     window: &mut Window,
     cx: &mut App,
 ) -> KeyValueRow {
     let key = cx.new(|cx| {
         let mut editor = Editor::single_line(window, cx);
         editor.set_placeholder_text("Key", cx);
+        editor.set_completion_provider(Some(completion_provider.clone()));
         if let Some(key) = key {
             editor.set_text(key, window, cx);
         }
@@ -634,6 +664,7 @@ fn new_kv_row(
             RequestKvKind::Header => Editor::single_line(window, cx),
         };
         editor.set_placeholder_text("Value", cx);
+        editor.set_completion_provider(Some(completion_provider.clone()));
         if let Some(value) = value {
             editor.set_text(value, window, cx);
         }
@@ -684,11 +715,51 @@ fn input_box(editor: &Entity<Editor>, disabled: bool, cx: &mut App) -> Div {
         .child(editor.clone())
 }
 
+fn scoped_variables(
+    project: &Entity<Project>,
+    buffer: &Entity<RequestBuffer>,
+    cx: &App,
+) -> Option<Vec<(VariableScope, Variable)>> {
+    let project_config_store = project.read(cx).project_config_store().read(cx);
+    // Config files are still loading, so color nothing and show no completions.
+    if !project_config_store.initial_load_completed() {
+        return None;
+    }
+
+    Some(
+        project::ProjectItem::project_path(buffer.read(cx), cx)
+            .map(|request_path| {
+                project_config_store
+                    .scoped_variables_for_request(&request_path)
+                    .into_iter()
+                    .map(|(scope, variable)| (scope, variable.clone()))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    )
+}
+
+struct RequestEditorCompletionDelegate {
+    project: Entity<Project>,
+    buffer: Entity<RequestBuffer>,
+}
+
+impl VariableCompletionProviderDelegate for RequestEditorCompletionDelegate {
+    fn variables(&self, cx: &App) -> Option<Vec<(VariableScope, Variable)>> {
+        self::scoped_variables(&self.project, &self.buffer, cx)
+    }
+
+    fn path_style(&self, cx: &App) -> PathStyle {
+        self.project.read(cx).path_style(cx)
+    }
+}
+
 pub struct RequestEditor {
     focus_handle: FocusHandle,
     workspace: WeakEntity<Workspace>,
     project: Entity<Project>,
     buffer: Entity<RequestBuffer>,
+    completion_provider: Rc<dyn CompletionProvider>,
     request: RequestEditorState,
     request_snapshot: Option<RequestSnapshot>,
     active_tab: RequestEditorTab,
@@ -716,9 +787,15 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> Self {
         let focus_handle = cx.focus_handle();
+        let completion_provider: Rc<dyn CompletionProvider> = Rc::new(
+            VariableCompletionProvider::new(RequestEditorCompletionDelegate {
+                project: project.clone(),
+                buffer: buffer.clone(),
+            }),
+        );
         let request_file = buffer.read(cx).request_file().clone();
         let (request, request_snapshot, input_subscriptions, body_subscription) =
-            Self::state_from_request_file(request_file, window, cx);
+            Self::state_from_request_file(request_file, &completion_provider, window, cx);
         let request_editor = cx.weak_entity();
         let buffer_subscription = window.subscribe(
             &buffer,
@@ -754,7 +831,12 @@ impl RequestEditor {
                     let request_file = buffer.read(cx).request_file().clone();
                     if let Err(error) = request_editor.update(cx, |request_editor, cx| {
                         let (request, request_snapshot, input_subscriptions, body_subscription) =
-                            Self::state_from_request_file(request_file, window, cx);
+                            Self::state_from_request_file(
+                                request_file,
+                                &request_editor.completion_provider,
+                                window,
+                                cx,
+                            );
                         request_editor.request = request;
                         request_editor.request_snapshot = request_snapshot;
                         request_editor.input_subscriptions = input_subscriptions;
@@ -791,6 +873,7 @@ impl RequestEditor {
             workspace,
             project,
             buffer,
+            completion_provider,
             request,
             request_snapshot,
             active_tab: RequestEditorTab::Parameters,
@@ -944,29 +1027,15 @@ impl RequestEditor {
         })
     }
 
-    fn loaded_variables(&self, cx: &App) -> Option<HashMap<String, String>> {
-        let project_config_store = self.project.read(cx).project_config_store().read(cx);
-        // Config files are still loading, so color nothing.
-        if !project_config_store.initial_load_completed() {
-            return None;
-        }
-
-        Some(
-            self.project_path(cx)
-                .map(|request_path| project_config_store.variables_for_request(&request_path))
-                .unwrap_or_default(),
-        )
-    }
-
     fn update_variable_highlights(&self, cx: &mut Context<Self>) {
         let RequestEditorState::Ready(request) = &self.request else {
             return;
         };
 
-        let variables = self.loaded_variables(cx);
+        let variables = self::scoped_variables(&self.project, &self.buffer, cx);
         for (editor, disabled) in request.editors(cx) {
             editor.update(cx, |editor, cx| {
-                editor.highlight_variables(variables.as_ref().filter(|_| !disabled), cx);
+                editor.highlight_variables(variables.as_deref().filter(|_| !disabled), cx);
             });
         }
     }
@@ -985,9 +1054,9 @@ impl RequestEditor {
             .into_iter()
             .find(|(candidate_editor, _)| candidate_editor == editor)
         {
-            let variables = self.loaded_variables(cx);
+            let variables = self::scoped_variables(&self.project, &self.buffer, cx);
             editor.update(cx, |editor, cx| {
-                editor.highlight_variables(variables.as_ref().filter(|_| !disabled), cx);
+                editor.highlight_variables(variables.as_deref().filter(|_| !disabled), cx);
             });
         }
     }
@@ -1063,6 +1132,7 @@ impl RequestEditor {
 
     fn state_from_request_file(
         request_file: RequestFileState,
+        completion_provider: &Rc<dyn CompletionProvider>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> (
@@ -1073,7 +1143,7 @@ impl RequestEditor {
     ) {
         let request = match request_file {
             RequestFileState::Parsed(request_file) => {
-                match Request::from_request_file(&request_file, window, cx) {
+                match Request::from_request_file(&request_file, completion_provider, window, cx) {
                     Ok(request) => RequestEditorState::Ready(request),
                     Err(error) => RequestEditorState::Invalid {
                         error,
@@ -1158,7 +1228,7 @@ impl RequestEditor {
                     | RequestBodyType::Xml,
                 ) => {
                     if request.http.body.is_none() {
-                        let body = RequestBody::new("", window, cx);
+                        let body = RequestBody::new("", &self.completion_provider, window, cx);
                         self.body_subscription =
                             Some(Self::subscribe_to_editor(&body.editor, window, cx));
                         request.http.body = Some(body);
@@ -1976,7 +2046,14 @@ impl RequestEditor {
                     return;
                 };
 
-                let row = self::new_kv_row(None, None, kind, window, cx);
+                let row = self::new_kv_row(
+                    None,
+                    None,
+                    kind,
+                    &request_editor.completion_provider,
+                    window,
+                    cx,
+                );
                 request_editor
                     .input_subscriptions
                     .push(Self::subscribe_to_editor(&row.key, window, cx));

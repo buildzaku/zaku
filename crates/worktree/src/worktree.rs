@@ -6,7 +6,7 @@ pub use language::DiskState;
 pub use project_config::{
     ConfigFile, ConfigFileKind, ConfigFileMeta, ConfigFileState, ConfigFileType, EnvironmentColor,
     EnvironmentFile, EnvironmentSection, FolderFile, ProjectFile, RequestSection, Variable,
-    parse_config_file, substitute_variables_in_str, variable_ranges_in_str,
+    is_variable_name_char, parse_config_file, substitute_variables_in_str, variable_ranges_in_str,
 };
 pub use request::{
     RequestFile, RequestFileBody, RequestFileBodyType, RequestFileFormField, RequestFileHeader,

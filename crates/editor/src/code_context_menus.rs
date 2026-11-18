@@ -1,7 +1,8 @@
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
-    AnyElement, Context, Entity, FontWeight, ListSizingBehavior, Pixels, ScrollHandle,
-    ScrollStrategy, Size, StyledText, Task, UniformListScrollHandle, Window, prelude::*,
+    AnyElement, Context, Entity, FontWeight, ListSizingBehavior, MouseDownEvent, Pixels,
+    ScrollHandle, ScrollStrategy, Size, StyledText, Task, UniformListScrollHandle, Window,
+    prelude::*,
 };
 use itertools::Itertools;
 use num_traits::ToPrimitive;
@@ -22,8 +23,8 @@ use language::Buffer;
 use multi_buffer::Anchor;
 use project::Completion;
 use ui::{
-    Color, ListItem, Popover, ScrollAxes, Scrollbars, Text, TextCommon, TextSize, Toggleable,
-    WithScrollbar,
+    Color, ListItem, ListItemSpacing, Popover, ScrollAxes, Scrollbars, Text, TextCommon, TextSize,
+    Toggleable, WithScrollbar,
 };
 
 use crate::{CompletionId, Editor, EditorStyle, completions::split_words};
@@ -166,6 +167,25 @@ impl CompletionsMenu {
         window: &mut Window,
         cx: &mut Context<Editor>,
     ) -> AnyElement {
+        let widest_completion_index = {
+            let completions = self.completions.borrow();
+            self.entries
+                .borrow()
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, string_match)| {
+                    let completion = completions
+                        .get(string_match.candidate_id)
+                        .expect("completion match should have a candidate");
+                    completion.label.text.chars().count()
+                        + completion
+                            .documentation
+                            .as_ref()
+                            .map_or(0, |documentation| documentation.single_line.chars().count())
+                })
+                .map(|(index, _)| index)
+        };
+
         let selected_item = self.selected_item;
         let completions = self.completions.clone();
         let entries = self.entries.clone();
@@ -219,7 +239,16 @@ impl CompletionsMenu {
                             .child(
                                 ListItem::new(string_match.candidate_id)
                                     .inset(true)
+                                    .spacing(ListItemSpacing::Sparse)
                                     .toggle_state(item_index == selected_item)
+                                    .on_hover(cx.listener(move |editor, hovered, _, cx| {
+                                        if *hovered
+                                            && let Some(menu) =
+                                                editor.context_menu.borrow_mut().as_mut()
+                                        {
+                                            menu.update_selection_index(item_index, cx);
+                                        }
+                                    }))
                                     .on_click(cx.listener(move |editor, _event, window, cx| {
                                         cx.stop_propagation();
                                         editor.confirm_completion(
@@ -257,24 +286,46 @@ impl CompletionsMenu {
         )
         .track_scroll(&self.scroll_handle)
         .with_sizing_behavior(ListSizingBehavior::Infer)
-        .w(gpui::rems(34.0));
+        .with_width_from_item(widest_completion_index);
 
         Popover::new()
-            .child(gpui::div().child(list).custom_scrollbars(
-                Scrollbars::new(ScrollAxes::Vertical).tracked_scroll_handle(&self.scroll_handle),
-                window,
-                cx,
-            ))
+            .child(
+                gpui::div()
+                    .child(list)
+                    .custom_scrollbars(
+                        Scrollbars::new(ScrollAxes::Vertical)
+                            .tracked_scroll_handle(&self.scroll_handle)
+                            .width_xs(),
+                        window,
+                        cx,
+                    )
+                    .on_mouse_down_out(cx.listener(|editor, _: &MouseDownEvent, _, cx| {
+                        editor.hide_context_menu(cx);
+                    })),
+            )
             .into_any_element()
     }
 
-    pub(crate) fn render_aside(&mut self, max_size: Size<Pixels>) -> Option<AnyElement> {
+    pub(crate) fn render_aside(
+        &mut self,
+        style: &EditorStyle,
+        max_size: Size<Pixels>,
+    ) -> Option<AnyElement> {
         let entries = self.entries.borrow();
         let string_match = entries.get(self.selected_item)?;
         let completions = self.completions.borrow();
         let completion = completions.get(string_match.candidate_id)?;
-        let multiline_docs =
-            gpui::div().child(completion.documentation.as_ref()?.plain_text.clone());
+        let plain_text = &completion.documentation.as_ref()?.plain_text;
+        let multiline_docs = gpui::div()
+            .font(style.text.font())
+            .text_size(style.text.font_size)
+            .map(|this| {
+                if plain_text.is_empty() {
+                    this.child(Text::new("Empty").color(Color::Muted))
+                } else {
+                    this.child(plain_text.clone())
+                }
+            });
 
         Some(
             Popover::new()

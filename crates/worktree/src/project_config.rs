@@ -202,6 +202,10 @@ pub fn parse_config_file<T: DeserializeOwned>(contents: &str) -> anyhow::Result<
     })
 }
 
+pub fn is_variable_name_char(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
+}
+
 pub fn variable_ranges_in_str(text: &str) -> impl Iterator<Item = (Range<usize>, &str)> {
     let mut rest = text;
     iter::from_fn(move || {
