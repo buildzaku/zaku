@@ -51,12 +51,6 @@ pub(crate) struct CompletionsMenu {
     scroll_handle_aside: ScrollHandle,
 }
 
-impl Drop for CompletionsMenu {
-    fn drop(&mut self) {
-        self.cancel_filter.store(true, Ordering::Relaxed);
-    }
-}
-
 impl CompletionsMenu {
     pub(crate) fn new(
         id: CompletionId,
@@ -494,6 +488,12 @@ impl CompletionsMenu {
         });
 
         matches
+    }
+}
+
+impl Drop for CompletionsMenu {
+    fn drop(&mut self) {
+        self.cancel_filter.store(true, Ordering::Relaxed);
     }
 }
 

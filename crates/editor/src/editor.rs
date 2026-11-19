@@ -4,6 +4,7 @@ mod config;
 pub mod display_map;
 mod editor_settings;
 mod element;
+mod hover_popover;
 pub mod items;
 mod movement;
 mod persistence;
@@ -11,15 +12,13 @@ mod scroll;
 mod selections_collection;
 #[cfg(any(test, feature = "test"))]
 pub mod test;
-mod variable_completion_provider;
+mod variable_provider;
 
 pub use completions::CompletionProvider;
-pub use editor_settings::{CurrentLineHighlight, EditorSettings, Gutter};
+pub use editor_settings::{CurrentLineHighlight, EditorSettings, Gutter, HoverPopover};
 pub use element::EditorElement;
 pub use multi_buffer::{MultiBufferOffset, MultiBufferOffsetUtf16};
-pub use variable_completion_provider::{
-    VariableCompletionProvider, VariableCompletionProviderDelegate,
-};
+pub use variable_provider::{VariableProvider, VariableProviderDelegate};
 
 use gpui::{
     AnyElement, App, Axis, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
@@ -49,16 +48,17 @@ use multi_buffer::{
     Anchor, CharKind, CharScopeContext, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset,
     ToPoint,
 };
-use project::{Variable, project_config_store::VariableScope};
+use project::{EnvironmentColor, Variable, project_config_store::VariableScope};
 use settings::{Settings, SettingsStore};
-use theme::{ActiveTheme, SyntaxTheme, ThemeSettings};
-use ui::Color;
+use theme::{ActiveTheme, SyntaxTheme, Theme, ThemeSettings};
+use ui::{Color, Icon, IconAsset, IconSize};
 use util::ResultExt;
 
 use crate::{
     code_context_menus::CompletionsMenu,
     display_map::{DisplayMap, DisplayPoint, DisplayRow, DisplaySnapshot, HighlightKey},
     element::PositionMap,
+    hover_popover::HoverState,
     scroll::ScrollOffset,
     selections_collection::{MutableSelectionsCollection, SelectionsCollection},
 };
@@ -66,6 +66,20 @@ use crate::{
 pub const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
 
 type CompletionId = usize;
+
+type BackgroundHighlight = (
+    Arc<dyn Fn(&usize, &Theme) -> Hsla + Send + Sync>,
+    Arc<[Range<Anchor>]>,
+);
+
+pub trait SemanticsProvider {
+    fn hover(
+        &self,
+        buffer: &Entity<Buffer>,
+        position: text::Anchor,
+        cx: &mut App,
+    ) -> Option<Task<Option<Vec<project::Hover>>>>;
+}
 
 pub fn init(cx: &mut App) {
     workspace::register_project_item::<Editor>(cx);
@@ -76,6 +90,20 @@ pub fn init(cx: &mut App) {
             cx.new(|cx| Editor::single_line(window, cx)),
         )) as Arc<dyn ErasedEditor>
     });
+}
+
+pub fn environment_icon(environment_color: Option<EnvironmentColor>, text_color: Color) -> Icon {
+    Icon::new(IconAsset::SquareInset)
+        .size(IconSize::XSmall)
+        .color(match environment_color {
+            Some(EnvironmentColor::Red) => Color::PaletteRed,
+            Some(EnvironmentColor::Orange) => Color::PaletteOrange,
+            Some(EnvironmentColor::Yellow) => Color::PaletteYellow,
+            Some(EnvironmentColor::Green) => Color::PaletteGreen,
+            Some(EnvironmentColor::Blue) => Color::PaletteBlue,
+            Some(EnvironmentColor::Purple) => Color::PalettePurple,
+            None => text_color,
+        })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -455,6 +483,9 @@ pub struct Editor {
     completion_provider: Option<Rc<dyn CompletionProvider>>,
     completion_tasks: Vec<(CompletionId, Task<()>)>,
     next_completion_id: CompletionId,
+    semantics_provider: Option<Rc<dyn SemanticsProvider>>,
+    hover_state: HoverState,
+    background_highlights: HashMap<HighlightKey, BackgroundHighlight>,
     _focus_subscriptions: Vec<Subscription>,
     _settings_subscription: Subscription,
     _buffer_subscription: Option<Subscription>,
@@ -589,6 +620,9 @@ impl Editor {
             completion_provider: None,
             completion_tasks: Vec::new(),
             next_completion_id: 0,
+            semantics_provider: None,
+            hover_state: HoverState::default(),
+            background_highlights: HashMap::default(),
             _focus_subscriptions: focus_subscriptions,
             _settings_subscription: settings_subscription,
             _buffer_subscription: buffer_subscription,
@@ -610,6 +644,7 @@ impl Editor {
         self.selecting = false;
         self.clear_highlights(HighlightKey::InputComposition, cx);
         self.ime_transaction = None;
+        hover_popover::hide_hover(self, cx);
         self.hide_context_menu(cx);
         cx.emit(EditorEvent::Blurred);
         // Blur listeners run while the window is drawing, which ignores `notify`, so redraw
@@ -784,6 +819,8 @@ impl Editor {
                 self.hide_context_menu(cx);
             }
         }
+
+        hover_popover::hide_hover(self, cx);
     }
 
     fn start_transaction_at(
@@ -2698,6 +2735,7 @@ impl Editor {
 
     fn dismiss_menus_and_popups(&mut self, cx: &mut Context<Self>) -> bool {
         let mut dismissed = false;
+        dismissed |= hover_popover::hide_hover(self, cx);
         dismissed |= self.hide_context_menu(cx).is_some();
         dismissed
     }
@@ -2792,6 +2830,32 @@ impl Editor {
         }
     }
 
+    pub fn highlight_background(
+        &mut self,
+        key: HighlightKey,
+        ranges: &[Range<Anchor>],
+        color_fetcher: impl Fn(&usize, &Theme) -> Hsla + Send + Sync + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        self.background_highlights
+            .insert(key, (Arc::new(color_fetcher), Arc::from(ranges)));
+        cx.notify();
+    }
+
+    pub fn clear_background_highlights(&mut self, key: HighlightKey, cx: &mut Context<Self>) {
+        if self
+            .background_highlights
+            .remove(&key)
+            .is_some_and(|(_, ranges)| !ranges.is_empty())
+        {
+            cx.notify();
+        }
+    }
+
+    pub fn set_semantics_provider(&mut self, provider: Option<Rc<dyn SemanticsProvider>>) {
+        self.semantics_provider = provider;
+    }
+
     pub fn highlight_variables(
         &mut self,
         variables: Option<&[(VariableScope, Variable)]>,
@@ -2828,11 +2892,16 @@ impl Editor {
             if ranges.is_empty() {
                 self.clear_highlights(key, cx);
             } else {
+                let color = color.color(cx);
                 self.highlight_text(
                     key,
                     ranges,
                     HighlightStyle {
-                        color: Some(color.color(cx)),
+                        color: Some(if self.muted {
+                            color.opacity(0.5)
+                        } else {
+                            color
+                        }),
                         ..Default::default()
                     },
                     cx,

@@ -142,6 +142,8 @@ gpui::actions!(
         Delete,
         /// Delete from the cursor to the end of the line.
         DeleteToEndOfLine,
+        /// Show information about the symbol under the cursor.
+        Hover,
         /// Insert a new line and move the cursor to it.
         Newline,
         /// Move the cursor left.

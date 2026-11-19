@@ -6,6 +6,7 @@ use gpui::{
     PaintQuad, PathBuilder, Pixels, Point, ScrollDelta, ScrollEvent, ShapedLine, SharedString,
     Size, Style, TextAlign, TextRun, TextStyle, TextStyleRefinement, Window, prelude::*,
 };
+use itertools::Itertools as _;
 use num_traits::ToPrimitive;
 use smallvec::SmallVec;
 use std::{
@@ -31,7 +32,11 @@ use crate::{
     CurrentLineHighlight, Editor, EditorMode, EditorSettings, EditorSnapshot, EditorStyle,
     GutterDimensions, MAX_LINE_LEN, ScrollbarDrag, SizingBehavior,
     code_context_menus::{MENU_ASIDE_MAX_WIDTH, MENU_ASIDE_MIN_WIDTH, MENU_GAP},
-    display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, TabPoint},
+    display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, TabPoint, ToDisplayPoint},
+    hover_popover::{
+        self, HOVER_POPOVER_GAP, MIN_POPOVER_CHARACTER_WIDTH, MIN_POPOVER_LINE_HEIGHT,
+        POPOVER_RIGHT_OFFSET,
+    },
     scroll::ScrollOffset,
 };
 
@@ -187,6 +192,7 @@ pub struct EditorLayout {
     line_numbers: Arc<HashMap<MultiBufferRow, LineNumberLayout>>,
     active_line_background: Option<PaintQuad>,
     cursor: Option<PaintQuad>,
+    highlighted_ranges: Vec<(Range<DisplayPoint>, Hsla)>,
     selection_ranges: Vec<Range<DisplayPoint>>,
     vertical_scrollbar: Option<ScrollbarPrepaint>,
     horizontal_scrollbar: Option<ScrollbarPrepaint>,
@@ -312,6 +318,7 @@ impl EditorElement {
         register_action(editor, window, Editor::context_menu_prev);
         register_action(editor, window, Editor::context_menu_next);
         register_action(editor, window, Editor::context_menu_last);
+        register_action(editor, window, hover_popover::hover);
         register_action(
             editor,
             window,
@@ -600,6 +607,157 @@ impl EditorElement {
         }
     }
 
+    fn layout_hover_popovers(
+        &self,
+        display_snapshot: &DisplaySnapshot,
+        visible_row_range: Range<DisplayRow>,
+        lines: &[LineWithInvisibles],
+        line_height: Pixels,
+        em_width: Pixels,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        struct MeasuredHoverPopover {
+            element: AnyElement,
+            size: Size<Pixels>,
+            horizontal_offset: Pixels,
+        }
+
+        fn draw_occluder(width: Pixels, origin: Point<Pixels>, window: &mut Window, cx: &mut App) {
+            let mut occlusion = gpui::div()
+                .size_full()
+                .occlude()
+                .on_mouse_move(|_, _, cx| cx.stop_propagation())
+                .into_any_element();
+            occlusion.layout_as_root(gpui::size(width, HOVER_POPOVER_GAP).into(), window, cx);
+            window.defer_draw(occlusion, origin, 2, None);
+        }
+
+        fn place_popovers_above(
+            hovered_point: Point<Pixels>,
+            measured_hover_popovers: Vec<MeasuredHoverPopover>,
+            window: &mut Window,
+            cx: &mut App,
+        ) {
+            let mut current_y = hovered_point.y;
+            for (position, popover) in measured_hover_popovers.into_iter().with_position() {
+                let size = popover.size;
+                let popover_origin = gpui::point(
+                    hovered_point.x + popover.horizontal_offset,
+                    current_y - size.height,
+                );
+
+                window.defer_draw(popover.element, popover_origin, 2, None);
+                if position != itertools::Position::Last {
+                    let origin =
+                        gpui::point(popover_origin.x, popover_origin.y - HOVER_POPOVER_GAP);
+                    draw_occluder(size.width, origin, window, cx);
+                }
+
+                current_y = popover_origin.y - HOVER_POPOVER_GAP;
+            }
+        }
+
+        fn place_popovers_below(
+            hovered_point: Point<Pixels>,
+            measured_hover_popovers: Vec<MeasuredHoverPopover>,
+            line_height: Pixels,
+            window: &mut Window,
+            cx: &mut App,
+        ) {
+            let mut current_y = hovered_point.y + line_height;
+            for (position, popover) in measured_hover_popovers.into_iter().with_position() {
+                let size = popover.size;
+                let popover_origin =
+                    gpui::point(hovered_point.x + popover.horizontal_offset, current_y);
+
+                window.defer_draw(popover.element, popover_origin, 2, None);
+                if position != itertools::Position::Last {
+                    let origin = gpui::point(popover_origin.x, popover_origin.y + size.height);
+                    draw_occluder(size.width, origin, window, cx);
+                }
+
+                current_y = popover_origin.y + size.height + HOVER_POPOVER_GAP;
+            }
+        }
+
+        let viewport_bounds = Bounds::new(Point::default(), window.viewport_size());
+        let max_size = gpui::size(
+            (em_width * 120.0)
+                .min(viewport_bounds.size.width / 2.0)
+                .max(em_width * MIN_POPOVER_CHARACTER_WIDTH),
+            (line_height * 16.0)
+                .min(viewport_bounds.size.height / 2.0)
+                .max(line_height * MIN_POPOVER_LINE_HEIGHT),
+        );
+
+        let Some((popover_position, hover_popovers)) = self.editor.update(cx, |editor, cx| {
+            editor.hover_state.render(
+                display_snapshot,
+                visible_row_range,
+                max_size,
+                &self.style,
+                window,
+                cx,
+            )
+        }) else {
+            return;
+        };
+
+        let Some(hovered_line) = lines.iter().find(|line| line.row == popover_position.row())
+        else {
+            return;
+        };
+        let column = (popover_position.column() as usize)
+            .saturating_sub(hovered_line.line_display_column_start);
+        let hovered_point = gpui::point(
+            hovered_line.origin.x + hovered_line.x_for_index(column),
+            hovered_line.origin.y,
+        );
+
+        let measured_hover_popovers = hover_popovers
+            .into_iter()
+            .map(|mut hover_popover| {
+                let size = hover_popover.layout_as_root(AvailableSpace::min_size(), window, cx);
+                let horizontal_offset = (viewport_bounds.top_right().x
+                    - POPOVER_RIGHT_OFFSET
+                    - (hovered_point.x + size.width))
+                    .min(Pixels::ZERO);
+                MeasuredHoverPopover {
+                    element: hover_popover,
+                    size,
+                    horizontal_offset,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let can_place_above = {
+            let mut current_y = hovered_point.y;
+            measured_hover_popovers.iter().all(|popover| {
+                let size = popover.size;
+                let popover_origin = gpui::point(
+                    hovered_point.x + popover.horizontal_offset,
+                    current_y - size.height,
+                );
+                let bounds = Bounds::new(popover_origin, size);
+                current_y = popover_origin.y - HOVER_POPOVER_GAP;
+                bounds.is_contained_within(&viewport_bounds)
+            })
+        };
+
+        if can_place_above {
+            place_popovers_above(hovered_point, measured_hover_popovers, window, cx);
+        } else {
+            place_popovers_below(
+                hovered_point,
+                measured_hover_popovers,
+                line_height,
+                window,
+                cx,
+            );
+        }
+    }
+
     fn layout_scrollbars(
         bounds: Bounds<Pixels>,
         show_vertical_scrollbar: bool,
@@ -659,6 +817,18 @@ impl EditorElement {
         cx: &mut App,
     ) {
         let corner_radius = 0.15 * layout.position_map.line_height;
+        for (range, color) in &layout.highlighted_ranges {
+            Self::paint_highlighted_range(
+                range.clone(),
+                true,
+                *color,
+                Pixels::ZERO,
+                corner_radius,
+                layout,
+                text_bounds,
+                window,
+            );
+        }
         for range in &layout.selection_ranges {
             Self::paint_highlighted_range(
                 range.clone(),
@@ -990,6 +1160,18 @@ impl EditorElement {
 
                 editor.update(cx, |editor, cx| {
                     if !editor.selecting {
+                        let anchor = position_map
+                            .text_hitbox
+                            .is_hovered(window)
+                            .then(|| position_map.point_for_position(event.position).as_valid())
+                            .flatten()
+                            .map(|point| {
+                                let display_snapshot = &position_map.snapshot.display_snapshot;
+                                display_snapshot.buffer_snapshot().anchor_before(
+                                    &point.to_offset(display_snapshot, text::Bias::Left),
+                                )
+                            });
+                        hover_popover::hover_at(editor, anchor, Some(event.position), window, cx);
                         return;
                     }
 
@@ -1819,6 +2001,27 @@ impl Element for EditorElement {
                 .collect::<Vec<_>>();
             let visible_row_count =
                 u32::try_from(row_infos.len()).expect("visible row count should fit in u32");
+            self.layout_hover_popovers(
+                &display_snapshot,
+                DisplayRow(top_row)..DisplayRow(top_row + visible_row_count),
+                &lines,
+                line_height,
+                em_width,
+                window,
+                cx,
+            );
+
+            let mut highlighted_ranges = Vec::new();
+            for (color_fetcher, ranges) in self.editor.read(cx).background_highlights.values() {
+                for (index, range) in ranges.iter().enumerate() {
+                    highlighted_ranges.push((
+                        range.start.to_display_point(&display_snapshot)
+                            ..range.end.to_display_point(&display_snapshot),
+                        color_fetcher(&index, cx.theme()),
+                    ));
+                }
+            }
+
             let gutter = Gutter {
                 line_height,
                 range: DisplayRow(top_row)..DisplayRow(top_row + visible_row_count),
@@ -1878,6 +2081,7 @@ impl Element for EditorElement {
                 line_numbers,
                 active_line_background,
                 cursor,
+                highlighted_ranges,
                 selection_ranges,
                 vertical_scrollbar,
                 horizontal_scrollbar,

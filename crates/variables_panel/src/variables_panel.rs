@@ -1176,7 +1176,7 @@ impl VariablesPanel {
                         .size(IconSize::Small)
                         .color(Color::Error)
                 } else {
-                    environment_selector::environment_icon(environment.color, icon_color)
+                    editor::environment_icon(environment.color, icon_color)
                 },
                 environment.name,
             ),
@@ -1303,7 +1303,7 @@ impl VariablesPanel {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(environment_selector::environment_icon(color, text_color)),
+                            .child(editor::environment_icon(color, text_color)),
                     )
                     .child(match edit_state.processing_name.clone() {
                         Some(name) => gpui::div()

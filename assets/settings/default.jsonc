@@ -21,6 +21,11 @@
     "gutter": {
       "line_numbers": true,
       "min_line_number_digits": 4
+    },
+    "hover_popover": {
+      "enabled": true,
+      "delay": 300,
+      "hiding_delay": 300
     }
   },
   "git": {

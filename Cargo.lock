@@ -2000,6 +2000,7 @@ name = "environment_selector"
 version = "26.2.0-dev"
 dependencies = [
  "actions",
+ "editor",
  "fuzzy_nucleo",
  "gpui",
  "path 26.2.0-dev",
@@ -6091,7 +6092,6 @@ dependencies = [
  "anyhow",
  "db",
  "editor",
- "environment_selector",
  "fs",
  "gpui",
  "indoc",
@@ -8180,6 +8180,7 @@ name = "title_bar"
 version = "26.2.0-dev"
 dependencies = [
  "actions",
+ "editor",
  "environment_selector",
  "gpui",
  "path 26.2.0-dev",
@@ -9252,7 +9253,6 @@ dependencies = [
  "actions",
  "anyhow",
  "editor",
- "environment_selector",
  "fs",
  "gpui",
  "indoc",

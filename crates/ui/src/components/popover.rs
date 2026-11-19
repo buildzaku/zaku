@@ -11,6 +11,23 @@ pub struct Popover {
     aside: Option<AnyElement>,
 }
 
+impl Popover {
+    pub fn new() -> Self {
+        Self {
+            children: SmallVec::new(),
+            aside: None,
+        }
+    }
+
+    pub fn aside(mut self, aside: impl IntoElement) -> Self
+    where
+        Self: Sized,
+    {
+        self.aside = Some(aside.into_element().into_any());
+        self
+    }
+}
+
 impl RenderOnce for Popover {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         gpui::div()
@@ -41,23 +58,6 @@ impl RenderOnce for Popover {
 impl Default for Popover {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Popover {
-    pub fn new() -> Self {
-        Self {
-            children: SmallVec::new(),
-            aside: None,
-        }
-    }
-
-    pub fn aside(mut self, aside: impl IntoElement) -> Self
-    where
-        Self: Sized,
-    {
-        self.aside = Some(aside.into_element().into_any());
-        self
     }
 }
 

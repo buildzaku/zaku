@@ -7,7 +7,9 @@ use multi_buffer::{CharKind, CharScopeContext, MultiBufferSnapshot, ToOffset};
 use project::Completion;
 use util::ResultExt;
 
-use crate::{CompletionId, Editor, SelectionEffects, code_context_menus::CompletionsMenu};
+use crate::{
+    CompletionId, Editor, SelectionEffects, code_context_menus::CompletionsMenu, hover_popover,
+};
 
 impl Editor {
     pub fn set_completion_provider(&mut self, provider: Option<Rc<dyn CompletionProvider>>) {
@@ -190,6 +192,7 @@ impl Editor {
                     && let Some(menu) = menu
                 {
                     *editor.context_menu.borrow_mut() = Some(menu);
+                    hover_popover::hide_hover(editor, cx);
                     cx.notify();
                     return;
                 }

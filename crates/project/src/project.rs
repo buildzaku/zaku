@@ -46,7 +46,9 @@ use crate::{
     buffer_store::{BufferStore, BufferStoreEvent, is_not_found_error},
     git_store::GitStore,
     project_config_buffer_store::{ProjectConfigBufferStore, ProjectConfigBufferStoreEvent},
-    project_config_store::{InvalidConfigFileError, ProjectConfigStore, ProjectConfigStoreEvent},
+    project_config_store::{
+        InvalidConfigFileError, ProjectConfigStore, ProjectConfigStoreEvent, VariableScope,
+    },
     request_buffer_store::{RequestBufferStore, RequestBufferStoreEvent},
     worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent},
 };
@@ -261,10 +263,16 @@ impl Completion {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct CompletionDocumentation {
     pub single_line: SharedString,
     pub plain_text: SharedString,
+}
+
+#[derive(Debug, Clone)]
+pub struct Hover {
+    pub range: Range<Anchor>,
+    pub variable: Option<(VariableScope, SharedString)>,
 }
 
 pub enum ProjectEvent {

@@ -1,29 +1,51 @@
 use gpui::{App, Context, Entity, SharedString, Task, Window};
 use std::{collections::HashMap, ops::Range};
-use text::ToOffset as _;
+use text::{ToOffset as _, ToPoint as _};
 
 use language::{Buffer, CodeLabel};
 use path::PathStyle;
 use project::{Completion, CompletionDocumentation, Variable, project_config_store::VariableScope};
 
-use crate::{CompletionProvider, Editor};
+use crate::{CompletionProvider, Editor, SemanticsProvider};
 
-pub trait VariableCompletionProviderDelegate: 'static {
+pub trait VariableProviderDelegate: 'static {
     fn variables(&self, cx: &App) -> Option<Vec<(VariableScope, Variable)>>;
-    fn path_style(&self, cx: &App) -> PathStyle;
 }
 
-pub struct VariableCompletionProvider<T: VariableCompletionProviderDelegate> {
+pub struct VariableProvider<T: VariableProviderDelegate> {
     source: T,
 }
 
-impl<T: VariableCompletionProviderDelegate> VariableCompletionProvider<T> {
+impl<T: VariableProviderDelegate> VariableProvider<T> {
     pub fn new(source: T) -> Self {
         Self { source }
     }
+
+    fn resolved_variables(
+        &self,
+        cx: &App,
+    ) -> Option<HashMap<String, (VariableScope, SharedString)>> {
+        let scoped_variables = self.source.variables(cx)?;
+        let values = scoped_variables
+            .iter()
+            .map(|(_, variable)| (variable.name.as_str(), variable.value.as_str()))
+            .collect::<HashMap<_, _>>();
+        let resolved_variables = scoped_variables
+            .iter()
+            .filter(|(_, variable)| !variable.name.is_empty())
+            .map(|(scope, variable)| {
+                let value = project::substitute_variables_in_str(&variable.value, &values);
+                (
+                    variable.name.clone(),
+                    (scope.clone(), SharedString::from(value)),
+                )
+            })
+            .collect();
+        Some(resolved_variables)
+    }
 }
 
-impl<T: VariableCompletionProviderDelegate> CompletionProvider for VariableCompletionProvider<T> {
+impl<T: VariableProviderDelegate> CompletionProvider for VariableProvider<T> {
     fn completions(
         &self,
         buffer: &Entity<Buffer>,
@@ -36,33 +58,21 @@ impl<T: VariableCompletionProviderDelegate> CompletionProvider for VariableCompl
         else {
             return Task::ready(Ok(Vec::new()));
         };
-        let Some(scoped_variables) = self.source.variables(cx) else {
+        let Some(resolved_variables) = self.resolved_variables(cx) else {
             return Task::ready(Ok(Vec::new()));
         };
-        let path_style = self.source.path_style(cx);
-
-        let mut variables: HashMap<_, _> = HashMap::default();
-        for (scope, variable) in &scoped_variables {
-            if !variable.name.is_empty() {
-                variables.insert(variable.name.as_str(), (scope, variable.value.as_str()));
-            }
-        }
-        let values = variables
-            .iter()
-            .map(|(name, (_, value))| (name.to_string(), value.to_string()))
-            .collect::<HashMap<_, _>>();
 
         let replace_range = buffer.anchor_before(variable_completion.source_range.start)
             ..buffer.anchor_after(variable_completion.source_range.end);
-        let completions = variables
+        let completions = resolved_variables
             .into_iter()
             .map(|(name, (scope, value))| Completion {
                 replace_range: replace_range.clone(),
                 new_text: format!("{name}{}", variable_completion.closing_braces),
-                label: CodeLabel::plain(name.to_string(), None),
+                label: CodeLabel::plain(name, None),
                 documentation: Some(CompletionDocumentation {
-                    single_line: self::scope_label(scope, path_style),
-                    plain_text: project::substitute_variables_in_str(value, &values).into(),
+                    single_line: self::scope_label(&scope),
+                    plain_text: value,
                 }),
                 match_start: Some(replace_range.start),
             })
@@ -78,6 +88,34 @@ impl<T: VariableCompletionProviderDelegate> CompletionProvider for VariableCompl
         cx: &mut Context<Editor>,
     ) -> bool {
         VariableCompletion::for_position(buffer.read(cx), position).is_some()
+    }
+}
+
+impl<T: VariableProviderDelegate> SemanticsProvider for VariableProvider<T> {
+    fn hover(
+        &self,
+        buffer: &Entity<Buffer>,
+        position: text::Anchor,
+        cx: &mut App,
+    ) -> Option<Task<Option<Vec<project::Hover>>>> {
+        let buffer = buffer.read(cx);
+        let point = position.to_point(buffer);
+        let line_start = buffer.point_to_offset(text::Point::new(point.row, 0));
+        let line_end =
+            buffer.point_to_offset(text::Point::new(point.row, buffer.line_len(point.row)));
+        let line = buffer
+            .text_for_range(line_start..line_end)
+            .collect::<String>();
+        let cursor_in_line = position.to_offset(buffer) - line_start;
+        let (range, name) = project::variable_ranges_in_str(&line)
+            .find(|(range, _)| range.contains(&cursor_in_line))?;
+
+        let hover = project::Hover {
+            range: buffer.anchor_after(line_start + range.start)
+                ..buffer.anchor_before(line_start + range.end),
+            variable: self.resolved_variables(cx)?.remove(name),
+        };
+        Some(Task::ready(Some(vec![hover])))
     }
 }
 
@@ -133,12 +171,12 @@ impl VariableCompletion {
     }
 }
 
-fn scope_label(scope: &VariableScope, path_style: PathStyle) -> SharedString {
+pub(crate) fn scope_label(scope: &VariableScope) -> SharedString {
     match scope {
         VariableScope::Project => SharedString::from("Project"),
-        VariableScope::Environment(name) => SharedString::from(name.clone()),
+        VariableScope::Environment { name, .. } => SharedString::from(name.clone()),
         VariableScope::Folder(folder) => {
-            SharedString::from(folder.display(path_style).into_owned())
+            SharedString::from(folder.display(PathStyle::local()).into_owned())
         }
     }
 }

@@ -6,8 +6,8 @@ use fs::Fs;
 use path::{PathStyle, RelPath};
 use util::ResultExt;
 use worktree::{
-    ConfigFileKind, ConfigFileType, Entry, EnvironmentFile, FolderFile, PathChange, ProjectFile,
-    UpdatedEntriesSet, Variable, Worktree, WorktreeId,
+    ConfigFileKind, ConfigFileType, Entry, EnvironmentColor, EnvironmentFile, FolderFile,
+    PathChange, ProjectFile, UpdatedEntriesSet, Variable, Worktree, WorktreeId,
 };
 
 use crate::{
@@ -31,7 +31,10 @@ pub struct InvalidConfigFileError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VariableScope {
     Project,
-    Environment(String),
+    Environment {
+        name: String,
+        color: Option<EnvironmentColor>,
+    },
     Folder(Arc<RelPath>),
 }
 
@@ -176,7 +179,11 @@ impl ProjectConfigStore {
                             .variables
                             .iter()
                             .map(move |variable| {
-                                (VariableScope::Environment(name.clone()), variable)
+                                let scope = VariableScope::Environment {
+                                    name: name.clone(),
+                                    color: environment_file.environment.color,
+                                };
+                                (scope, variable)
                             })
                     }),
             )

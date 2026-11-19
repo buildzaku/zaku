@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CodeLabel {
     pub text: String,
     pub filter_range: Range<usize>,

@@ -7,10 +7,7 @@ use gpui::{
 };
 use std::{collections::HashMap, rc::Rc};
 
-use editor::{
-    CompletionProvider, Editor, EditorEvent, VariableCompletionProvider,
-    VariableCompletionProviderDelegate,
-};
+use editor::{Editor, EditorEvent, VariableProvider, VariableProviderDelegate};
 use path::PathStyle;
 use project::{
     ConfigFile, ConfigFileState, ConfigFileType, EnvironmentColor, Project, ProjectConfigBuffer,
@@ -181,7 +178,10 @@ fn scoped_variables(
             project_config_store.active_environment().and_then(|name| {
                 let environment_file = project_config_store.environment_file(name)?;
                 Some((
-                    VariableScope::Environment(name.to_string()),
+                    VariableScope::Environment {
+                        name: name.to_string(),
+                        color: environment_file.environment.color,
+                    },
                     environment_file.environment.variables.as_slice(),
                 ))
             }),
@@ -194,14 +194,18 @@ fn scoped_variables(
                     project_file.request.variables.as_slice(),
                 )
             }),
-            VariableScope::Environment(
-                buffer
+            VariableScope::Environment {
+                name: buffer
                     .file()
                     .path
                     .file_stem()
                     .unwrap_or_default()
                     .to_string(),
-            ),
+                color: match config_file {
+                    ConfigFile::Environment(environment_file) => environment_file.environment.color,
+                    ConfigFile::Project(_) => None,
+                },
+            },
         ),
     };
     Some(
@@ -224,18 +228,14 @@ fn scoped_variables(
     )
 }
 
-struct ProjectConfigEditorCompletionDelegate {
+struct ProjectConfigEditorVariableDelegate {
     project: Entity<Project>,
     buffer: Entity<ProjectConfigBuffer>,
 }
 
-impl VariableCompletionProviderDelegate for ProjectConfigEditorCompletionDelegate {
+impl VariableProviderDelegate for ProjectConfigEditorVariableDelegate {
     fn variables(&self, cx: &App) -> Option<Vec<(VariableScope, Variable)>> {
         self::scoped_variables(&self.project, &self.buffer, cx)
-    }
-
-    fn path_style(&self, cx: &App) -> PathStyle {
-        self.project.read(cx).path_style(cx)
     }
 }
 
@@ -256,7 +256,7 @@ pub struct ProjectConfigEditor {
     focus_handle: FocusHandle,
     project: Entity<Project>,
     buffer: Entity<ProjectConfigBuffer>,
-    completion_provider: Rc<dyn CompletionProvider>,
+    variable_provider: Rc<VariableProvider<ProjectConfigEditorVariableDelegate>>,
     state: ProjectConfigEditorState,
     saved_variables: Option<Vec<Variable>>,
     variables_scroll_handle: ScrollHandle,
@@ -272,15 +272,14 @@ impl ProjectConfigEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let completion_provider: Rc<dyn CompletionProvider> = Rc::new(
-            VariableCompletionProvider::new(ProjectConfigEditorCompletionDelegate {
+        let variable_provider =
+            Rc::new(VariableProvider::new(ProjectConfigEditorVariableDelegate {
                 project: project.clone(),
                 buffer: buffer.clone(),
-            }),
-        );
+            }));
         let config_file = buffer.read(cx).config_file().clone();
         let (state, saved_variables) =
-            Self::state_from_config_file(config_file, &completion_provider, window, cx);
+            Self::state_from_config_file(config_file, &variable_provider, window, cx);
         let buffer_subscription = cx.subscribe_in(
             &buffer,
             window,
@@ -303,7 +302,7 @@ impl ProjectConfigEditor {
                         let config_file = buffer.read(cx).config_file().clone();
                         let (state, saved_variables) = Self::state_from_config_file(
                             config_file,
-                            &project_config_editor.completion_provider,
+                            &project_config_editor.variable_provider,
                             window,
                             cx,
                         );
@@ -337,7 +336,7 @@ impl ProjectConfigEditor {
             focus_handle: cx.focus_handle(),
             project,
             buffer,
-            completion_provider,
+            variable_provider,
             state,
             saved_variables,
             variables_scroll_handle: ScrollHandle::new(),
@@ -351,7 +350,7 @@ impl ProjectConfigEditor {
 
     fn state_from_config_file(
         config_file: ConfigFileState,
-        completion_provider: &Rc<dyn CompletionProvider>,
+        variable_provider: &Rc<VariableProvider<ProjectConfigEditorVariableDelegate>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> (ProjectConfigEditorState, Option<Vec<Variable>>) {
@@ -361,7 +360,7 @@ impl ProjectConfigEditor {
                 let rows = variables
                     .iter()
                     .map(|variable| {
-                        Self::new_variable_row(Some(variable), completion_provider, window, cx)
+                        Self::new_variable_row(Some(variable), variable_provider, window, cx)
                     })
                     .collect();
                 let saved_variables = variables
@@ -377,7 +376,7 @@ impl ProjectConfigEditor {
 
     fn new_variable_row(
         variable: Option<&Variable>,
-        completion_provider: &Rc<dyn CompletionProvider>,
+        variable_provider: &Rc<VariableProvider<ProjectConfigEditorVariableDelegate>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> VariableRow {
@@ -392,7 +391,8 @@ impl ProjectConfigEditor {
         let value = cx.new(|cx| {
             let mut editor = Editor::auto_height(1, Some(4), window, cx);
             editor.set_placeholder_text("Value", cx);
-            editor.set_completion_provider(Some(completion_provider.clone()));
+            editor.set_completion_provider(Some(variable_provider.clone()));
+            editor.set_semantics_provider(Some(variable_provider.clone()));
             if let Some(variable) = variable {
                 editor.set_text(&variable.value, window, cx);
             }
@@ -460,7 +460,7 @@ impl ProjectConfigEditor {
         let variables = self::scoped_variables(&self.project, &self.buffer, cx);
         for row in rows {
             row.value.update(cx, |editor, cx| {
-                editor.highlight_variables(variables.as_deref().filter(|_| !row.disabled), cx);
+                editor.highlight_variables(variables.as_deref(), cx);
             });
         }
     }
@@ -631,7 +631,7 @@ impl ProjectConfigEditor {
             .on_click(cx.listener(|project_config_editor, _, window, cx| {
                 let row = Self::new_variable_row(
                     None,
-                    &project_config_editor.completion_provider,
+                    &project_config_editor.variable_provider,
                     window,
                     cx,
                 );
