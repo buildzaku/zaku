@@ -3995,4 +3995,132 @@ mod tests {
         header_cx
             .assert_variable_highlights("Bearer «{{api_key}}»", [HighlightKey::VariableUndefined]);
     }
+
+    #[gpui::test]
+    async fn test_variable_hover_in_request_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "project.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [request]
+                        variables = [
+                          { name = "host", value = "api.zaku.dev" },
+                          { name = "base_url", value = "https://{{host}}" },
+                          { name = "query", value = "" }
+                        ]
+                    "#}
+                },
+                "users": {
+                    ".zaku": {
+                        "folder.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [request]
+                            variables = [{ name = "user_id", value = "1" }]
+                        "#}
+                    },
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "{{base_url}}/users/{{user_id}}"
+                        params = [{ name = "q", value = "{{query}}" }]
+                        headers = [{ name = "Authorization", value = "Bearer {{token}}" }]
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        cx.run_until_parked();
+        let (workspace, _, cx) = build_workspace(&project, cx);
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path("users/request.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        let (url_editor, param_editor, header_editor) =
+            request_editor.read_with(cx, |editor, cx| {
+                let RequestEditorState::Ready(request) = &editor.request else {
+                    panic!("expected request editor to be ready");
+                };
+                (
+                    request.http.url_editor(cx),
+                    request.http.params[0].value.clone(),
+                    request.http.headers[0].value.clone(),
+                )
+            });
+
+        editor::test::trigger_hover(&url_editor, 4, cx);
+        cx.run_until_parked();
+        url_editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.hover_state.info_popovers[0].hover.variable,
+                Some((
+                    VariableScope::Project,
+                    SharedString::from("https://api.zaku.dev")
+                ))
+            );
+        });
+
+        editor::test::trigger_hover(&url_editor, 23, cx);
+        cx.run_until_parked();
+        url_editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.hover_state.info_popovers[0].hover.variable,
+                Some((
+                    VariableScope::Folder(rel_path("users").into()),
+                    SharedString::from("1")
+                ))
+            );
+        });
+
+        editor::test::trigger_hover(&url_editor, 14, cx);
+        cx.run_until_parked();
+        url_editor.read_with(cx, |editor, _| {
+            assert!(editor.hover_state.info_popovers.is_empty());
+        });
+
+        editor::test::trigger_hover(&param_editor, 4, cx);
+        cx.run_until_parked();
+        param_editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.hover_state.info_popovers[0].hover.variable,
+                Some((VariableScope::Project, SharedString::from("")))
+            );
+        });
+
+        editor::test::trigger_hover(&header_editor, 11, cx);
+        cx.run_until_parked();
+        header_editor.read_with(cx, |editor, _| {
+            assert_eq!(editor.hover_state.info_popovers[0].hover.variable, None);
+        });
+    }
 }

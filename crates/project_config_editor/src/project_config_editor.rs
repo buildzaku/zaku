@@ -1495,7 +1495,7 @@ mod tests {
             rows[1].value.clone()
         });
 
-        editor::test::trigger_hover(&project_value_editor, cx, 4);
+        editor::test::trigger_hover(&project_value_editor, 4, cx);
         cx.run_until_parked();
 
         project_value_editor.read_with(cx, |editor, _| {
@@ -1526,7 +1526,7 @@ mod tests {
             rows[1].value.clone()
         });
 
-        editor::test::trigger_hover(&dev_value_editor, cx, 4);
+        editor::test::trigger_hover(&dev_value_editor, 4, cx);
         cx.run_until_parked();
 
         dev_value_editor.read_with(cx, |editor, _| {

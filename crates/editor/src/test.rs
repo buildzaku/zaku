@@ -7,7 +7,7 @@ use multi_buffer::MultiBufferOffset;
 
 use crate::{Editor, SelectionEffects, hover_popover};
 
-pub fn trigger_hover(editor: &Entity<Editor>, cx: &mut VisualTestContext, offset: usize) {
+pub fn trigger_hover(editor: &Entity<Editor>, offset: usize, cx: &mut VisualTestContext) {
     editor.update_in(cx, |editor, window, cx| {
         editor.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
             selections.select_ranges([MultiBufferOffset(offset)..MultiBufferOffset(offset)]);
