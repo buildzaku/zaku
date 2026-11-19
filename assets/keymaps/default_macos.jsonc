@@ -221,7 +221,8 @@
       "cmd-shift-z": "editor::Redo",
       "cmd-shift-u": "editor::RedoSelection",
       "escape": "editor::Cancel",
-      "ctrl-space": "editor::ShowCompletions"
+      "ctrl-space": "editor::ShowCompletions",
+      "cmd-k cmd-i": "editor::Hover"
     }
   },
   {

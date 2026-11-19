@@ -210,7 +210,8 @@
       "ctrl-y": "editor::Redo",
       "ctrl-shift-u": "editor::RedoSelection",
       "escape": "editor::Cancel",
-      "ctrl-space": "editor::ShowCompletions"
+      "ctrl-space": "editor::ShowCompletions",
+      "ctrl-k ctrl-i": "editor::Hover"
     }
   },
   {
