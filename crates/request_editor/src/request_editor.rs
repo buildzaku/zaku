@@ -3902,7 +3902,7 @@ mod tests {
                 HighlightKey::VariableUndefined,
             ],
         );
-        param_cx.assert_variable_highlights("{{debug_level}}", []);
+        param_cx.assert_variable_highlights("«{{debug_level}}»", [HighlightKey::VariableDefined]);
         header_cx
             .assert_variable_highlights("Bearer «{{token}}»", [HighlightKey::VariableUndefined]);
 
@@ -3934,19 +3934,16 @@ mod tests {
             })
             .await;
 
-        let (url_editor, param_editor, header_editor) =
-            request_editor.read_with(cx, |editor, cx| {
-                let RequestEditorState::Ready(request) = &editor.request else {
-                    panic!("expected request editor to be ready");
-                };
-                (
-                    request.http.url_editor(cx),
-                    request.http.params[0].value.clone(),
-                    request.http.headers[0].value.clone(),
-                )
-            });
+        let (url_editor, header_editor) = request_editor.read_with(cx, |editor, cx| {
+            let RequestEditorState::Ready(request) = &editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            (
+                request.http.url_editor(cx),
+                request.http.headers[0].value.clone(),
+            )
+        });
         let mut url_cx = EditorTestContext::for_editor_in(url_editor, cx);
-        let mut param_cx = EditorTestContext::for_editor_in(param_editor, cx);
         let mut header_cx = EditorTestContext::for_editor_in(header_editor, cx);
         url_cx.assert_variable_highlights(
             "«{{base_url}}»/users/«{{user_id}}»",
@@ -3997,10 +3994,5 @@ mod tests {
 
         header_cx
             .assert_variable_highlights("Bearer «{{api_key}}»", [HighlightKey::VariableUndefined]);
-
-        let checkbox_bounds = cx.debug_bounds("CHECKBOX-param-checkbox-0").unwrap();
-        cx.simulate_click(checkbox_bounds.center(), Modifiers::default());
-
-        param_cx.assert_variable_highlights("«{{debug_level}}»", [HighlightKey::VariableDefined]);
     }
 }

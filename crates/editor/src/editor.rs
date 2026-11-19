@@ -4,7 +4,7 @@ mod config;
 pub mod display_map;
 mod editor_settings;
 mod element;
-mod hover_popover;
+pub mod hover_popover;
 pub mod items;
 mod movement;
 mod persistence;
@@ -484,7 +484,7 @@ pub struct Editor {
     completion_tasks: Vec<(CompletionId, Task<()>)>,
     next_completion_id: CompletionId,
     semantics_provider: Option<Rc<dyn SemanticsProvider>>,
-    hover_state: HoverState,
+    pub hover_state: HoverState,
     background_highlights: HashMap<HighlightKey, BackgroundHighlight>,
     _focus_subscriptions: Vec<Subscription>,
     _settings_subscription: Subscription,

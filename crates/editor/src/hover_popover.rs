@@ -32,7 +32,7 @@ pub(crate) const MIN_POPOVER_LINE_HEIGHT: f32 = 4.0;
 pub(crate) const POPOVER_RIGHT_OFFSET: Pixels = gpui::px(8.0);
 pub(crate) const HOVER_POPOVER_GAP: Pixels = gpui::px(10.0);
 
-pub(crate) fn hover(editor: &mut Editor, _: &Hover, window: &mut Window, cx: &mut Context<Editor>) {
+pub fn hover(editor: &mut Editor, _: &Hover, window: &mut Window, cx: &mut Context<Editor>) {
     let head = editor.selections.newest_anchor().head();
     show_hover(editor, head, true, window, cx);
 }
@@ -219,8 +219,8 @@ fn same_info_hover(editor: &Editor, snapshot: &MultiBufferSnapshot, anchor: Anch
 }
 
 #[derive(Default)]
-pub(crate) struct HoverState {
-    pub(crate) info_popovers: Vec<InfoPopover>,
+pub struct HoverState {
+    pub info_popovers: Vec<InfoPopover>,
     pub(crate) info_task: Option<Task<Option<()>>>,
     pub(crate) closest_mouse_distance: Option<Pixels>,
     pub(crate) hiding_delay_task: Option<Task<()>>,
@@ -301,9 +301,9 @@ impl HoverState {
     }
 }
 
-pub(crate) struct InfoPopover {
+pub struct InfoPopover {
     symbol_range: Range<Anchor>,
-    hover: project::Hover,
+    pub hover: project::Hover,
     scroll_handle: ScrollHandle,
     keyboard_grace: Rc<RefCell<bool>>,
     anchor: Anchor,

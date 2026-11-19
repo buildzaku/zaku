@@ -173,8 +173,9 @@ fn scoped_variables(
     let ConfigFileState::Parsed(config_file) = buffer.config_file() else {
         return None;
     };
-    let (other_scope_variables, scope) = match buffer.file_type() {
-        ConfigFileType::Project => (
+    let scope_variables = match buffer.file_type() {
+        ConfigFileType::Project => [
+            Some((VariableScope::Project, config_file.variables())),
             project_config_store.active_environment().and_then(|name| {
                 let environment_file = project_config_store.environment_file(name)?;
                 Some((
@@ -185,43 +186,42 @@ fn scoped_variables(
                     environment_file.environment.variables.as_slice(),
                 ))
             }),
-            VariableScope::Project,
-        ),
-        ConfigFileType::Environment => (
+        ],
+        ConfigFileType::Environment => [
             project_config_store.project_file().map(|project_file| {
                 (
                     VariableScope::Project,
                     project_file.request.variables.as_slice(),
                 )
             }),
-            VariableScope::Environment {
-                name: buffer
-                    .file()
-                    .path
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string(),
-                color: match config_file {
-                    ConfigFile::Environment(environment_file) => environment_file.environment.color,
-                    ConfigFile::Project(_) => None,
+            Some((
+                VariableScope::Environment {
+                    name: buffer
+                        .file()
+                        .path
+                        .file_stem()
+                        .unwrap_or_default()
+                        .to_string(),
+                    color: match config_file {
+                        ConfigFile::Environment(environment_file) => {
+                            environment_file.environment.color
+                        }
+                        ConfigFile::Project(_) => None,
+                    },
                 },
-            },
-        ),
+                config_file.variables(),
+            )),
+        ],
     };
     Some(
-        other_scope_variables
+        scope_variables
             .into_iter()
-            .flat_map(|(other_scope, variables)| {
+            .flatten()
+            .flat_map(|(scope, variables)| {
                 variables
                     .iter()
-                    .map(move |variable| (other_scope.clone(), variable))
+                    .map(move |variable| (scope.clone(), variable))
             })
-            .chain(
-                config_file
-                    .variables()
-                    .iter()
-                    .map(|variable| (scope.clone(), variable)),
-            )
             .filter(|(_, variable)| !variable.disabled)
             .map(|(scope, variable)| (scope, variable.clone()))
             .collect(),
@@ -1362,7 +1362,8 @@ mod tests {
                 HighlightKey::VariableUndefined,
             ],
         );
-        variable4_cx.assert_variable_highlights("{{base_url}}/debug", []);
+        variable4_cx
+            .assert_variable_highlights("«{{base_url}}»/debug", [HighlightKey::VariableDefined]);
 
         variable1_name_editor.update_in(cx, |editor, window, cx| {
             editor.set_text("hostname", window, cx);
@@ -1408,5 +1409,131 @@ mod tests {
 
         project_variable2_cx
             .assert_variable_highlights("user:«{{user_id}}»", [HighlightKey::VariableDefined]);
+    }
+
+    #[gpui::test]
+    async fn test_variable_precedence_in_project_config_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "project.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [request]
+                        variables = [
+                          { name = "channel", value = "stable" },
+                          { name = "release", value = "{{channel}}/latest" }
+                        ]
+                    "#},
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            color = "green"
+                            variables = [
+                              { name = "channel", value = "beta" },
+                              { name = "release", value = "{{channel}}/latest" }
+                            ]
+                        "#}
+                    }
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        cx.run_until_parked();
+        let (workspace, cx) = build_workspace(&project, cx);
+
+        project.update(cx, |project, cx| {
+            project
+                .project_config_store()
+                .clone()
+                .update(cx, |project_config_store, cx| {
+                    project_config_store.activate_environment(Some("Dev".to_string()), cx);
+                });
+        });
+
+        let expected_variable = Some((
+            VariableScope::Environment {
+                name: "Dev".to_string(),
+                color: Some(EnvironmentColor::Green),
+            },
+            SharedString::from("beta"),
+        ));
+
+        let project_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/project.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+        let project_value_editor = project_editor.read_with(cx, |editor, _| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            rows[1].value.clone()
+        });
+
+        editor::test::trigger_hover(&project_value_editor, cx, 4);
+        cx.run_until_parked();
+
+        project_value_editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.hover_state.info_popovers[0].hover.variable,
+                expected_variable
+            );
+        });
+
+        let dev_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path(".zaku/environments/Dev.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+        let dev_value_editor = dev_editor.read_with(cx, |editor, _| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            rows[1].value.clone()
+        });
+
+        editor::test::trigger_hover(&dev_value_editor, cx, 4);
+        cx.run_until_parked();
+
+        dev_value_editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.hover_state.info_popovers[0].hover.variable,
+                expected_variable
+            );
+        });
     }
 }
