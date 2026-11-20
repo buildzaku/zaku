@@ -589,14 +589,18 @@ mod tests {
         cx.assert_state("{{tˇo");
         check_displayed_completions(&["team_id", "timeout", "token"], &mut cx);
 
+        handle_completion_request(
+            "{{|<>o",
+            vec!["team_id", "timeout", "token"],
+            counter.clone(),
+            &mut cx,
+        );
         cx.update_editor(|editor, window, cx| {
             editor.backspace(&Backspace, window, cx);
         });
         cx.run_until_parked();
-        assert_eq!(counter.load(Ordering::Acquire), 3);
+        assert_eq!(counter.load(Ordering::Acquire), 4);
         cx.assert_state("{{ˇo");
-        cx.update_editor(|editor, _, _| {
-            assert!(!editor.context_menu_visible());
-        });
+        check_displayed_completions(&["team_id", "timeout", "token"], &mut cx);
     }
 }

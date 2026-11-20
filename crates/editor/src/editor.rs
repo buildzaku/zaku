@@ -1832,6 +1832,9 @@ impl Editor {
             }
             this.replace_selection("", window, cx);
         });
+        if self.context_menu.borrow().is_none() {
+            self.open_or_update_completions_menu(None, window, cx);
+        }
     }
 
     fn delete(&mut self, _: &actions::editor::Delete, window: &mut Window, cx: &mut Context<Self>) {
@@ -1849,6 +1852,9 @@ impl Editor {
             }
             this.replace_selection("", window, cx);
         });
+        if self.context_menu.borrow().is_none() {
+            self.open_or_update_completions_menu(None, window, cx);
+        }
     }
 
     fn delete_to_previous_word_start(
