@@ -1819,7 +1819,8 @@ impl RequestEditor {
                     .count();
 
                 gpui::div()
-                    .id(id)
+                    .id(id.clone())
+                    .debug_selector(|| format!("TAB-{id}"))
                     .relative()
                     .flex_none()
                     .flex()
@@ -2364,6 +2365,27 @@ mod tests {
         (workspace, response_panel, cx)
     }
 
+    fn completion_menu_entries(editor: &Editor) -> Vec<[String; 3]> {
+        let context_menu = editor.context_menu().borrow();
+        let Some(menu) = context_menu.as_ref() else {
+            panic!("expected completions menu");
+        };
+        let completions = menu.completions.borrow();
+        let entries = menu.entries.borrow();
+        entries
+            .iter()
+            .map(|string_match| {
+                let completion = &completions[string_match.candidate_id];
+                let documentation = completion.documentation.as_ref().unwrap();
+                [
+                    completion.label.text.clone(),
+                    documentation.plain_text.to_string(),
+                    documentation.single_line.to_string(),
+                ]
+            })
+            .collect()
+    }
+
     #[gpui::test]
     async fn test_send_request_respects_disabled(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
@@ -2411,8 +2433,8 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "folder": {
-                    "request.toml": indoc! {r#"
+                "foo": {
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -2441,7 +2463,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("folder/request.toml")),
+            path: Arc::from(rel_path("foo/req1.toml")),
         };
 
         workspace
@@ -2533,7 +2555,7 @@ mod tests {
                     "#},
                 },
                 "foo": {
-                    "request.toml": indoc! {r#"
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -2569,7 +2591,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("foo/request.toml")),
+            path: Arc::from(rel_path("foo/req1.toml")),
         };
 
         workspace
@@ -2640,8 +2662,8 @@ mod tests {
                         ]
                     "#},
                 },
-                "folder": {
-                    "request.toml": indoc! {r#"
+                "foo": {
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -2681,7 +2703,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("folder/request.toml")),
+            path: Arc::from(rel_path("foo/req1.toml")),
         };
 
         workspace
@@ -2736,8 +2758,8 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "folder": {
-                    "request.toml": indoc! {r#"
+                "foo": {
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -2763,7 +2785,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("folder/request.toml")),
+            path: Arc::from(rel_path("foo/req1.toml")),
         };
 
         let request_editor = workspace
@@ -2827,8 +2849,8 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "folder": {
-                    "request.toml": indoc! {r#"
+                "foo": {
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -2859,7 +2881,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("folder/request.toml")),
+            path: Arc::from(rel_path("foo/req1.toml")),
         };
 
         let request_editor = workspace
@@ -2940,8 +2962,8 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "folder": {
-                    "request.toml": indoc! {r#"
+                "foo": {
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -2960,7 +2982,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("folder/request.toml")),
+            path: Arc::from(rel_path("foo/req1.toml")),
         };
 
         let request_editor = workspace
@@ -3051,8 +3073,8 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "folder": {
-                    "request.toml": indoc! {r#"
+                "foo": {
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -3071,7 +3093,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("folder/request.toml")),
+            path: Arc::from(rel_path("foo/req1.toml")),
         };
 
         let request_editor = workspace
@@ -3150,22 +3172,22 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "folder": {
-                    "first.toml": indoc! {r#"
+                "foo": {
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
                         [http]
                         method = "GET"
-                        url = "https://api.zaku.dev/first"
+                        url = "https://api.zaku.dev/req1"
                     "#},
-                    "second.toml": indoc! {r#"
+                    "req2.toml": indoc! {r#"
                         [meta]
                         version = 1
 
                         [http]
                         method = "GET"
-                        url = "https://api.zaku.dev/second"
+                        url = "https://api.zaku.dev/req2"
                     "#}
                 }
             }),
@@ -3176,10 +3198,10 @@ mod tests {
         let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
         let (workspace, response_panel, cx) = build_workspace(&project, cx);
 
-        let first_editor = workspace
+        let req1_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(
-                    ProjectPath::from((worktree_id, rel_path("folder/first.toml"))),
+                    ProjectPath::from((worktree_id, rel_path("foo/req1.toml"))),
                     None,
                     true,
                     window,
@@ -3191,13 +3213,13 @@ mod tests {
             .downcast::<RequestEditor>()
             .unwrap();
         cx.dispatch_action(actions::workspace::SendRequest);
-        let (path, first_tx) = rx.try_recv().unwrap();
-        assert_eq!(path, "/first");
+        let (path, req1_tx) = rx.try_recv().unwrap();
+        assert_eq!(path, "/req1");
 
-        let second_editor = workspace
+        let req2_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(
-                    ProjectPath::from((worktree_id, rel_path("folder/second.toml"))),
+                    ProjectPath::from((worktree_id, rel_path("foo/req2.toml"))),
                     None,
                     true,
                     window,
@@ -3209,32 +3231,32 @@ mod tests {
             .downcast::<RequestEditor>()
             .unwrap();
         cx.dispatch_action(actions::workspace::SendRequest);
-        let (path, second_tx) = rx.try_recv().unwrap();
-        assert_eq!(path, "/second");
+        let (path, req2_tx) = rx.try_recv().unwrap();
+        assert_eq!(path, "/req2");
 
         cx.dispatch_action(actions::workspace::CancelRequest);
-        assert!(second_tx.is_canceled());
-        first_editor.read_with(cx, |editor, cx| {
+        assert!(req2_tx.is_canceled());
+        req1_editor.read_with(cx, |editor, cx| {
             assert!(editor.is_fetching(cx));
         });
 
         cx.dispatch_action(actions::workspace::SendRequest);
-        let (path, second_tx) = rx.try_recv().unwrap();
-        assert_eq!(path, "/second");
-        second_editor.read_with(cx, |editor, cx| {
+        let (path, req2_tx) = rx.try_recv().unwrap();
+        assert_eq!(path, "/req2");
+        req2_editor.read_with(cx, |editor, cx| {
             assert!(editor.is_fetching(cx));
         });
 
-        second_editor.update_in(cx, |editor, window, cx| {
+        req2_editor.update_in(cx, |editor, window, cx| {
             editor.focus_handle(cx).focus(window, cx);
         });
         cx.dispatch_action(actions::pane::CloseActiveItem::default());
 
         assert!(
-            second_tx.is_canceled(),
+            req2_tx.is_canceled(),
             "closing the editor should drop its pending send future"
         );
-        second_editor.read_with(cx, |editor, cx| {
+        req2_editor.read_with(cx, |editor, cx| {
             assert!(matches!(
                 editor.response().unwrap().read(cx).state(),
                 ResponseState::Canceled { .. }
@@ -3245,20 +3267,20 @@ mod tests {
             assert_eq!(pane.items_len(), 1);
             assert_eq!(
                 pane.active_item().unwrap().item_id(),
-                Entity::entity_id(&first_editor)
+                Entity::entity_id(&req1_editor)
             );
         });
 
         let response = Response::builder()
             .status(StatusCode::OK)
-            .body(AsyncBody::from("first response"))
+            .body(AsyncBody::from("req1 response"))
             .unwrap();
-        assert!(first_tx.send(response).is_ok());
+        assert!(req1_tx.send(response).is_ok());
         cx.run_until_parked();
 
         assert_eq!(
             response_panel.read_with(cx, |panel, cx| panel.text(cx)),
-            "first response"
+            "req1 response"
         );
     }
 
@@ -3281,8 +3303,8 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "folder": {
-                    "request.toml": indoc! {r#"
+                "foo": {
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -3301,7 +3323,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("folder/request.toml")),
+            path: Arc::from(rel_path("foo/req1.toml")),
         };
 
         let request_editor = workspace
@@ -3399,6 +3421,130 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_variable_completion_keys_in_request_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (tx, mut rx) = mpsc::unbounded();
+        let http_client = FakeHttpClient::create(move |_| {
+            let (response_tx, response_rx) = oneshot::channel();
+            tx.unbounded_send(response_tx).unwrap();
+
+            async move { Ok(response_rx.await.unwrap()) }
+        });
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client), cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "project.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [request]
+                        variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                    "#}
+                },
+                "foo": {
+                    "req1.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "POST"
+                        url = "https://api.zaku.dev/me"
+                        body = { type = "json", data = "" }
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        cx.run_until_parked();
+        let (workspace, _, cx) = build_workspace(&project, cx);
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("foo/req1.toml")),
+        };
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        cx.update(|_, cx| {
+            #[cfg(target_os = "linux")]
+            let key_bindings = KeymapFile::load_asset("keymaps/default_linux.jsonc", cx).unwrap();
+
+            #[cfg(target_os = "macos")]
+            let key_bindings = KeymapFile::load_asset("keymaps/default_macos.jsonc", cx).unwrap();
+
+            #[cfg(target_os = "windows")]
+            let key_bindings = KeymapFile::load_asset("keymaps/default_windows.jsonc", cx).unwrap();
+
+            cx.bind_keys(key_bindings);
+        });
+
+        let (url_editor, body_editor) = request_editor.read_with(cx, |editor, cx| {
+            let RequestEditorState::Ready(request) = &editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            (
+                request.http.url_editor(cx),
+                request.http.body.as_ref().unwrap().editor(),
+            )
+        });
+        let mut url_cx = EditorTestContext::for_editor_in(url_editor, cx);
+
+        url_cx.update_editor(|editor, window, cx| {
+            editor.set_text("", window, cx);
+        });
+        url_cx.simulate_input("{{ba");
+        url_cx.simulate_keystrokes("enter");
+        url_cx.assert_state("{{base_url}}ˇ");
+        assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
+
+        cx.dispatch_action(actions::workspace::SendRequest);
+        let response_tx = rx.try_recv().unwrap();
+        url_cx.simulate_input("{{");
+        url_cx.update_editor(|editor, _, _| {
+            assert!(editor.has_visible_completions_menu());
+        });
+
+        url_cx.simulate_keystrokes("escape");
+        url_cx.update_editor(|editor, _, _| {
+            assert!(!editor.has_visible_completions_menu());
+        });
+        assert!(
+            !response_tx.is_canceled(),
+            "escape should only dismiss the completions menu"
+        );
+
+        url_cx.simulate_keystrokes("escape");
+        assert!(
+            response_tx.is_canceled(),
+            "escape should cancel the request once the completions menu is dismissed"
+        );
+
+        let tab_bounds = cx.debug_bounds("TAB-body-tab").unwrap();
+        cx.simulate_click(tab_bounds.center(), Modifiers::default());
+        let mut body_cx = EditorTestContext::for_editor_in(body_editor, cx);
+        body_cx.simulate_input("{{ba");
+        body_cx.simulate_keystrokes("enter");
+        body_cx.assert_state("{{base_url}}ˇ");
+    }
+
+    #[gpui::test]
     async fn test_save_from_request_editor(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
@@ -3410,8 +3556,8 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "folder": {
-                    "request.toml": indoc! {r#"
+                "foo": {
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -3447,7 +3593,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("folder/request.toml")),
+            path: Arc::from(rel_path("foo/req1.toml")),
         };
 
         let request_editor = workspace
@@ -3506,7 +3652,7 @@ mod tests {
         });
 
         let saved = temp_fs
-            .load("project/folder/request.toml".as_ref())
+            .load("project/foo/req1.toml".as_ref())
             .await
             .unwrap();
         let expected = indoc! {r#"
@@ -3616,8 +3762,8 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "users": {
-                    "get-user.toml": indoc! {r#"
+                "foo": {
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -3637,7 +3783,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path("users/get-user.toml")),
+            path: Arc::from(rel_path("foo/req1.toml")),
         };
 
         let request_editor = workspace
@@ -3660,7 +3806,7 @@ mod tests {
 
         temp_fs
             .write(
-                &project_path.join(path!("users/get-user.toml")),
+                &project_path.join(path!("foo/req1.toml")),
                 indoc! {br#"
                     [meta]
                     version = 1
@@ -3692,7 +3838,7 @@ mod tests {
         });
         assert_eq!(
             temp_fs
-                .load("project/users/get-user.toml".as_ref())
+                .load("project/foo/req1.toml".as_ref())
                 .await
                 .unwrap(),
             indoc! {r#"
@@ -3718,8 +3864,8 @@ mod tests {
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                "folder": {
-                    "request.toml": indoc! {r#"
+                "foo": {
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -3739,7 +3885,7 @@ mod tests {
         let request_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(
-                    (worktree_id, rel_path("folder/request.toml")).into(),
+                    (worktree_id, rel_path("foo/req1.toml")).into(),
                     None,
                     true,
                     window,
@@ -3767,7 +3913,7 @@ mod tests {
         let entry_id = project
             .read_with(cx, |project, cx| {
                 project
-                    .entry_for_path(&(worktree_id, rel_path("folder/request.toml")).into(), cx)
+                    .entry_for_path(&(worktree_id, rel_path("foo/req1.toml")).into(), cx)
                     .map(|entry| entry.id)
             })
             .unwrap();
@@ -3775,7 +3921,7 @@ mod tests {
             .update(cx, |project, cx| {
                 project.rename_entry(
                     entry_id,
-                    (worktree_id, rel_path("folder/renamed.toml")).into(),
+                    (worktree_id, rel_path("foo/renamed-req1.toml")).into(),
                     cx,
                 )
             })
@@ -3789,14 +3935,17 @@ mod tests {
         );
         assert_eq!(
             request_editor.read_with(cx, |editor, cx| editor.project_path(cx)),
-            Some((worktree_id, rel_path("folder/renamed.toml")).into())
+            Some((worktree_id, rel_path("foo/renamed-req1.toml")).into())
         );
         buffer.read_with(cx, |buffer, _| {
-            assert_eq!(buffer.file().path.as_ref(), rel_path("folder/renamed.toml"));
+            assert_eq!(
+                buffer.file().path.as_ref(),
+                rel_path("foo/renamed-req1.toml")
+            );
         });
         assert_eq!(
             request_editor.read_with(cx, |editor, cx| editor.title(cx).to_string()),
-            "renamed"
+            "renamed-req1"
         );
     }
 
@@ -3834,7 +3983,7 @@ mod tests {
                     }
                 },
                 "foo": {
-                    "request.toml": indoc! {r#"
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -3869,7 +4018,7 @@ mod tests {
         let request_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(
-                    (worktree_id, rel_path("foo/request.toml")).into(),
+                    (worktree_id, rel_path("foo/req1.toml")).into(),
                     None,
                     true,
                     window,
@@ -3909,7 +4058,7 @@ mod tests {
         let buffer = request_editor.read_with(cx, |editor, _| editor.buffer.clone());
         temp_fs
             .write(
-                &project_path.join(path!("foo/request.toml")),
+                &project_path.join(path!("foo/req1.toml")),
                 indoc! {br#"
                     [meta]
                     version = 1
@@ -3956,7 +4105,7 @@ mod tests {
         let entry_id = project
             .read_with(cx, |project, cx| {
                 project
-                    .entry_for_path(&(worktree_id, rel_path("foo/request.toml")).into(), cx)
+                    .entry_for_path(&(worktree_id, rel_path("foo/req1.toml")).into(), cx)
                     .map(|entry| entry.id)
             })
             .unwrap();
@@ -3964,7 +4113,7 @@ mod tests {
             .update(cx, |project, cx| {
                 project.rename_entry(
                     entry_id,
-                    (worktree_id, rel_path("users/request.toml")).into(),
+                    (worktree_id, rel_path("users/req1.toml")).into(),
                     cx,
                 )
             })
@@ -4021,7 +4170,7 @@ mod tests {
                         ]
                     "#}
                 },
-                "users": {
+                "foo": {
                     ".zaku": {
                         "folder.toml": indoc! {r#"
                             [meta]
@@ -4031,7 +4180,7 @@ mod tests {
                             variables = [{ name = "user_id", value = "1" }]
                         "#}
                     },
-                    "request.toml": indoc! {r#"
+                    "req1.toml": indoc! {r#"
                         [meta]
                         version = 1
 
@@ -4054,7 +4203,7 @@ mod tests {
         let request_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(
-                    (worktree_id, rel_path("users/request.toml")).into(),
+                    (worktree_id, rel_path("foo/req1.toml")).into(),
                     None,
                     true,
                     window,
@@ -4096,7 +4245,7 @@ mod tests {
             assert_eq!(
                 editor.hover_state.info_popovers[0].hover.variable,
                 Some((
-                    VariableScope::Folder(rel_path("users").into()),
+                    VariableScope::Folder(rel_path("foo").into()),
                     SharedString::from("1")
                 ))
             );
@@ -4121,6 +4270,216 @@ mod tests {
         cx.run_until_parked();
         header_editor.read_with(cx, |editor, _| {
             assert_eq!(editor.hover_state.info_popovers[0].hover.variable, None);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_variable_completions_in_request_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "project.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [request]
+                        variables = [
+                          { name = "host", value = "api.zaku.dev" },
+                          { name = "base_url", value = "https://{{host}}" }
+                        ]
+                    "#},
+                    "environments": {
+                        "Dev.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [environment]
+                            variables = [{ name = "token", value = "test-token" }]
+                        "#}
+                    }
+                },
+                "foo": {
+                    ".zaku": {
+                        "folder.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [request]
+                            variables = [{ name = "user_id", value = "1" }]
+                        "#}
+                    },
+                    "req1.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "{{base_url}}/users/{{user_id}}"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        cx.run_until_parked();
+        let (workspace, _, cx) = build_workspace(&project, cx);
+
+        project.update(cx, |project, cx| {
+            project
+                .project_config_store()
+                .clone()
+                .update(cx, |project_config_store, cx| {
+                    project_config_store.activate_environment(Some("Dev".to_string()), cx);
+                });
+        });
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path("foo/req1.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        let url_editor = request_editor.read_with(cx, |editor, cx| {
+            let RequestEditorState::Ready(request) = &editor.request else {
+                panic!("expected request editor to be ready");
+            };
+            request.http.url_editor(cx)
+        });
+        let mut url_cx = EditorTestContext::for_editor_in(url_editor, cx);
+
+        url_cx.update_editor(|editor, window, cx| {
+            editor.set_text("", window, cx);
+        });
+        url_cx.simulate_input("{{");
+        url_cx.assert_state("{{ˇ");
+        url_cx.update_editor(|editor, _, _| {
+            assert_eq!(
+                completion_menu_entries(editor),
+                &[
+                    ["base_url", "https://api.zaku.dev", "Project"],
+                    ["host", "api.zaku.dev", "Project"],
+                    ["token", "test-token", "Dev"],
+                    ["user_id", "1", "foo"],
+                ]
+            );
+        });
+
+        url_cx.simulate_input("{");
+        url_cx.assert_state("{{{ˇ");
+        url_cx.update_editor(|editor, _, _| {
+            assert!(!editor.has_visible_completions_menu());
+        });
+
+        url_cx.update_editor(|editor, window, cx| {
+            editor.set_text("", window, cx);
+        });
+        url_cx.simulate_input("{{ba");
+        url_cx.assert_state("{{baˇ");
+        url_cx.update_editor(|editor, _, _| {
+            assert_eq!(
+                completion_menu_entries(editor),
+                &[["base_url", "https://api.zaku.dev", "Project"]]
+            );
+        });
+        url_cx.dispatch_action(actions::editor::ConfirmCompletion::default());
+        url_cx.assert_state("{{base_url}}ˇ");
+        url_cx.update_editor(|editor, _, _| {
+            assert!(!editor.has_visible_completions_menu());
+        });
+
+        url_cx.update_editor(|editor, window, cx| {
+            editor.set_text("{{}}", window, cx);
+        });
+        url_cx.set_selections_state("{{ˇ}}");
+        url_cx.simulate_input("ba");
+        url_cx.assert_state("{{baˇ}}");
+        url_cx.update_editor(|editor, _, _| {
+            assert_eq!(
+                completion_menu_entries(editor),
+                &[["base_url", "https://api.zaku.dev", "Project"]]
+            );
+        });
+        url_cx.dispatch_action(actions::editor::ConfirmCompletion::default());
+        url_cx.assert_state("{{base_urlˇ}}");
+        url_cx.update_editor(|editor, _, _| {
+            assert!(!editor.has_visible_completions_menu());
+        });
+
+        url_cx.update_editor(|editor, window, cx| {
+            editor.set_text("{{base_url}}", window, cx);
+        });
+        url_cx.set_selections_state("{{baˇse_url}}");
+        url_cx.dispatch_action(actions::editor::Delete);
+        url_cx.assert_state("{{baˇe_url}}");
+        url_cx.update_editor(|editor, _, _| {
+            assert_eq!(
+                completion_menu_entries(editor),
+                &[["base_url", "https://api.zaku.dev", "Project"]]
+            );
+        });
+        url_cx.dispatch_action(actions::editor::ConfirmCompletion::default());
+        url_cx.assert_state("{{base_urlˇ}}");
+        url_cx.update_editor(|editor, _, _| {
+            assert!(!editor.has_visible_completions_menu());
+        });
+
+        url_cx.update_editor(|editor, window, cx| {
+            editor.set_text("{{base_url}}", window, cx);
+        });
+        url_cx.dispatch_action(actions::editor::Backspace);
+        url_cx.assert_state("{{base_url}ˇ");
+        url_cx.update_editor(|editor, _, _| {
+            assert!(!editor.has_visible_completions_menu());
+        });
+
+        url_cx.dispatch_action(actions::editor::Backspace);
+        url_cx.assert_state("{{base_urlˇ");
+        url_cx.update_editor(|editor, _, _| {
+            assert_eq!(
+                completion_menu_entries(editor),
+                &[["base_url", "https://api.zaku.dev", "Project"]]
+            );
+        });
+
+        for _ in 0..8 {
+            url_cx.dispatch_action(actions::editor::Backspace);
+        }
+        url_cx.assert_state("{{ˇ");
+        url_cx.update_editor(|editor, _, _| {
+            assert_eq!(
+                completion_menu_entries(editor),
+                &[
+                    ["base_url", "https://api.zaku.dev", "Project"],
+                    ["host", "api.zaku.dev", "Project"],
+                    ["token", "test-token", "Dev"],
+                    ["user_id", "1", "foo"],
+                ]
+            );
+        });
+
+        url_cx.dispatch_action(actions::editor::Backspace);
+        url_cx.assert_state("{ˇ");
+        url_cx.update_editor(|editor, _, _| {
+            assert!(!editor.has_visible_completions_menu());
         });
     }
 }

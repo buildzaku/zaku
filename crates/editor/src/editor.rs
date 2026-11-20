@@ -1,4 +1,4 @@
-mod code_context_menus;
+pub mod code_context_menus;
 mod completions;
 mod config;
 pub mod display_map;
@@ -2644,6 +2644,10 @@ impl Editor {
         }
 
         key_context
+    }
+
+    pub fn context_menu(&self) -> &RefCell<Option<CompletionsMenu>> {
+        &self.context_menu
     }
 
     pub fn context_menu_visible(&self) -> bool {

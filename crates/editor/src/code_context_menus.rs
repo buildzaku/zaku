@@ -36,14 +36,14 @@ pub(crate) const MENU_ASIDE_MAX_WIDTH: Pixels = gpui::px(500.0);
 const COMPLETION_MENU_MIN_WIDTH: Pixels = gpui::px(150.0);
 const COMPLETION_MENU_MAX_WIDTH: Pixels = gpui::px(540.0);
 
-pub(crate) struct CompletionsMenu {
+pub struct CompletionsMenu {
     pub(crate) id: CompletionId,
     pub(crate) initial_position: Anchor,
     pub(crate) initial_query: Option<Arc<String>>,
     pub(crate) buffer: Entity<Buffer>,
-    pub(crate) completions: Rc<RefCell<Box<[Completion]>>>,
+    pub completions: Rc<RefCell<Box<[Completion]>>>,
     match_candidates: Arc<[(Option<text::Anchor>, Vec<StringMatchCandidate>)]>,
-    pub(crate) entries: Rc<RefCell<Box<[StringMatch]>>>,
+    pub entries: Rc<RefCell<Box<[StringMatch]>>>,
     pub(crate) selected_item: usize,
     filter_task: Task<()>,
     cancel_filter: Arc<AtomicBool>,

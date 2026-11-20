@@ -136,6 +136,28 @@ impl EditorTestContext {
     }
 
     #[track_caller]
+    pub fn set_selections_state(&mut self, marked_text: &str) -> ContextHandle {
+        let assertion_context = self.add_assertion_context(format!(
+            "Initial Editor State: \"{}\"",
+            marked_text.escape_debug()
+        ));
+        let (text, mut ranges) = marked_text_ranges(marked_text, true);
+        let selection = ranges.pop().unwrap_or(0..0);
+        assert!(ranges.is_empty(), "expected a single selection range");
+
+        self.update_editor(|editor, window, cx| {
+            pretty_assertions::assert_eq!(editor.text(cx), text);
+            editor.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
+                selections.select_ranges([
+                    MultiBufferOffset(selection.start)..MultiBufferOffset(selection.end)
+                ]);
+            });
+        });
+
+        assertion_context
+    }
+
+    #[track_caller]
     pub fn assert_state(&mut self, marked_text: &str) {
         let (expected_text, mut ranges) = marked_text_ranges(marked_text, true);
         let expected_selection = ranges.pop().unwrap_or(0..0);
