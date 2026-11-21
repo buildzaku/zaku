@@ -123,6 +123,22 @@ impl Render for TestScrollContainer {
     }
 }
 
+struct TestRequestView {
+    url: Entity<Editor>,
+    body: Entity<Editor>,
+}
+
+impl Render for TestRequestView {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        gpui::div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(self.url.clone())
+            .child(gpui::div().flex_1().min_h_0().child(self.body.clone()))
+    }
+}
+
 fn display_ranges(editor: &Editor, cx: &mut Context<'_, Editor>) -> Vec<Range<DisplayPoint>> {
     let snapshot = editor.display_snapshot(cx);
     editor
@@ -2401,4 +2417,119 @@ fn test_completions_menu_hidden_when_clipped_by_parent(cx: &mut TestAppContext) 
         ..Default::default()
     });
     assert!(cx.debug_bounds("MENU-completions").is_some());
+}
+
+#[gpui::test]
+fn test_completions_menu_partially_clipped_by_parent(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let (container, cx) = cx.add_window_view(|window, cx| TestScrollContainer {
+        editor: cx.new(|cx| Editor::auto_height(1, Some(4), window, cx)),
+    });
+    let editor = container.read_with(cx, |container, _| container.editor.clone());
+    let mut cx = EditorTestContext::for_editor_in(editor, cx);
+
+    cx.set_state(indoc! {"
+        ˇ
+        the quick brown fox
+        jumps over the lazy dog\
+    "});
+    handle_completion_requests(&mut cx);
+    let line_height = cx.update_editor(|editor, window, cx| {
+        editor
+            .style(cx)
+            .text
+            .line_height_in_pixels(window.rem_size())
+    });
+    let viewport_size = cx.update(|window, _| window.viewport_size());
+    let scroll_point = gpui::point(
+        viewport_size.width - gpui::px(10.0),
+        cx.pixel_position(indoc! {"
+
+            the quick ˇbrown fox
+            jumps over the lazy dog\
+        "})
+            .y,
+    );
+
+    cx.simulate_input("{{");
+    assert!(cx.debug_bounds("MENU-completions").is_some());
+
+    cx.simulate_event(ScrollEvent {
+        position: scroll_point,
+        delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.0), -line_height * 1.5)),
+        ..Default::default()
+    });
+    assert!(cx.debug_bounds("MENU-completions").is_none());
+    cx.update_editor(|editor, _, _| {
+        assert!(editor.has_visible_completions_menu());
+    });
+
+    cx.simulate_event(ScrollEvent {
+        position: scroll_point,
+        delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.0), line_height * 1.5)),
+        ..Default::default()
+    });
+    assert!(cx.debug_bounds("MENU-completions").is_some());
+
+    cx.dispatch_action(actions::editor::Cancel);
+    cx.set_selections_state(indoc! {"
+        {{
+        the quick brown fox
+        jumps over the lazy dogˇ\
+    "});
+    cx.simulate_input("{{");
+    assert!(cx.debug_bounds("MENU-completions").is_some());
+
+    cx.simulate_event(ScrollEvent {
+        position: scroll_point,
+        delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.0), -line_height * 1.5)),
+        ..Default::default()
+    });
+    assert!(cx.debug_bounds("MENU-completions").is_some());
+}
+
+#[gpui::test]
+fn test_hover_popover_hides_on_other_editor_scroll(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let (request_view, cx) = cx.add_window_view(|window, cx| TestRequestView {
+        url: cx.new(|cx| Editor::single_line(window, cx)),
+        body: cx.new(|cx| Editor::full(window, cx)),
+    });
+    let (url, body) = request_view.read_with(cx, |request_view, _| {
+        (request_view.url.clone(), request_view.body.clone())
+    });
+
+    let mut body_cx = EditorTestContext::for_editor_in(body, cx);
+    body_cx.set_state(indoc! {r#"
+        ˇ{
+          "user_id": "{{user_id}}"
+        }"#});
+    let viewport_size = body_cx.update(|window, _| window.viewport_size());
+    let scroll_point = gpui::point(
+        viewport_size.width - gpui::px(50.0),
+        body_cx
+            .pixel_position(indoc! {r#"
+                {
+                  "user_ˇid": "{{user_id}}"
+                }"#})
+            .y,
+    );
+
+    let mut url_cx = EditorTestContext::for_editor_in(url, cx);
+    url_cx.set_state("{{baseˇ_url}}/users");
+    handle_hover_requests(&mut url_cx);
+    url_cx.dispatch_action(actions::editor::Hover);
+    assert!(url_cx.debug_bounds("POPOVER-info_popover").is_some());
+
+    body_cx.simulate_event(ScrollEvent {
+        position: scroll_point,
+        delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(-20.0))),
+        ..Default::default()
+    });
+    assert!(url_cx.debug_bounds("POPOVER-info_popover").is_none());
+    url_cx.update_editor(|editor, _, _| {
+        assert!(editor.hover_state.info_popovers.is_empty());
+    });
 }

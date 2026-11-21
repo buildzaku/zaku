@@ -1792,12 +1792,12 @@ impl Element for EditorElement {
             let visible_height = (visible_bottom - visible_top).max(gpui::px(0.0));
             let first_visible_row =
                 clamped_scroll_position_y + f64::from(clipped_top / line_height);
-            // One past the last row, so an editor scrolled fully out of view lays out nothing.
             let top_row = first_visible_row
                 .floor()
-                .min(f64::from(max_display_row) + 1.0)
+                .min(f64::from(max_display_row))
                 .to_u32()
                 .expect("top row should fit in u32");
+            // No visible height means the editor is scrolled out of view, so lay out nothing.
             let end_row = if visible_height.is_zero() {
                 top_row
             } else {
