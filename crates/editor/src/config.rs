@@ -10,6 +10,15 @@ impl Editor {
         self.text_style_refinement = Some(style);
     }
 
+    pub fn style(&mut self, cx: &App) -> &EditorStyle {
+        if let Some(ref style) = self.style {
+            style
+        } else {
+            let style = self.create_style(cx);
+            self.style.insert(style)
+        }
+    }
+
     pub fn set_style(&mut self, style: EditorStyle) {
         self.style = Some(style);
     }

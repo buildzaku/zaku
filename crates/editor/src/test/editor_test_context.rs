@@ -1,10 +1,10 @@
 use gpui::{
-    Action, AnyWindowHandle, Context, Entity, Keystroke, TestAppContext, VisualTestContext, Window,
-    prelude::*,
+    Action, AnyWindowHandle, Context, Entity, Keystroke, Pixels, Point, TestAppContext,
+    VisualTestContext, Window, prelude::*,
 };
 use std::{
     collections::BTreeMap,
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut, Range},
     sync::{
         Arc, RwLock,
         atomic::{AtomicUsize, Ordering},
@@ -18,7 +18,7 @@ use util::test::{generate_marked_text, marked_text_ranges};
 
 use crate::{
     DEFAULT_TAB_SIZE, Editor, EditorMode, SelectionEffects, SelectionHistory,
-    display_map::{DisplayMap, HighlightKey},
+    display_map::{DisplayMap, DisplayPoint, HighlightKey, ToDisplayPoint},
 };
 
 pub struct EditorTestContext {
@@ -102,6 +102,69 @@ impl EditorTestContext {
         let keystroke =
             Keystroke::parse_with_os(keystroke_text, os).expect("keystroke should parse");
         self.cx.dispatch_keystroke(self.window, keystroke);
+    }
+
+    pub fn ranges(&mut self, marked_text: &str) -> Vec<Range<usize>> {
+        let (unmarked_text, ranges) = marked_text_ranges(marked_text, false);
+        pretty_assertions::assert_eq!(
+            self.editor
+                .read_with(&self.cx, |editor, cx| editor.text(cx)),
+            unmarked_text
+        );
+        ranges
+    }
+
+    pub fn display_point(&mut self, marked_text: &str) -> DisplayPoint {
+        let ranges = self.ranges(marked_text);
+        let snapshot = self.update_editor(|editor, window, cx| editor.snapshot(window, cx));
+        MultiBufferOffset(
+            ranges
+                .first()
+                .expect("marked text should contain a range")
+                .start,
+        )
+        .to_display_point(&snapshot)
+    }
+
+    pub fn pixel_position(&mut self, marked_text: &str) -> Point<Pixels> {
+        let display_point = self.display_point(marked_text);
+        self.pixel_position_for(display_point)
+    }
+
+    pub fn pixel_position_for(&mut self, display_point: DisplayPoint) -> Point<Pixels> {
+        self.update_editor(|editor, window, cx| {
+            let snapshot = editor.snapshot(window, cx);
+            let relative_position = editor
+                .display_to_pixel_point(display_point, &snapshot, window, cx)
+                .expect("display point should be visible");
+            let line_height = editor
+                .style(cx)
+                .text
+                .line_height_in_pixels(window.rem_size());
+            let text_origin = editor
+                .last_position_map
+                .as_ref()
+                .expect("editor should have a position map")
+                .text_hitbox
+                .bounds
+                .origin;
+            gpui::point(
+                text_origin.x + relative_position.x,
+                text_origin.y + relative_position.y + line_height / 2.0,
+            )
+        })
+    }
+
+    pub fn gutter_position(&mut self) -> Point<Pixels> {
+        self.update_editor(|editor, _, _| {
+            editor
+                .last_position_map
+                .as_ref()
+                .expect("editor should have a position map")
+                .gutter_hitbox
+                .bounds
+                .center()
+        })
     }
 
     #[track_caller]

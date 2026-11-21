@@ -1,14 +1,27 @@
-use gpui::{ClipboardItem, Context, EntityInputHandler, Point, TestAppContext};
+use gpui::{
+    App, BorrowAppContext, ClipboardItem, Context, EntityInputHandler, Modifiers, Point,
+    SharedString, TestAppContext,
+};
 use indoc::indoc;
 use pretty_assertions::assert_eq;
-use std::ops::Range;
+use serde_json::json;
+use std::{
+    ops::Range,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{self, AtomicUsize},
+    },
+    time::Duration,
+};
 
 use language::Capability;
 use multi_buffer::MultiBufferOffset;
-use settings::SettingsStore;
+use project::{Variable, project_config_store::VariableScope};
+use settings::{Settings, SettingsStore};
 
 use editor::{
-    Editor,
+    Editor, EditorSettings, VariableProvider, VariableProviderDelegate,
     display_map::{DisplayPoint, DisplayRow},
     test::editor_test_context::EditorTestContext,
 };
@@ -20,6 +33,40 @@ fn init_test(cx: &mut TestAppContext) {
         theme::init(theme::LoadThemes::JustBase, cx);
         editor::init(cx);
     });
+}
+
+fn get_hover_popover_delay(cx: &TestAppContext) -> u64 {
+    cx.read(|cx: &App| -> u64 { EditorSettings::get_global(cx).hover_popover.delay.0 })
+}
+
+struct TestVariableDelegate {
+    variables: Vec<(VariableScope, Variable)>,
+    request_count: Arc<AtomicUsize>,
+}
+
+impl VariableProviderDelegate for TestVariableDelegate {
+    fn variables(&self, _: &App) -> Option<Vec<(VariableScope, Variable)>> {
+        self.request_count.fetch_add(1, atomic::Ordering::Release);
+        Some(self.variables.clone())
+    }
+}
+
+fn handle_hover_requests(cx: &mut EditorTestContext) -> Arc<AtomicUsize> {
+    let request_count = Arc::new(AtomicUsize::new(0));
+    cx.update_editor(|editor, _, _| {
+        editor.set_semantics_provider(Some(Rc::new(VariableProvider::new(TestVariableDelegate {
+            variables: vec![(
+                VariableScope::Project,
+                Variable {
+                    name: "base_url".to_string(),
+                    value: "https://api.zaku.dev".to_string(),
+                    disabled: false,
+                },
+            )],
+            request_count: request_count.clone(),
+        }))));
+    });
+    request_count
 }
 
 fn display_ranges(editor: &Editor, cx: &mut Context<'_, Editor>) -> Vec<Range<DisplayPoint>> {
@@ -1737,4 +1784,182 @@ fn test_move_cursor_different_line_lengths(cx: &mut TestAppContext) {
         abcd
         ⓐⓑⓒⓓⓔ\
     "});
+}
+
+#[gpui::test]
+fn test_mouse_hover_info_popover(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("ˇ{{base_url}}/users");
+    let request_count = handle_hover_requests(&mut cx);
+    let hover_delay = Duration::from_millis(get_hover_popover_delay(&cx) + 100);
+    let hover_point = cx.pixel_position("{{baseˇ_url}}/users");
+    cx.simulate_mouse_move(hover_point, None, Modifiers::default());
+    cx.update_editor(|editor, _, _| {
+        assert!(editor.hover_state.info_popovers.is_empty());
+    });
+
+    cx.background_executor.advance_clock(hover_delay);
+    assert_eq!(request_count.load(atomic::Ordering::Acquire), 1);
+    cx.update_editor(|editor, _, _| {
+        assert_eq!(editor.hover_state.info_popovers.len(), 1);
+        assert_eq!(
+            editor.hover_state.info_popovers[0].hover.variable,
+            Some((
+                VariableScope::Project,
+                SharedString::from("https://api.zaku.dev")
+            ))
+        );
+    });
+
+    let hover_point = cx.pixel_position("{{base_url}}/ˇusers");
+    cx.simulate_mouse_move(hover_point, None, Modifiers::default());
+    cx.update_editor(|editor, _, _| {
+        assert!(editor.hover_state.info_popovers.is_empty());
+    });
+    cx.background_executor.advance_clock(hover_delay);
+    assert_eq!(request_count.load(atomic::Ordering::Acquire), 1);
+    cx.update_editor(|editor, _, _| {
+        assert!(editor.hover_state.info_popovers.is_empty());
+    });
+
+    let hover_point = cx.pixel_position("ˇ{{base_url}}/users");
+    cx.simulate_mouse_move(hover_point, None, Modifiers::default());
+    cx.background_executor.advance_clock(hover_delay);
+    assert_eq!(request_count.load(atomic::Ordering::Acquire), 2);
+    cx.update_editor(|editor, _, _| {
+        assert_eq!(editor.hover_state.info_popovers.len(), 1);
+        assert_eq!(
+            editor.hover_state.info_popovers[0].hover.variable,
+            Some((
+                VariableScope::Project,
+                SharedString::from("https://api.zaku.dev")
+            ))
+        );
+    });
+
+    let hover_point = cx.pixel_position("{{base_url}}ˇ/users");
+    cx.simulate_mouse_move(hover_point, None, Modifiers::default());
+    cx.update_editor(|editor, _, _| {
+        assert!(editor.hover_state.info_popovers.is_empty());
+    });
+    cx.background_executor.advance_clock(hover_delay);
+    assert_eq!(request_count.load(atomic::Ordering::Acquire), 2);
+    cx.update_editor(|editor, _, _| {
+        assert!(editor.hover_state.info_popovers.is_empty());
+    });
+
+    let hover_point = cx.pixel_position("{{base_url}ˇ}/users");
+    cx.simulate_mouse_move(hover_point, None, Modifiers::default());
+    cx.background_executor.advance_clock(hover_delay);
+    assert_eq!(request_count.load(atomic::Ordering::Acquire), 3);
+    cx.update_editor(|editor, _, _| {
+        assert_eq!(editor.hover_state.info_popovers.len(), 1);
+        assert_eq!(
+            editor.hover_state.info_popovers[0].hover.variable,
+            Some((
+                VariableScope::Project,
+                SharedString::from("https://api.zaku.dev")
+            ))
+        );
+    });
+}
+
+#[gpui::test]
+fn test_mouse_hover_cancelled_before_delay(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("ˇ{{base_url}}/users");
+    let request_count = handle_hover_requests(&mut cx);
+    let hover_delay = Duration::from_millis(get_hover_popover_delay(&cx) + 100);
+    let hover_point = cx.pixel_position("{{baseˇ_url}}/users");
+    cx.simulate_mouse_move(hover_point, None, Modifiers::default());
+    let hover_point = cx.gutter_position();
+    cx.simulate_mouse_move(hover_point, None, Modifiers::default());
+
+    cx.background_executor.advance_clock(hover_delay);
+    assert_eq!(request_count.load(atomic::Ordering::Acquire), 0);
+    cx.update_editor(|editor, _, _| {
+        assert!(editor.hover_state.info_popovers.is_empty());
+    });
+
+    let hover_point = cx.pixel_position("{{baseˇ_url}}/users");
+    cx.simulate_mouse_move(hover_point, None, Modifiers::default());
+    cx.background_executor.advance_clock(hover_delay);
+    assert_eq!(request_count.load(atomic::Ordering::Acquire), 1);
+    cx.update_editor(|editor, _, _| {
+        assert_eq!(editor.hover_state.info_popovers.len(), 1);
+    });
+}
+
+#[gpui::test]
+fn test_keyboard_hover_info_popover(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("{{baseˇ_url}}/users");
+    let request_count = handle_hover_requests(&mut cx);
+    cx.dispatch_action(actions::editor::Hover);
+    assert_eq!(request_count.load(atomic::Ordering::Acquire), 1);
+    cx.update_editor(|editor, _, _| {
+        assert_eq!(editor.hover_state.info_popovers.len(), 1);
+        assert_eq!(
+            editor.hover_state.info_popovers[0].hover.variable,
+            Some((
+                VariableScope::Project,
+                SharedString::from("https://api.zaku.dev")
+            ))
+        );
+    });
+}
+
+#[gpui::test]
+fn test_hover_popover_hiding_delay(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let custom_delay_ms = 500;
+    cx.update(|cx| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store
+                .set_user_settings(
+                    &json!({ "editor": { "hover_popover": { "hiding_delay": custom_delay_ms } } })
+                        .to_string(),
+                    cx,
+                )
+                .result()
+                .unwrap();
+        });
+    });
+
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("ˇ{{base_url}}/users");
+    let request_count = handle_hover_requests(&mut cx);
+    let hover_point = cx.pixel_position("{{baseˇ_url}}/users");
+    cx.simulate_mouse_move(hover_point, None, Modifiers::default());
+    cx.background_executor
+        .advance_clock(Duration::from_millis(get_hover_popover_delay(&cx) + 100));
+    assert_eq!(request_count.load(atomic::Ordering::Acquire), 1);
+    cx.update_editor(|editor, _, _| {
+        assert_eq!(editor.hover_state.info_popovers.len(), 1);
+    });
+
+    let hover_point = cx.gutter_position();
+    cx.simulate_mouse_move(hover_point, None, Modifiers::default());
+    cx.background_executor
+        .advance_clock(Duration::from_millis(custom_delay_ms - 100));
+    cx.update_editor(|editor, _, _| {
+        assert_eq!(editor.hover_state.info_popovers.len(), 1);
+    });
+
+    cx.background_executor
+        .advance_clock(Duration::from_millis(200));
+    cx.update_editor(|editor, _, _| {
+        assert!(editor.hover_state.info_popovers.is_empty());
+    });
 }

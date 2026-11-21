@@ -2762,6 +2762,26 @@ impl Editor {
         }
     }
 
+    pub fn display_to_pixel_point(
+        &mut self,
+        source: DisplayPoint,
+        editor_snapshot: &EditorSnapshot,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Point<Pixels>> {
+        let line_height = self.style(cx).text.line_height_in_pixels(window.rem_size());
+        let text_layout_details = self.text_layout_details(window, cx);
+        let scroll_top = self.scroll_position(editor_snapshot).y;
+
+        if f64::from(source.row().0) < scroll_top.floor() {
+            return None;
+        }
+        let source_x = editor_snapshot.x_for_display_point(source, &text_layout_details);
+        let source_y =
+            Pixels::from(f64::from(line_height) * (f64::from(source.row().0) - scroll_top));
+        Some(Point::new(source_x, source_y))
+    }
+
     pub fn create_style(&self, cx: &App) -> EditorStyle {
         let theme_colors = cx.theme().colors();
         let theme_settings = ThemeSettings::get_global(cx);
