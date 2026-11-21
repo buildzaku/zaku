@@ -3445,7 +3445,11 @@ mod tests {
                         version = 1
 
                         [request]
-                        variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                        variables = [
+                          { name = "base_url", value = "https://api.zaku.dev" },
+                          { name = "token", value = "test-token" },
+                          { name = "user_id", value = "1" }
+                        ]
                     "#}
                 },
                 "foo": {
@@ -3513,6 +3517,22 @@ mod tests {
         url_cx.simulate_keystrokes("enter");
         url_cx.assert_state("{{base_url}}ˇ");
         assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
+
+        for (keystrokes, expected_state) in [
+            ("down tab", "{{token}}ˇ"),
+            ("up tab", "{{user_id}}ˇ"),
+            ("ctrl-n tab", "{{token}}ˇ"),
+            ("ctrl-p tab", "{{user_id}}ˇ"),
+            ("pagedown tab", "{{user_id}}ˇ"),
+            ("pagedown pageup tab", "{{base_url}}ˇ"),
+        ] {
+            url_cx.update_editor(|editor, window, cx| {
+                editor.set_text("", window, cx);
+            });
+            url_cx.simulate_input("{{");
+            url_cx.simulate_keystrokes(keystrokes);
+            url_cx.assert_state(expected_state);
+        }
 
         cx.dispatch_action(actions::workspace::SendRequest);
         let response_tx = rx.try_recv().unwrap();

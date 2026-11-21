@@ -22,6 +22,7 @@ use settings::{Settings, SettingsStore};
 
 use editor::{
     Editor, EditorSettings, VariableProvider, VariableProviderDelegate,
+    code_context_menus::CompletionsMenu,
     display_map::{DisplayPoint, DisplayRow},
     test::editor_test_context::EditorTestContext,
 };
@@ -67,6 +68,44 @@ fn handle_hover_requests(cx: &mut EditorTestContext) -> Arc<AtomicUsize> {
         }))));
     });
     request_count
+}
+
+fn handle_completion_requests(cx: &mut EditorTestContext) -> Arc<AtomicUsize> {
+    let request_count = Arc::new(AtomicUsize::new(0));
+    cx.update_editor(|editor, _, _| {
+        editor.set_completion_provider(Some(Rc::new(VariableProvider::new(
+            TestVariableDelegate {
+                variables: vec![
+                    (
+                        VariableScope::Project,
+                        Variable {
+                            name: "base_url".to_string(),
+                            value: "https://api.zaku.dev".to_string(),
+                            disabled: false,
+                        },
+                    ),
+                    (
+                        VariableScope::Project,
+                        Variable {
+                            name: "token".to_string(),
+                            value: "test-token".to_string(),
+                            disabled: false,
+                        },
+                    ),
+                ],
+                request_count: request_count.clone(),
+            },
+        ))));
+    });
+    request_count
+}
+
+fn completion_menu_entries(menu: &CompletionsMenu) -> Vec<String> {
+    let entries = menu.entries.borrow();
+    entries
+        .iter()
+        .map(|string_match| string_match.string.clone())
+        .collect()
 }
 
 fn display_ranges(editor: &Editor, cx: &mut Context<'_, Editor>) -> Vec<Range<DisplayPoint>> {
@@ -2136,21 +2175,7 @@ fn test_mouse_hover_info_popover_with_autocomplete_popover(cx: &mut TestAppConte
 
     cx.set_state("{{base_url}}/users ˇ");
     let request_count = handle_hover_requests(&mut cx);
-    cx.update_editor(|editor, _, _| {
-        editor.set_completion_provider(Some(Rc::new(VariableProvider::new(
-            TestVariableDelegate {
-                variables: vec![(
-                    VariableScope::Project,
-                    Variable {
-                        name: "base_url".to_string(),
-                        value: "https://api.zaku.dev".to_string(),
-                        disabled: false,
-                    },
-                )],
-                request_count: Arc::default(),
-            },
-        ))));
-    });
+    handle_completion_requests(&mut cx);
     cx.simulate_keystroke("{");
     cx.simulate_keystroke("{");
     cx.run_until_parked();
@@ -2215,5 +2240,70 @@ fn test_keyboard_hover_grace(cx: &mut TestAppContext) {
     cx.background_executor.advance_clock(hiding_delay);
     cx.update_editor(|editor, _, _| {
         assert!(editor.hover_state.info_popovers.is_empty());
+    });
+}
+
+#[gpui::test]
+fn test_context_menus_hide_hover_popover(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("{{baseˇ_url}}/users");
+    handle_hover_requests(&mut cx);
+    handle_completion_requests(&mut cx);
+    cx.dispatch_action(actions::editor::Hover);
+    cx.update_editor(|editor, _, _| {
+        assert_eq!(editor.hover_state.info_popovers.len(), 1);
+    });
+
+    cx.dispatch_action(actions::editor::ShowCompletions);
+    cx.update_editor(|editor, _, _| {
+        assert!(editor.has_visible_completions_menu());
+        assert!(editor.hover_state.info_popovers.is_empty());
+    });
+}
+
+#[gpui::test]
+fn test_completions_use_selection_head(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("{{«baˇ»}}");
+    handle_completion_requests(&mut cx);
+    cx.dispatch_action(actions::editor::ShowCompletions);
+    cx.update_editor(|editor, _, _| {
+        if let Some(menu) = editor.context_menu().borrow().as_ref() {
+            assert_eq!(completion_menu_entries(menu), &["base_url"]);
+        } else {
+            panic!("expected completion menu to be open");
+        }
+    });
+}
+
+#[gpui::test]
+fn test_show_completions(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("{baˇ");
+    let request_count = handle_completion_requests(&mut cx);
+    cx.dispatch_action(actions::editor::ShowCompletions);
+    assert_eq!(request_count.load(atomic::Ordering::Acquire), 0);
+    cx.update_editor(|editor, _, _| {
+        assert!(!editor.has_visible_completions_menu());
+    });
+
+    cx.set_state("{{baˇ");
+    cx.dispatch_action(actions::editor::ShowCompletions);
+    assert_eq!(request_count.load(atomic::Ordering::Acquire), 1);
+    cx.update_editor(|editor, _, _| {
+        if let Some(menu) = editor.context_menu().borrow().as_ref() {
+            assert_eq!(completion_menu_entries(menu), &["base_url"]);
+        } else {
+            panic!("expected completion menu to be open");
+        }
     });
 }
