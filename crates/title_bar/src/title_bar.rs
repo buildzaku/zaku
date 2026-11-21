@@ -288,7 +288,7 @@ impl TitleBar {
                 .size(IconSize::XSmall)
                 .color(text_color)
         } else {
-            environment_selector::environment_icon(environment_color, text_color)
+            editor::environment_icon(environment_color, text_color)
         };
         let display_name = util::truncate_and_trailoff(
             active_environment.unwrap_or("No Environment"),

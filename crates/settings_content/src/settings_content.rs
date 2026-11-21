@@ -40,3 +40,7 @@ pub struct SettingsContent {
     pub telemetry: Option<TelemetrySettingsContent>,
     pub log: Option<HashMap<String, String>>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, MergeFrom)]
+#[serde(transparent)]
+pub struct DelayMs(pub u64);

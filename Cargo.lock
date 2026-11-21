@@ -1886,6 +1886,7 @@ dependencies = [
  "anyhow",
  "db",
  "fs",
+ "fuzzy",
  "git",
  "gpui",
  "indoc",
@@ -1895,6 +1896,7 @@ dependencies = [
  "log",
  "multi_buffer",
  "num-traits",
+ "ordered-float",
  "path 26.2.0-dev",
  "pretty_assertions",
  "project",
@@ -1998,6 +2000,7 @@ name = "environment_selector"
 version = "26.2.0-dev"
 dependencies = [
  "actions",
+ "editor",
  "fuzzy_nucleo",
  "gpui",
  "path 26.2.0-dev",
@@ -6089,7 +6092,6 @@ dependencies = [
  "anyhow",
  "db",
  "editor",
- "environment_selector",
  "fs",
  "gpui",
  "indoc",
@@ -6688,7 +6690,6 @@ version = "26.2.0-dev"
 dependencies = [
  "actions",
  "anyhow",
- "collections 26.2.0-dev",
  "cookie",
  "db",
  "editor",
@@ -8179,6 +8180,7 @@ name = "title_bar"
 version = "26.2.0-dev"
 dependencies = [
  "actions",
+ "editor",
  "environment_selector",
  "gpui",
  "path 26.2.0-dev",
@@ -9251,7 +9253,6 @@ dependencies = [
  "actions",
  "anyhow",
  "editor",
- "environment_selector",
  "fs",
  "gpui",
  "indoc",

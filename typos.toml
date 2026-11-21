@@ -1,2 +1,5 @@
+[default]
+extend-ignore-re = ['"ba"', '\{\{?«?ba']
+
 [default.extend-words]
 QURY = "QURY"
