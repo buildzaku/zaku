@@ -1009,7 +1009,11 @@ impl RequestEditor {
             if *event == EditorEvent::BufferEdited
                 && let Err(error) = request_editor.update(cx, |request_editor, cx| {
                     request_editor.mark_edited(cx);
-                    request_editor.update_variable_highlights_for_editor(&editor, cx);
+                    let variables =
+                        self::scoped_variables(&request_editor.project, &request_editor.buffer, cx);
+                    editor.update(cx, |editor, cx| {
+                        editor.highlight_variables(variables.as_deref(), cx);
+                    });
                 })
             {
                 log::debug!("Failed to update request editor edit state: {error:?}");
@@ -1024,23 +1028,6 @@ impl RequestEditor {
 
         let variables = self::scoped_variables(&self.project, &self.buffer, cx);
         for editor in request.editors(cx) {
-            editor.update(cx, |editor, cx| {
-                editor.highlight_variables(variables.as_deref(), cx);
-            });
-        }
-    }
-
-    fn update_variable_highlights_for_editor(
-        &self,
-        editor: &Entity<Editor>,
-        cx: &mut Context<Self>,
-    ) {
-        let RequestEditorState::Ready(request) = &self.request else {
-            return;
-        };
-
-        if request.editors(cx).contains(editor) {
-            let variables = self::scoped_variables(&self.project, &self.buffer, cx);
             editor.update(cx, |editor, cx| {
                 editor.highlight_variables(variables.as_deref(), cx);
             });
