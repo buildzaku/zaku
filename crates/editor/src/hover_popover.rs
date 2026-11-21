@@ -390,6 +390,7 @@ impl InfoPopover {
 
         gpui::div()
             .id("info_popover")
+            .debug_selector(|| "POPOVER-info_popover".to_string())
             .occlude()
             .elevation_2(cx)
             .child(
