@@ -307,7 +307,7 @@ pub struct InfoPopover {
     scroll_handle: ScrollHandle,
     keyboard_grace: Rc<RefCell<bool>>,
     anchor: Anchor,
-    last_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    pub last_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
 }
 
 impl InfoPopover {

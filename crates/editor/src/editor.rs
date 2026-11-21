@@ -3190,14 +3190,9 @@ impl EntityInputHandler for Editor {
             ));
 
         let row = start_point.row;
-        let scroll_row = position_map
-            .scroll_position
-            .y
-            .max(0.0)
-            .to_u32()
-            .expect("scroll row should fit in u32");
-        let line_index = usize::try_from(row.saturating_sub(scroll_row))
-            .expect("line index should fit in usize");
+        let line_index = row
+            .checked_sub(position_map.visible_row_range.start.0)
+            .and_then(|row| usize::try_from(row).ok())?;
         let line = position_map.line_layouts.get(line_index)?;
         if line.row.0 != row {
             return None;

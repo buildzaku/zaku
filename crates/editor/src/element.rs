@@ -2,9 +2,10 @@ use gpui::{
     AbsoluteLength, Action, AnyElement, App, AvailableSpace, Axis, BorderStyle, Bounds,
     ContentMask, Context, Corners, CursorStyle, DefiniteLength, DispatchPhase, Edges, Element,
     ElementId, ElementInputHandler, Entity, GlobalElementId, Hitbox, HitboxBehavior, Hsla,
-    InspectorElementId, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    PaintQuad, PathBuilder, Pixels, Point, ScrollDelta, ScrollEvent, ShapedLine, SharedString,
-    Size, Style, TextAlign, TextRun, TextStyle, TextStyleRefinement, Window, prelude::*,
+    InspectorElementId, IsZero, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, PaintQuad, PathBuilder, Pixels, Point, ScrollDelta, ScrollEvent, ShapedLine,
+    SharedString, Size, Style, TextAlign, TextRun, TextStyle, TextStyleRefinement, Window,
+    prelude::*,
 };
 use itertools::Itertools as _;
 use num_traits::ToPrimitive;
@@ -882,14 +883,15 @@ impl EditorElement {
                 };
                 let shaped_line =
                     self.shape_line_number(SharedString::from(&line_number), color, window);
-                let scroll_top = gutter.scroll_position.y * f64::from(gutter.line_height);
                 let line_origin = gutter.hitbox.origin
                     + gpui::point(
                         gutter.hitbox.size.width
                             - shaped_line.width
                             - gutter.dimensions.right_padding,
-                        Pixels::from(f64::from(row_offset) * f64::from(gutter.line_height))
-                            - Pixels::from(scroll_top % f64::from(gutter.line_height)),
+                        Pixels::from(
+                            (f64::from(display_row.0) - gutter.scroll_position.y)
+                                * f64::from(gutter.line_height),
+                        ),
                     );
                 #[cfg(not(test))]
                 let hitbox = Some(window.insert_hitbox(
@@ -1144,6 +1146,30 @@ impl EditorElement {
                                 || position_map.gutter_hitbox.is_hovered(window)))
                     {
                         editor.on_mouse_up(event, window, cx);
+                    }
+                });
+            }
+        });
+
+        window.on_mouse_event({
+            let editor = self.editor.clone();
+
+            move |event: &ScrollEvent, phase, _, cx| {
+                // Editors stop scroll events they handle, so listen in the capture phase.
+                if phase != DispatchPhase::Capture {
+                    return;
+                }
+
+                editor.update(cx, |editor, cx| {
+                    let scrolled_inside_popover =
+                        editor.hover_state.info_popovers.iter().any(|info_popover| {
+                            info_popover
+                                .last_bounds
+                                .get()
+                                .is_some_and(|bounds| bounds.contains(&event.position))
+                        });
+                    if !scrolled_inside_popover {
+                        hover_popover::hide_hover(editor, cx);
                     }
                 });
             }
@@ -1758,20 +1784,34 @@ impl Element for EditorElement {
             let has_content = !display_snapshot.buffer_snapshot().is_empty();
 
             let clamped_scroll_position_y = scroll_position.y.clamp(0.0, scroll_max.y);
-            let row_offset_y = clamped_scroll_position_y - clamped_scroll_position_y.floor();
-            let scroll_y_pixels = Pixels::from(f64::from(line_height) * row_offset_y);
 
-            let top_row = clamped_scroll_position_y
+            let visible_bounds = window.content_mask().bounds;
+            let visible_top = bounds.top().max(visible_bounds.top());
+            let visible_bottom = bounds.bottom().min(visible_bounds.bottom());
+            let clipped_top = (visible_top - bounds.top()).max(gpui::px(0.0));
+            let visible_height = (visible_bottom - visible_top).max(gpui::px(0.0));
+            let first_visible_row =
+                clamped_scroll_position_y + f64::from(clipped_top / line_height);
+            // One past the last row, so an editor scrolled fully out of view lays out nothing.
+            let top_row = first_visible_row
                 .floor()
-                .max(0.0)
+                .min(f64::from(max_display_row) + 1.0)
                 .to_u32()
                 .expect("top row should fit in u32");
-            let first_row_origin_y = bounds.top() - scroll_y_pixels;
-            let viewport_height = bounds.bottom() - bounds.top();
-            let visible_rows = (viewport_height / line_height).ceil() + 1.0;
-            let visible_row_count = visible_rows
-                .to_u32()
-                .expect("visible row count should fit in u32");
+            let end_row = if visible_height.is_zero() {
+                top_row
+            } else {
+                (first_visible_row + f64::from(visible_height / line_height))
+                    .ceil()
+                    .min(f64::from(max_display_row) + 1.0)
+                    .to_u32()
+                    .expect("end row should fit in u32")
+            };
+            let visible_row_count = end_row.saturating_sub(top_row);
+            let first_row_origin_y = bounds.top()
+                + Pixels::from(
+                    f64::from(line_height) * (f64::from(top_row) - clamped_scroll_position_y),
+                );
             let mut line_scroll_x = scroll_position.x.clamp(0.0, max_scroll_x);
             let mut lines = build_visible_lines(
                 &display_snapshot,

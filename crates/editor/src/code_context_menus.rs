@@ -285,6 +285,7 @@ impl CompletionsMenu {
         Popover::new()
             .child(
                 gpui::div()
+                    .debug_selector(|| "MENU-completions".to_string())
                     .child(list)
                     .custom_scrollbars(
                         Scrollbars::new(ScrollAxes::Vertical)

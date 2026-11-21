@@ -1,6 +1,6 @@
 use gpui::{
-    App, BorrowAppContext, ClipboardItem, Context, EntityInputHandler, Modifiers, Point,
-    SharedString, TestAppContext,
+    App, BorrowAppContext, ClipboardItem, Context, Entity, EntityInputHandler, Modifiers, Point,
+    ScrollDelta, ScrollEvent, SharedString, TestAppContext, Window, prelude::*,
 };
 use indoc::indoc;
 use pretty_assertions::assert_eq;
@@ -106,6 +106,21 @@ fn completion_menu_entries(menu: &CompletionsMenu) -> Vec<String> {
         .iter()
         .map(|string_match| string_match.string.clone())
         .collect()
+}
+
+struct TestScrollContainer {
+    editor: Entity<Editor>,
+}
+
+impl Render for TestScrollContainer {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        gpui::div()
+            .id("scroll-container")
+            .size_full()
+            .overflow_y_scroll()
+            .child(self.editor.clone())
+            .child(gpui::div().h(gpui::px(2000.0)))
+    }
 }
 
 fn display_ranges(editor: &Editor, cx: &mut Context<'_, Editor>) -> Vec<Range<DisplayPoint>> {
@@ -2306,4 +2321,84 @@ fn test_show_completions(cx: &mut TestAppContext) {
             panic!("expected completion menu to be open");
         }
     });
+}
+
+#[gpui::test]
+fn test_hover_popover_hides_on_parent_scroll(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let (container, cx) = cx.add_window_view(|window, cx| TestScrollContainer {
+        editor: cx.new(|cx| Editor::auto_height(1, Some(4), window, cx)),
+    });
+    let editor = container.read_with(cx, |container, _| container.editor.clone());
+    let mut cx = EditorTestContext::for_editor_in(editor, cx);
+
+    cx.set_state("ˇ{{base_url}}/users");
+    handle_hover_requests(&mut cx);
+    let hover_point = cx.pixel_position("{{baseˇ_url}}/users");
+    cx.simulate_mouse_move(hover_point, None, Modifiers::default());
+    cx.background_executor
+        .advance_clock(Duration::from_millis(get_hover_popover_delay(&cx) + 100));
+    let popover_bounds = cx.debug_bounds("POPOVER-info_popover").unwrap();
+
+    cx.simulate_event(ScrollEvent {
+        position: popover_bounds.center(),
+        delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(-100.0))),
+        ..Default::default()
+    });
+    assert!(cx.debug_bounds("POPOVER-info_popover").is_some());
+    cx.update_editor(|editor, _, _| {
+        assert_eq!(editor.hover_state.info_popovers.len(), 1);
+    });
+
+    cx.simulate_event(ScrollEvent {
+        position: hover_point,
+        delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(-100.0))),
+        ..Default::default()
+    });
+    assert!(cx.debug_bounds("POPOVER-info_popover").is_none());
+    cx.update_editor(|editor, _, _| {
+        assert!(editor.hover_state.info_popovers.is_empty());
+    });
+
+    cx.simulate_event(ScrollEvent {
+        position: hover_point,
+        delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(100.0))),
+        ..Default::default()
+    });
+    assert!(cx.debug_bounds("POPOVER-info_popover").is_none());
+}
+
+#[gpui::test]
+fn test_completions_menu_hidden_when_clipped_by_parent(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let (container, cx) = cx.add_window_view(|window, cx| TestScrollContainer {
+        editor: cx.new(|cx| Editor::auto_height(1, Some(4), window, cx)),
+    });
+    let editor = container.read_with(cx, |container, _| container.editor.clone());
+    let mut cx = EditorTestContext::for_editor_in(editor, cx);
+
+    cx.set_state("ˇ");
+    handle_completion_requests(&mut cx);
+    cx.simulate_input("{{");
+    assert!(cx.debug_bounds("MENU-completions").is_some());
+
+    let scroll_point = cx.pixel_position("{{ˇ");
+    cx.simulate_event(ScrollEvent {
+        position: scroll_point,
+        delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(-100.0))),
+        ..Default::default()
+    });
+    assert!(cx.debug_bounds("MENU-completions").is_none());
+    cx.update_editor(|editor, _, _| {
+        assert!(editor.has_visible_completions_menu());
+    });
+
+    cx.simulate_event(ScrollEvent {
+        position: scroll_point,
+        delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(100.0))),
+        ..Default::default()
+    });
+    assert!(cx.debug_bounds("MENU-completions").is_some());
 }
