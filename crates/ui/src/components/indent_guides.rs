@@ -357,14 +357,6 @@ impl Element for IndentGuidesElement {
     }
 }
 
-impl IntoElement for IndentGuidesElement {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}
-
 pub fn indent_guides(indent_size: Pixels, colors: IndentGuideColors) -> IndentGuides {
     IndentGuides {
         colors,

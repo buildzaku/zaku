@@ -1,4 +1,4 @@
-use fuzzy_nucleo::{Case, LengthPenalty, StringMatch, StringMatchCandidate};
+use fuzzy_nucleo::{MaxResults, StringMatch, StringMatchCandidate, StringMatchOptions};
 use gpui::{
     Action, AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
     SharedString, Subscription, Task, Window, prelude::*,
@@ -278,9 +278,10 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
             self.matches = fuzzy_nucleo::match_strings(
                 &candidates,
                 query,
-                Case::smart_if_uppercase_in(query),
-                LengthPenalty::On,
-                100,
+                StringMatchOptions {
+                    max_results: MaxResults::limit::<100>(),
+                    ..Default::default()
+                },
             );
             self.selected_index = 0;
         }

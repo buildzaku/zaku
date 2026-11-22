@@ -1560,14 +1560,6 @@ impl EditorElement {
     }
 }
 
-impl IntoElement for EditorElement {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}
-
 impl Element for EditorElement {
     type RequestLayoutState = ();
     type PrepaintState = EditorLayout;
