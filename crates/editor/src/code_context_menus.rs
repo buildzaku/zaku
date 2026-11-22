@@ -321,7 +321,7 @@ impl CompletionsMenu {
             .text_size(style.text.font_size)
             .map(|this| {
                 if plain_text.is_empty() {
-                    this.child(Text::new("Empty").color(Color::Muted))
+                    this.child(Text::new("Empty").color(Color::Muted).italic())
                 } else {
                     this.child(plain_text.clone())
                 }

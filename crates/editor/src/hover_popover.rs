@@ -339,7 +339,7 @@ impl InfoPopover {
                 .line_height(gpui::relative(1.2))
                 .map(|this| {
                     if value.is_empty() {
-                        this.child(Text::new("Empty").color(Color::Muted))
+                        this.child(Text::new("Empty").color(Color::Muted).italic())
                     } else {
                         this.child(
                             gpui::div()
