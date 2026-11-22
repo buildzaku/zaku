@@ -40,6 +40,7 @@ pub enum IconAsset {
     Close,
     Command,
     Control,
+    Copy,
     Dash,
     Download,
     File,

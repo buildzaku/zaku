@@ -266,14 +266,6 @@ impl<T: Copy + Ord + 'static> Element for SelectableTextElement<T> {
     }
 }
 
-impl<T: Copy + Ord + 'static> IntoElement for SelectableTextElement<T> {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}
-
 #[derive(IntoElement)]
 pub struct SelectableTextGroup<T: Copy + Ord + 'static> {
     base: Div,

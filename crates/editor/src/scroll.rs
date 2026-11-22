@@ -11,6 +11,7 @@ use multi_buffer::Anchor;
 use crate::{
     Editor,
     display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, ToDisplayPoint},
+    hover_popover,
 };
 
 pub(crate) type ScrollOffset = f64;
@@ -192,6 +193,7 @@ impl Editor {
         position: Point<ScrollOffset>,
         cx: &mut Context<Self>,
     ) {
+        hover_popover::hide_hover(self, cx);
         self.scroll_manager.set_scroll_position(snapshot, position);
         cx.notify();
     }

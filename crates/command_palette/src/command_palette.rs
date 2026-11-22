@@ -10,7 +10,7 @@ use std::{
     any::TypeId,
     cmp::{self, Reverse},
     collections::{HashMap, VecDeque},
-    sync::{Arc, atomic::AtomicBool},
+    sync::Arc,
     time::Duration,
 };
 
@@ -389,10 +389,10 @@ impl PickerDelegate for CommandPaletteDelegate {
                 let matches = fuzzy_nucleo::match_strings_async(
                     &candidates,
                     &normalized_query,
-                    fuzzy_nucleo::Case::Smart,
-                    fuzzy_nucleo::LengthPenalty::On,
-                    10000,
-                    &AtomicBool::default(),
+                    fuzzy_nucleo::StringMatchOptions {
+                        max_results: fuzzy_nucleo::MaxResults::limit::<10_000>(),
+                        ..Default::default()
+                    },
                     executor,
                 )
                 .await;

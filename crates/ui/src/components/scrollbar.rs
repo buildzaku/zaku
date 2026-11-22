@@ -1467,11 +1467,3 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
         });
     }
 }
-
-impl<T: ScrollableHandle> IntoElement for ScrollbarElement<T> {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}

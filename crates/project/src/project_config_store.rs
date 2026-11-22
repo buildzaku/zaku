@@ -6,8 +6,8 @@ use fs::Fs;
 use path::{PathStyle, RelPath};
 use util::ResultExt;
 use worktree::{
-    ConfigFileKind, ConfigFileType, Entry, EnvironmentFile, FolderFile, PathChange, ProjectFile,
-    UpdatedEntriesSet, Worktree, WorktreeId,
+    ConfigFileKind, ConfigFileType, Entry, EnvironmentColor, EnvironmentFile, FolderFile,
+    PathChange, ProjectFile, UpdatedEntriesSet, Variable, Worktree, WorktreeId,
 };
 
 use crate::{
@@ -26,6 +26,16 @@ pub enum ProjectConfigStoreEvent {
 pub struct InvalidConfigFileError {
     pub path: Arc<RelPath>,
     pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VariableScope {
+    Project,
+    Environment {
+        name: String,
+        color: Option<EnvironmentColor>,
+    },
+    Folder(Arc<RelPath>),
 }
 
 pub struct ProjectConfigStore {
@@ -127,36 +137,69 @@ impl ProjectConfigStore {
     }
 
     pub fn variables_for_request(&self, request_path: &ProjectPath) -> HashMap<String, String> {
+        self.scoped_variables_for_request(request_path)
+            .into_iter()
+            .map(|(_, variable)| (variable.name.clone(), variable.value.clone()))
+            .collect()
+    }
+
+    pub fn scoped_variables_for_request(
+        &self,
+        request_path: &ProjectPath,
+    ) -> Vec<(VariableScope, &Variable)> {
         if self.root_worktree_id != Some(request_path.worktree_id) {
-            return HashMap::default();
+            return Vec::new();
         }
 
         let folder_files = request_path
             .path
             .ancestors()
             .skip(1)
-            .filter_map(|folder| self.folder_files.get(folder))
+            .filter_map(|folder| self.folder_files.get_key_value(folder))
             .collect::<Vec<_>>();
 
         // Later scopes override earlier ones.
         self.project_file
             .iter()
-            .flat_map(|project_file| &project_file.request.variables)
+            .flat_map(|project_file| {
+                project_file
+                    .request
+                    .variables
+                    .iter()
+                    .map(|variable| (VariableScope::Project, variable))
+            })
             .chain(
                 self.active_environment
-                    .as_ref()
-                    .and_then(|name| self.environment_file(name))
+                    .as_deref()
+                    .and_then(|name| self.environment_files.get_key_value(name))
                     .into_iter()
-                    .flat_map(|environment_file| &environment_file.environment.variables),
+                    .flat_map(|(name, environment_file)| {
+                        environment_file
+                            .environment
+                            .variables
+                            .iter()
+                            .map(move |variable| {
+                                let scope = VariableScope::Environment {
+                                    name: name.clone(),
+                                    color: environment_file.environment.color,
+                                };
+                                (scope, variable)
+                            })
+                    }),
             )
             .chain(
                 folder_files
                     .into_iter()
                     .rev()
-                    .flat_map(|folder_file| &folder_file.request.variables),
+                    .flat_map(|(folder, folder_file)| {
+                        folder_file
+                            .request
+                            .variables
+                            .iter()
+                            .map(move |variable| (VariableScope::Folder(folder.clone()), variable))
+                    }),
             )
-            .filter(|variable| !variable.disabled)
-            .map(|variable| (variable.name.clone(), variable.value.clone()))
+            .filter(|(_, variable)| !variable.disabled)
             .collect()
     }
 

@@ -16,8 +16,8 @@ pub use worktree::{
     ProjectEntryId, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileFormField,
     RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState,
     Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet, UpdatedGitRepository, Variable,
-    Worktree, WorktreeId, request_method_short_name, substitute_variables_in_str,
-    variable_ranges_in_str,
+    Worktree, WorktreeId, is_variable_name_char, request_method_short_name,
+    substitute_variables_in_str, variable_ranges_in_str,
 };
 
 use anyhow::anyhow;
@@ -26,6 +26,7 @@ use futures::{FutureExt, StreamExt};
 use gpui::TestAppContext;
 use gpui::{App, AppContext, Context, Entity, EventEmitter, SharedString, Task, TaskExt};
 use std::{
+    ops::Range,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -33,7 +34,10 @@ use std::{
 use collections::HashMap;
 use fs::{Fs, MTime};
 use git::status::FileStatus;
-use language::{AvailableLanguage, Buffer, BufferEvent, Language, LanguageRegistry, PLAIN_TEXT};
+use language::{
+    Anchor, AvailableLanguage, Buffer, BufferEvent, CodeLabel, Language, LanguageRegistry,
+    PLAIN_TEXT,
+};
 use path::{PathStyle, RelPath};
 use util::ResultExt;
 use worktree::{EnvironmentFile, ProjectFile};
@@ -42,7 +46,9 @@ use crate::{
     buffer_store::{BufferStore, BufferStoreEvent, is_not_found_error},
     git_store::GitStore,
     project_config_buffer_store::{ProjectConfigBufferStore, ProjectConfigBufferStoreEvent},
-    project_config_store::{InvalidConfigFileError, ProjectConfigStore, ProjectConfigStoreEvent},
+    project_config_store::{
+        InvalidConfigFileError, ProjectConfigStore, ProjectConfigStoreEvent, VariableScope,
+    },
     request_buffer_store::{RequestBufferStore, RequestBufferStoreEvent},
     worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent},
 };
@@ -240,6 +246,33 @@ impl ProjectItem for Buffer {
     fn is_dirty(&self) -> bool {
         self.is_dirty()
     }
+}
+
+#[derive(Clone)]
+pub struct Completion {
+    pub replace_range: Range<Anchor>,
+    pub new_text: String,
+    pub label: CodeLabel,
+    pub documentation: Option<CompletionDocumentation>,
+    pub match_start: Option<Anchor>,
+}
+
+impl Completion {
+    pub fn filter_text(&self) -> &str {
+        self.label.filter_text()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CompletionDocumentation {
+    pub single_line: SharedString,
+    pub plain_text: SharedString,
+}
+
+#[derive(Debug, Clone)]
+pub struct Hover {
+    pub range: Range<Anchor>,
+    pub variable: Option<(VariableScope, SharedString)>,
 }
 
 pub enum ProjectEvent {

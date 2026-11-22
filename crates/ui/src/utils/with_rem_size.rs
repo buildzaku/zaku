@@ -1,7 +1,7 @@
 use gpui::{
     AnyElement, App, Bounds, Div, DivFrameState, Element, ElementId, GlobalElementId, Hitbox,
-    InspectorElementId, InteractiveElement, IntoElement, LayoutId, ParentElement, Pixels,
-    StyleRefinement, Styled, Window,
+    InspectorElementId, InteractiveElement, LayoutId, ParentElement, Pixels, StyleRefinement,
+    Styled, Window,
 };
 use std::panic;
 
@@ -98,13 +98,5 @@ impl Element for WithRemSize {
                 cx,
             );
         });
-    }
-}
-
-impl IntoElement for WithRemSize {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

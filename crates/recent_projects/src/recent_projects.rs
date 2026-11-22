@@ -1,4 +1,4 @@
-use fuzzy_nucleo::{Case, LengthPenalty, StringMatch, StringMatchCandidate};
+use fuzzy_nucleo::{MaxResults, StringMatch, StringMatchCandidate, StringMatchOptions};
 use gpui::{
     Action, AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
     SharedString, Subscription, Task, TaskExt, WeakEntity, Window, prelude::*,
@@ -342,9 +342,10 @@ impl PickerDelegate for RecentProjectsDelegate {
             fuzzy_nucleo::match_strings(
                 &recent_candidates,
                 query,
-                Case::smart_if_uppercase_in(query),
-                LengthPenalty::On,
-                100,
+                StringMatchOptions {
+                    max_results: MaxResults::limit::<100>(),
+                    ..Default::default()
+                },
             )
         };
 
