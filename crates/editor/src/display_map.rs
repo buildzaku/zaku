@@ -492,6 +492,38 @@ mod tests {
         display_map.update(cx, DisplayMap::snapshot)
     }
 
+    fn chunks(
+        display_map: &Entity<DisplayMap>,
+        theme: &SyntaxTheme,
+        cx: &mut App,
+    ) -> Vec<(String, Option<Hsla>, Option<Hsla>)> {
+        let snapshot = display_map.update(cx, DisplayMap::snapshot);
+        let mut chunks: Vec<(String, Option<Hsla>, Option<Hsla>)> = Vec::new();
+        for chunk in snapshot.tab_snapshot.chunks(
+            TabPoint::zero()..snapshot.tab_snapshot.max_point(),
+            LanguageAwareStyling {
+                tree_sitter: true,
+                diagnostics: true,
+            },
+            Some(&snapshot.text_highlights),
+        ) {
+            let syntax_color = chunk
+                .syntax_highlight_id
+                .and_then(|id| theme.get(id)?.color);
+
+            let highlight_color = chunk.highlight_style.and_then(|style| style.color);
+            if let Some((last_chunk, last_syntax_color, last_highlight_color)) = chunks.last_mut()
+                && syntax_color == *last_syntax_color
+                && highlight_color == *last_highlight_color
+            {
+                last_chunk.push_str(chunk.text);
+                continue;
+            }
+            chunks.push((chunk.text.to_string(), syntax_color, highlight_color));
+        }
+        chunks
+    }
+
     #[gpui::test]
     fn test_text_chunks(cx: &mut App) {
         init_test(cx);
@@ -539,38 +571,6 @@ mod tests {
                 .next(),
             Some("c   ccccc")
         );
-    }
-
-    fn chunks(
-        display_map: &Entity<DisplayMap>,
-        theme: &SyntaxTheme,
-        cx: &mut App,
-    ) -> Vec<(String, Option<Hsla>, Option<Hsla>)> {
-        let snapshot = display_map.update(cx, DisplayMap::snapshot);
-        let mut chunks: Vec<(String, Option<Hsla>, Option<Hsla>)> = Vec::new();
-        for chunk in snapshot.tab_snapshot.chunks(
-            TabPoint::zero()..snapshot.tab_snapshot.max_point(),
-            LanguageAwareStyling {
-                tree_sitter: true,
-                diagnostics: true,
-            },
-            Some(&snapshot.text_highlights),
-        ) {
-            let syntax_color = chunk
-                .syntax_highlight_id
-                .and_then(|id| theme.get(id)?.color);
-
-            let highlight_color = chunk.highlight_style.and_then(|style| style.color);
-            if let Some((last_chunk, last_syntax_color, last_highlight_color)) = chunks.last_mut()
-                && syntax_color == *last_syntax_color
-                && highlight_color == *last_highlight_color
-            {
-                last_chunk.push_str(chunk.text);
-                continue;
-            }
-            chunks.push((chunk.text.to_string(), syntax_color, highlight_color));
-        }
-        chunks
     }
 
     #[gpui::test]
