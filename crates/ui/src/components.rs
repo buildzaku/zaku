@@ -1,3 +1,4 @@
+mod banner;
 mod button;
 mod context_menu;
 mod data_table;
@@ -21,6 +22,7 @@ mod toggle;
 mod tooltip;
 mod update_button;
 
+pub use banner::*;
 pub use button::*;
 pub use context_menu::*;
 pub use data_table::*;

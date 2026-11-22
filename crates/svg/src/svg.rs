@@ -75,6 +75,7 @@ pub enum IconAsset {
     Tree,
     Warning,
     WarningCircle,
+    XCircle,
 }
 
 impl IconAsset {
