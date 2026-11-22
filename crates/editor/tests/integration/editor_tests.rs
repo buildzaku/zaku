@@ -2490,6 +2490,74 @@ fn test_completions_menu_partially_clipped_by_parent(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn test_completions_menu_hover_does_not_scroll(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("ˇ");
+    cx.update_editor(|editor, _, _| {
+        editor.set_completion_provider(Some(Rc::new(VariableProvider::new(
+            TestVariableDelegate {
+                variables: (0..20)
+                    .map(|index| {
+                        (
+                            VariableScope::Project,
+                            Variable {
+                                name: format!("variable_{index}"),
+                                value: format!("value_{index}"),
+                                disabled: false,
+                            },
+                        )
+                    })
+                    .collect(),
+                request_count: Arc::new(AtomicUsize::new(0)),
+            },
+        ))));
+    });
+    let line_height = cx.update_editor(|editor, window, cx| {
+        editor
+            .style(cx)
+            .text
+            .line_height_in_pixels(window.rem_size())
+    });
+
+    cx.simulate_input("{{");
+    let menu_bounds = cx.debug_bounds("MENU-completions").unwrap();
+
+    cx.simulate_event(ScrollEvent {
+        position: menu_bounds.center(),
+        delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.0), -line_height * 0.5)),
+        ..Default::default()
+    });
+    let scroll_offset = cx.update_editor(|editor, _, _| {
+        if let Some(menu) = editor.context_menu().borrow().as_ref() {
+            assert_eq!(menu.selected_item, 0);
+            menu.scroll_handle.0.borrow().base_handle.offset()
+        } else {
+            panic!("expected completion menu to be open");
+        }
+    });
+
+    cx.simulate_mouse_move(
+        gpui::point(menu_bounds.center().x, menu_bounds.bottom() - gpui::px(1.0)),
+        None,
+        Modifiers::default(),
+    );
+    cx.update_editor(|editor, _, _| {
+        if let Some(menu) = editor.context_menu().borrow().as_ref() {
+            assert_ne!(menu.selected_item, 0);
+            assert_eq!(
+                menu.scroll_handle.0.borrow().base_handle.offset(),
+                scroll_offset
+            );
+        } else {
+            panic!("expected completion menu to be open");
+        }
+    });
+}
+
+#[gpui::test]
 fn test_hover_popover_hides_on_other_editor_scroll(cx: &mut TestAppContext) {
     init_test(cx);
 

@@ -44,10 +44,10 @@ pub struct CompletionsMenu {
     pub completions: Rc<RefCell<Box<[Completion]>>>,
     match_candidates: Arc<[(Option<text::Anchor>, Vec<StringMatchCandidate>)]>,
     pub entries: Rc<RefCell<Box<[StringMatch]>>>,
-    pub(crate) selected_item: usize,
+    pub selected_item: usize,
     filter_task: Task<()>,
     cancel_filter: Arc<AtomicBool>,
-    pub(crate) scroll_handle: UniformListScrollHandle,
+    pub scroll_handle: UniformListScrollHandle,
     scroll_handle_aside: ScrollHandle,
 }
 
@@ -239,8 +239,10 @@ impl CompletionsMenu {
                                         if *hovered
                                             && let Some(menu) =
                                                 editor.context_menu.borrow_mut().as_mut()
+                                            && menu.selected_item != item_index
                                         {
-                                            menu.update_selection_index(item_index, cx);
+                                            menu.selected_item = item_index;
+                                            cx.notify();
                                         }
                                     }))
                                     .on_click(cx.listener(move |editor, _event, window, cx| {
