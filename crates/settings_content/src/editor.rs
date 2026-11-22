@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use settings_macros::{MergeFrom, with_fallible_options};
 
-use crate::{FontFamilyName, FontFeaturesContent, FontSize, FontWeightContent};
+use crate::{DelayMs, FontFamilyName, FontFeaturesContent, FontSize, FontWeightContent};
 
 fn deserialize_line_height<'de, D>(deserializer: D) -> Result<f32, D::Error>
 where
@@ -29,6 +29,7 @@ pub struct EditorSettingsContent {
     pub line_height: Option<BufferLineHeight>,
     pub current_line_highlight: Option<CurrentLineHighlight>,
     pub gutter: Option<GutterContent>,
+    pub hover_popover: Option<HoverPopoverContent>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, MergeFrom)]
@@ -54,4 +55,12 @@ pub enum CurrentLineHighlight {
 pub struct GutterContent {
     pub line_numbers: Option<bool>,
     pub min_line_number_digits: Option<usize>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Default, Serialize, Deserialize, MergeFrom)]
+pub struct HoverPopoverContent {
+    pub enabled: Option<bool>,
+    pub delay: Option<DelayMs>,
+    pub hiding_delay: Option<DelayMs>,
 }

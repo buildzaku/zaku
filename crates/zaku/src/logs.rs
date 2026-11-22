@@ -171,7 +171,7 @@ pub(crate) fn open_log_file(
                         .buffer
                         .update(cx, |buffer, cx| buffer.set_text(log, cx));
                     logs_view.editor.update(cx, |editor, cx| {
-                        editor.move_selection_to_end(cx);
+                        editor.move_selection_to_end(window, cx);
                     });
                 });
                 pane.update(cx, |pane, cx| {
@@ -194,7 +194,7 @@ pub(crate) fn open_log_file(
                     "Last {MAX_LINES} lines in {}",
                     path::log_file().compact().display()
                 ));
-                editor.move_selection_to_end(cx);
+                editor.move_selection_to_end(window, cx);
                 editor
             });
             workspace.add_item_to_active_pane(

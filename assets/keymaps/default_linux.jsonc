@@ -208,7 +208,10 @@
       "ctrl-z": "editor::Undo",
       "ctrl-u": "editor::UndoSelection",
       "ctrl-y": "editor::Redo",
-      "ctrl-shift-u": "editor::RedoSelection"
+      "ctrl-shift-u": "editor::RedoSelection",
+      "escape": "editor::Cancel",
+      "ctrl-space": "editor::ShowCompletions",
+      "ctrl-k ctrl-i": "editor::Hover"
     }
   },
   {
@@ -235,6 +238,19 @@
     "context": "ProjectConfigEditor > Editor && mode == auto_height",
     "bindings": {
       "enter": "editor::Newline"
+    }
+  },
+  {
+    "context": "Editor && showing_completions",
+    "bindings": {
+      "enter": "editor::ConfirmCompletion",
+      "tab": "editor::ConfirmCompletion",
+      "up": "editor::ContextMenuPrevious",
+      "ctrl-p": "editor::ContextMenuPrevious",
+      "down": "editor::ContextMenuNext",
+      "ctrl-n": "editor::ContextMenuNext",
+      "pageup": "editor::ContextMenuFirst",
+      "pagedown": "editor::ContextMenuLast"
     }
   },
   {

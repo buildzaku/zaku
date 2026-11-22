@@ -1,6 +1,13 @@
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::{collections::HashMap, hash::BuildHasher, iter, ops::Range, sync::Arc};
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+    hash::{BuildHasher, Hash},
+    iter,
+    ops::Range,
+    sync::Arc,
+};
 use strum::EnumIter;
 
 use path::RelPath;
@@ -202,6 +209,10 @@ pub fn parse_config_file<T: DeserializeOwned>(contents: &str) -> anyhow::Result<
     })
 }
 
+pub fn is_variable_name_char(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
+}
+
 pub fn variable_ranges_in_str(text: &str) -> impl Iterator<Item = (Range<usize>, &str)> {
     let mut rest = text;
     iter::from_fn(move || {
@@ -228,11 +239,11 @@ pub fn variable_ranges_in_str(text: &str) -> impl Iterator<Item = (Range<usize>,
 
 pub fn substitute_variables_in_str(
     text: &str,
-    variables: &HashMap<String, String, impl BuildHasher>,
+    variables: &HashMap<impl Borrow<str> + Eq + Hash, impl AsRef<str>, impl BuildHasher>,
 ) -> String {
     fn inner<'a>(
         text: &str,
-        variables: &'a HashMap<String, String, impl BuildHasher>,
+        variables: &'a HashMap<impl Borrow<str> + Eq + Hash, impl AsRef<str>, impl BuildHasher>,
         resolving_names: &mut Vec<&'a str>,
     ) -> String {
         let mut substituted_text = String::with_capacity(text.len());
@@ -244,9 +255,9 @@ pub fn substitute_variables_in_str(
             );
             match variables.get_key_value(name) {
                 // Self-referencing variables stay literal instead of recursing forever.
-                Some((name, value)) if !resolving_names.contains(&name.as_str()) => {
-                    resolving_names.push(name);
-                    substituted_text.push_str(&inner(value, variables, resolving_names));
+                Some((name, value)) if !resolving_names.contains(&name.borrow()) => {
+                    resolving_names.push(name.borrow());
+                    substituted_text.push_str(&inner(value.as_ref(), variables, resolving_names));
                     resolving_names.pop();
                 }
                 _ => {

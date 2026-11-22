@@ -1,9 +1,11 @@
+pub mod code_label;
 pub mod grammar;
 pub mod highlight_map;
 pub mod language_config;
 pub mod language_name;
 pub mod queries;
 
+pub use code_label::CodeLabel;
 pub use grammar::{
     BracketsConfig, BracketsPatternConfig, Grammar, GrammarId, HighlightsConfig, IndentConfig,
     InjectionConfig, InjectionPatternConfig, NEXT_GRAMMAR_ID, OverrideConfig, OverrideEntry,

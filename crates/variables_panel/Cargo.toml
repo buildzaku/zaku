@@ -18,7 +18,6 @@ workspace = true
 actions = { workspace = true }
 anyhow = { workspace = true }
 editor = { workspace = true }
-environment_selector = { workspace = true }
 gpui = { workspace = true }
 path = { workspace = true }
 project = { workspace = true }

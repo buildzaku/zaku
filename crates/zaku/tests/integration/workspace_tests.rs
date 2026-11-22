@@ -1960,7 +1960,14 @@ async fn test_save_conflicting_item(cx: &mut TestAppContext) {
           "editor": { "font_size": 12 }
         }
     "#};
-    editor.update(cx, |editor, cx| editor.set_text(edited_settings, cx));
+    open_result
+        .window
+        .update(cx, |_, window, cx| {
+            editor.update(cx, |editor, cx| {
+                editor.set_text(edited_settings, window, cx);
+            });
+        })
+        .unwrap();
 
     temp_fs
         .write(
@@ -2046,17 +2053,23 @@ async fn test_close_conflicting_item(cx: &mut TestAppContext) {
         .downcast::<Editor>()
         .unwrap();
 
-    editor.update(cx, |editor, cx| {
-        editor.set_text(
-            indoc! {r#"
-                {
-                  "ui": { "font_size": 16 },
-                  "editor": { "font_size": 12 }
-                }
-            "#},
-            cx,
-        );
-    });
+    open_result
+        .window
+        .update(cx, |_, window, cx| {
+            editor.update(cx, |editor, cx| {
+                editor.set_text(
+                    indoc! {r#"
+                        {
+                          "ui": { "font_size": 16 },
+                          "editor": { "font_size": 12 }
+                        }
+                    "#},
+                    window,
+                    cx,
+                );
+            });
+        })
+        .unwrap();
 
     let disk_settings = indoc! {r#"
         {
