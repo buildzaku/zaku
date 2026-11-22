@@ -22,6 +22,7 @@ use actions::editor::ConfirmCompletion;
 use language::Buffer;
 use multi_buffer::Anchor;
 use project::Completion;
+use theme::ActiveTheme;
 use ui::{
     Color, ListItem, ListItemSpacing, Popover, ScrollAxes, Scrollbars, Text, TextCommon, TextSize,
     Toggleable, WithScrollbar,
@@ -183,7 +184,9 @@ impl CompletionsMenu {
         let selected_item = self.selected_item;
         let completions = self.completions.clone();
         let entries = self.entries.clone();
-        let style = style.clone();
+        let mut style = style.clone();
+        // Muted editors dim their text, so give the menu the regular text color.
+        style.text.color = cx.theme().colors().text;
         let list = gpui::uniform_list(
             "completions",
             self.entries.borrow().len(),
