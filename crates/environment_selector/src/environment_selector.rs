@@ -1,4 +1,4 @@
-use fuzzy_nucleo::{Case, LengthPenalty, StringMatch, StringMatchCandidate};
+use fuzzy_nucleo::{MaxResults, StringMatch, StringMatchCandidate, StringMatchOptions};
 use gpui::{
     Action, AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
     SharedString, Subscription, Task, Window, prelude::*,
@@ -16,20 +16,6 @@ use workspace::{ModalView, Workspace};
 
 pub fn init(cx: &mut App) {
     cx.observe_new(EnvironmentSelector::register).detach();
-}
-
-pub fn environment_icon(environment_color: Option<EnvironmentColor>, text_color: Color) -> Icon {
-    Icon::new(IconAsset::SquareInset)
-        .size(IconSize::XSmall)
-        .color(match environment_color {
-            Some(EnvironmentColor::Red) => Color::PaletteRed,
-            Some(EnvironmentColor::Orange) => Color::PaletteOrange,
-            Some(EnvironmentColor::Yellow) => Color::PaletteYellow,
-            Some(EnvironmentColor::Green) => Color::PaletteGreen,
-            Some(EnvironmentColor::Blue) => Color::PaletteBlue,
-            Some(EnvironmentColor::Purple) => Color::PalettePurple,
-            None => text_color,
-        })
 }
 
 pub struct EnvironmentSelector {
@@ -292,9 +278,10 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
             self.matches = fuzzy_nucleo::match_strings(
                 &candidates,
                 query,
-                Case::smart_if_uppercase_in(query),
-                LengthPenalty::On,
-                100,
+                StringMatchOptions {
+                    max_results: MaxResults::limit::<100>(),
+                    ..Default::default()
+                },
             );
             self.selected_index = 0;
         }
@@ -360,7 +347,7 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                         .size(IconSize::Small)
                         .color(Color::Error)
                 } else {
-                    environment_icon(environment.color, Color::Default)
+                    editor::environment_icon(environment.color, Color::Default)
                 })
                 .child(
                     HighlightedText::new(

@@ -975,14 +975,6 @@ impl Element for TableTextElement {
     }
 }
 
-impl IntoElement for TableTextElement {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}
-
 fn render_header_cell(
     header: AnyElement,
     width: Option<Length>,

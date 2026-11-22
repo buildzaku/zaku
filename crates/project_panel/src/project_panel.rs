@@ -1216,8 +1216,8 @@ impl ProjectPanel {
                 0..selection_end
             });
             self.file_name_editor.update(cx, |editor, cx| {
-                editor.set_text(&file_name, cx);
-                editor.change_selections(SelectionEffects::default(), cx, |selections| {
+                editor.set_text(&file_name, window, cx);
+                editor.change_selections(SelectionEffects::default(), window, cx, |selections| {
                     selections.select_ranges([
                         MultiBufferOffset(selection.start)..MultiBufferOffset(selection.end)
                     ]);
@@ -3523,7 +3523,7 @@ mod tests {
         panel
             .update_in(cx, |panel, window, cx| {
                 panel.file_name_editor.update(cx, |editor, cx| {
-                    editor.set_text("New request", cx);
+                    editor.set_text("New request", window, cx);
                 });
                 panel.confirm_edit(true, window, cx).unwrap()
             })
@@ -3588,7 +3588,7 @@ mod tests {
         panel
             .update_in(cx, |panel, window, cx| {
                 panel.file_name_editor.update(cx, |editor, cx| {
-                    editor.set_text("New folder", cx);
+                    editor.set_text("New folder", window, cx);
                 });
                 panel.confirm_edit(true, window, cx).unwrap()
             })
@@ -4038,9 +4038,9 @@ mod tests {
         });
         cx.run_until_parked();
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
-                editor.set_text("   ", cx);
+                editor.set_text("   ", window, cx);
             });
         });
         cx.run_until_parked();
@@ -4061,9 +4061,9 @@ mod tests {
                 .is_none()
         );
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
-                editor.set_text("   .toml", cx);
+                editor.set_text("   .toml", window, cx);
             });
         });
         cx.run_until_parked();
@@ -4084,9 +4084,9 @@ mod tests {
                 .is_none()
         );
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
-                editor.set_text("     second", cx);
+                editor.set_text("     second", window, cx);
             });
         });
         cx.run_until_parked();
@@ -4104,9 +4104,9 @@ mod tests {
             );
         });
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
-                editor.set_text("second", cx);
+                editor.set_text("second", window, cx);
             });
         });
         cx.run_until_parked();
@@ -4122,9 +4122,9 @@ mod tests {
             );
         });
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
-                editor.set_text("first", cx);
+                editor.set_text("first", window, cx);
             });
         });
         cx.run_until_parked();
@@ -4143,9 +4143,9 @@ mod tests {
             );
         });
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
-                editor.set_text("first/", cx);
+                editor.set_text("first/", window, cx);
             });
         });
         cx.run_until_parked();
@@ -4164,9 +4164,9 @@ mod tests {
             );
         });
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
-                editor.set_text("first.toml/", cx);
+                editor.set_text("first.toml/", window, cx);
             });
         });
         cx.run_until_parked();
@@ -4185,9 +4185,9 @@ mod tests {
             );
         });
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
-                editor.set_text(".zaku/", cx);
+                editor.set_text(".zaku/", window, cx);
             });
         });
         cx.run_until_parked();
@@ -4208,9 +4208,9 @@ mod tests {
                 .is_none()
         );
 
-        panel.update_in(cx, |panel, _, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
-                editor.set_text("first/.zaku/second", cx);
+                editor.set_text("first/.zaku/second", window, cx);
             });
         });
         cx.run_until_parked();
@@ -4573,7 +4573,7 @@ mod tests {
                     "Should not select file extension"
                 );
 
-                editor.set_text("renamed", cx);
+                editor.set_text("renamed", window, cx);
             });
             panel.confirm_edit(true, window, cx).unwrap()
         });
@@ -4650,7 +4650,7 @@ mod tests {
 
         panel.update_in(cx, |panel, window, cx| {
             panel.file_name_editor.update(cx, |editor, cx| {
-                editor.set_text("second", cx);
+                editor.set_text("second", window, cx);
             });
             assert!(
                 panel.confirm_edit(true, window, cx).is_none(),

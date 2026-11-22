@@ -6,12 +6,12 @@ mod text_diff;
 pub use buffer::*;
 pub use language_core::{
     BlockCommentConfig, BracketPair, BracketPairConfig, BracketPairContent, BracketsConfig,
-    BracketsPatternConfig, DecreaseIndentConfig, Grammar, GrammarId, HighlightId, HighlightMap,
-    HighlightsConfig, IndentConfig, InjectionConfig, InjectionPatternConfig, LanguageConfig,
-    LanguageConfigOverride, LanguageId, LanguageMatcher, LanguageName, LanguageQueries, Override,
-    OverrideConfig, OverrideEntry, QUERY_FILENAME_PREFIXES, RedactionConfig, SoftWrap,
-    WrapCharactersConfig, auto_indent_using_last_non_empty_line_default, deserialize_regex,
-    regex_json_schema, serialize_regex,
+    BracketsPatternConfig, CodeLabel, DecreaseIndentConfig, Grammar, GrammarId, HighlightId,
+    HighlightMap, HighlightsConfig, IndentConfig, InjectionConfig, InjectionPatternConfig,
+    LanguageConfig, LanguageConfigOverride, LanguageId, LanguageMatcher, LanguageName,
+    LanguageQueries, Override, OverrideConfig, OverrideEntry, QUERY_FILENAME_PREFIXES,
+    RedactionConfig, SoftWrap, WrapCharactersConfig, auto_indent_using_last_non_empty_line_default,
+    deserialize_regex, regex_json_schema, serialize_regex,
 };
 pub use language_registry::{
     AvailableLanguage, LanguageNotFound, LanguageRegistry, LoadedLanguage,

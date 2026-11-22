@@ -37,6 +37,7 @@ pub trait ToDisplayPoint {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum HighlightKey {
+    HoverState,
     InputComposition,
     VariableDefined,
     VariableUndefined,

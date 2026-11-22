@@ -1,7 +1,10 @@
+pub mod code_context_menus;
+mod completions;
 mod config;
 pub mod display_map;
 mod editor_settings;
 mod element;
+pub mod hover_popover;
 pub mod items;
 mod movement;
 mod persistence;
@@ -9,24 +12,27 @@ mod scroll;
 mod selections_collection;
 #[cfg(any(test, feature = "test"))]
 pub mod test;
+mod variable_provider;
 
-pub use editor_settings::{CurrentLineHighlight, EditorSettings, Gutter};
+pub use completions::CompletionProvider;
+pub use editor_settings::{CurrentLineHighlight, EditorSettings, Gutter, HoverPopover};
 pub use element::EditorElement;
 pub use multi_buffer::{MultiBufferOffset, MultiBufferOffsetUtf16};
+pub use variable_provider::{VariableProvider, VariableProviderDelegate};
 
 use gpui::{
     AnyElement, App, Axis, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontId, FontStyle, HighlightStyle,
-    Hsla, KeyContext, MouseDownEvent, MouseUpEvent, Pixels, Point, Render, SharedString,
-    Subscription, TextRun, TextStyle, TextStyleRefinement, UTF16Selection, UnderlineStyle, Window,
-    prelude::*,
+    Hsla, KeyContext, MouseDownEvent, MouseUpEvent, Pixels, Point, Render, SharedString, Size,
+    Subscription, Task, TextRun, TextStyle, TextStyleRefinement, UTF16Selection, UnderlineStyle,
+    Window, prelude::*,
 };
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
+    cell::RefCell,
     collections::{HashMap, VecDeque},
-    hash::BuildHasher,
     num::NonZeroU32,
     ops::{Deref, Range, RangeInclusive},
     path::PathBuf,
@@ -38,20 +44,42 @@ use text::{Bias, OffsetUtf16, Selection, SelectionGoal, TransactionId};
 
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
 use language::{Buffer, BufferEvent, Capability};
-use multi_buffer::{Anchor, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset, ToPoint};
+use multi_buffer::{
+    Anchor, CharKind, CharScopeContext, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset,
+    ToPoint,
+};
+use project::{EnvironmentColor, Variable, project_config_store::VariableScope};
 use settings::{Settings, SettingsStore};
-use theme::{ActiveTheme, SyntaxTheme, ThemeSettings};
-use ui::Color;
+use theme::{ActiveTheme, SyntaxTheme, Theme, ThemeSettings};
+use ui::{Color, Icon, IconAsset, IconSize};
 use util::ResultExt;
 
 use crate::{
+    code_context_menus::CompletionsMenu,
     display_map::{DisplayMap, DisplayPoint, DisplayRow, DisplaySnapshot, HighlightKey},
     element::PositionMap,
+    hover_popover::HoverState,
     scroll::ScrollOffset,
     selections_collection::{MutableSelectionsCollection, SelectionsCollection},
 };
 
 pub const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
+
+type CompletionId = usize;
+
+type BackgroundHighlight = (
+    Arc<dyn Fn(&usize, &Theme) -> Hsla + Send + Sync>,
+    Arc<[Range<Anchor>]>,
+);
+
+pub trait SemanticsProvider {
+    fn hover(
+        &self,
+        buffer: &Entity<Buffer>,
+        position: text::Anchor,
+        cx: &mut App,
+    ) -> Option<Task<Option<Vec<project::Hover>>>>;
+}
 
 pub fn init(cx: &mut App) {
     workspace::register_project_item::<Editor>(cx);
@@ -62,6 +90,20 @@ pub fn init(cx: &mut App) {
             cx.new(|cx| Editor::single_line(window, cx)),
         )) as Arc<dyn ErasedEditor>
     });
+}
+
+pub fn environment_icon(environment_color: Option<EnvironmentColor>, text_color: Color) -> Icon {
+    Icon::new(IconAsset::SquareInset)
+        .size(IconSize::XSmall)
+        .color(match environment_color {
+            Some(EnvironmentColor::Red) => Color::PaletteRed,
+            Some(EnvironmentColor::Orange) => Color::PaletteOrange,
+            Some(EnvironmentColor::Yellow) => Color::PaletteYellow,
+            Some(EnvironmentColor::Green) => Color::PaletteGreen,
+            Some(EnvironmentColor::Blue) => Color::PaletteBlue,
+            Some(EnvironmentColor::Purple) => Color::PalettePurple,
+            None => text_color,
+        })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -354,17 +396,29 @@ impl SelectionHistory {
 
 #[derive(Clone)]
 pub struct SelectionEffects {
+    completions: bool,
     scroll: Option<scroll::Autoscroll>,
 }
 
 impl SelectionEffects {
     pub fn no_scroll() -> Self {
-        Self { scroll: None }
+        Self {
+            scroll: None,
+            ..Default::default()
+        }
     }
 
     fn scroll(scroll: scroll::Autoscroll) -> Self {
         Self {
             scroll: Some(scroll),
+            ..Default::default()
+        }
+    }
+
+    pub fn completions(self, completions: bool) -> Self {
+        Self {
+            completions,
+            ..self
         }
     }
 }
@@ -372,6 +426,7 @@ impl SelectionEffects {
 impl Default for SelectionEffects {
     fn default() -> Self {
         Self {
+            completions: true,
             scroll: Some(scroll::Autoscroll::newest()),
         }
     }
@@ -423,6 +478,14 @@ pub struct Editor {
     muted: bool,
     text_style_refinement: Option<TextStyleRefinement>,
     current_line_highlight: Option<CurrentLineHighlight>,
+    style: Option<EditorStyle>,
+    context_menu: RefCell<Option<CompletionsMenu>>,
+    completion_provider: Option<Rc<dyn CompletionProvider>>,
+    completion_tasks: Vec<(CompletionId, Task<()>)>,
+    next_completion_id: CompletionId,
+    semantics_provider: Option<Rc<dyn SemanticsProvider>>,
+    pub hover_state: HoverState,
+    background_highlights: HashMap<HighlightKey, BackgroundHighlight>,
     _focus_subscriptions: Vec<Subscription>,
     _settings_subscription: Subscription,
     _buffer_subscription: Option<Subscription>,
@@ -552,13 +615,21 @@ impl Editor {
             muted: false,
             text_style_refinement: None,
             current_line_highlight: None,
+            style: None,
+            context_menu: RefCell::new(None),
+            completion_provider: None,
+            completion_tasks: Vec::new(),
+            next_completion_id: 0,
+            semantics_provider: None,
+            hover_state: HoverState::default(),
+            background_highlights: HashMap::default(),
             _focus_subscriptions: focus_subscriptions,
             _settings_subscription: settings_subscription,
             _buffer_subscription: buffer_subscription,
         };
 
         editor.selection_history.mode = SelectionHistoryMode::Skipping;
-        editor.end_selection(cx);
+        editor.end_selection(window, cx);
         editor.selection_history.mode = SelectionHistoryMode::Normal;
 
         editor
@@ -569,12 +640,16 @@ impl Editor {
         cx.notify();
     }
 
-    fn on_blur(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.selecting = false;
         self.clear_highlights(HighlightKey::InputComposition, cx);
         self.ime_transaction = None;
+        hover_popover::hide_hover(self, cx);
+        self.hide_context_menu(cx);
         cx.emit(EditorEvent::Blurred);
-        cx.notify();
+        // Blur listeners run while the window is drawing, which ignores `notify`, so redraw
+        // once the frame is done.
+        cx.defer_in(window, |_, _, cx| cx.notify());
     }
 
     pub fn buffer_snapshot(&self, cx: &App) -> MultiBufferSnapshot {
@@ -639,12 +714,14 @@ impl Editor {
     pub fn change_selections<R>(
         &mut self,
         effects: SelectionEffects,
+        window: &mut Window,
         cx: &mut Context<Self>,
         change: impl FnOnce(&mut MutableSelectionsCollection<'_, '_>) -> R,
     ) -> R {
         let snapshot = self.display_snapshot(cx);
         if let Some(state) = &mut self.deferred_selection_effects_state {
             state.effects.scroll = effects.scroll.or(state.effects.scroll);
+            state.effects.completions = effects.completions;
             let (changed, result) = self.selections.change_with(&snapshot, change);
             state.changed |= changed;
             return result;
@@ -662,23 +739,24 @@ impl Editor {
         if self.defer_selection_effects {
             self.deferred_selection_effects_state = Some(state);
         } else {
-            self.apply_selection_effects(state, cx);
+            self.apply_selection_effects(state, window, cx);
         }
         result
     }
 
     fn with_selection_effects_deferred<R>(
         &mut self,
+        window: &mut Window,
         cx: &mut Context<Self>,
-        update: impl FnOnce(&mut Self, &mut Context<Self>) -> R,
+        update: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) -> R,
     ) -> R {
         let already_deferred = self.defer_selection_effects;
         self.defer_selection_effects = true;
-        let result = update(self, cx);
+        let result = update(self, window, cx);
         if !already_deferred {
             self.defer_selection_effects = false;
             if let Some(state) = self.deferred_selection_effects_state.take() {
-                self.apply_selection_effects(state, cx);
+                self.apply_selection_effects(state, window, cx);
             }
         }
         result
@@ -690,8 +768,8 @@ impl Editor {
         cx: &mut Context<Self>,
         update: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>),
     ) -> Option<TransactionId> {
-        self.with_selection_effects_deferred(cx, |this, cx| {
-            this.start_transaction_at(Instant::now(), cx);
+        self.with_selection_effects_deferred(window, cx, |this, window, cx| {
+            this.start_transaction_at(Instant::now(), window, cx);
             update(this, window, cx);
             this.end_transaction_at(Instant::now(), cx)
         })
@@ -700,6 +778,7 @@ impl Editor {
     fn apply_selection_effects(
         &mut self,
         state: DeferredSelectionEffectsState,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if state.changed {
@@ -707,16 +786,50 @@ impl Editor {
             if let Some(autoscroll) = state.effects.scroll {
                 self.request_autoscroll(autoscroll, cx);
             }
+            self.selections_did_change(&state.effects, window, cx);
             cx.notify();
         }
+    }
+
+    fn selections_did_change(
+        &mut self,
+        effects: &SelectionEffects,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let completion_position = self
+            .context_menu
+            .borrow()
+            .as_ref()
+            .map(|menu| menu.initial_position);
+        if effects.completions
+            && let Some(completion_position) = completion_position
+        {
+            let buffer = self.buffer_snapshot(cx);
+            let start_offset = self.selections.newest_anchor().start.to_offset(&buffer);
+            let position_matches = start_offset == completion_position.to_offset(&buffer);
+            let continue_showing = !self.read_only(cx)
+                && position_matches
+                && buffer.char_kind_before(&start_offset, Some(CharScopeContext::Completion))
+                    == Some(CharKind::Word);
+
+            if continue_showing {
+                self.open_or_update_completions_menu(None, window, cx);
+            } else {
+                self.hide_context_menu(cx);
+            }
+        }
+
+        hover_popover::hide_hover(self, cx);
     }
 
     fn start_transaction_at(
         &mut self,
         now: Instant,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<TransactionId> {
-        self.end_selection(cx);
+        self.end_selection(window, cx);
         if let Some(transaction_id) = self
             .buffer
             .update(cx, |buffer, cx| buffer.start_transaction_at(now, cx))
@@ -772,13 +885,14 @@ impl Editor {
         }
     }
 
-    fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+    fn move_to(&mut self, offset: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.selection_goal = SelectionGoal::None;
 
         let text_len = self.buffer_snapshot(cx).len().0;
         let offset = offset.min(text_len);
         self.change_selections(
             SelectionEffects::scroll(scroll::Autoscroll::newest()),
+            window,
             cx,
             |s| {
                 s.move_cursors_with(&mut |map, _, _| {
@@ -794,11 +908,12 @@ impl Editor {
         );
     }
 
-    fn move_to_vertical(&mut self, offset: usize, cx: &mut Context<Self>) {
+    fn move_to_vertical(&mut self, offset: usize, window: &mut Window, cx: &mut Context<Self>) {
         let text_len = self.buffer_snapshot(cx).len().0;
         let offset = offset.min(text_len);
         self.change_selections(
             SelectionEffects::scroll(scroll::Autoscroll::newest()),
+            window,
             cx,
             |s| {
                 s.move_offsets_with(&mut |snapshot, selection| {
@@ -809,12 +924,13 @@ impl Editor {
         );
     }
 
-    fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+    fn select_to(&mut self, offset: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.selection_goal = SelectionGoal::None;
         let text_len = self.buffer_snapshot(cx).len().0;
         let offset = offset.min(text_len);
         self.change_selections(
             SelectionEffects::scroll(scroll::Autoscroll::newest()),
+            window,
             cx,
             |s| {
                 s.move_heads_with(&mut |map, _, _| {
@@ -830,11 +946,12 @@ impl Editor {
         );
     }
 
-    fn select_to_vertical(&mut self, offset: usize, cx: &mut Context<Self>) {
+    fn select_to_vertical(&mut self, offset: usize, window: &mut Window, cx: &mut Context<Self>) {
         let text_len = self.buffer_snapshot(cx).len().0;
         let offset = offset.min(text_len);
         self.change_selections(
             SelectionEffects::scroll(scroll::Autoscroll::newest()),
+            window,
             cx,
             |s| {
                 s.move_heads_with(&mut |map, _, _| {
@@ -1112,7 +1229,14 @@ impl Editor {
         (line_start + line_len).0
     }
 
-    fn replace_range(&mut self, range: Range<usize>, new_text: &str, cx: &mut Context<Self>) {
+    fn replace_range(
+        &mut self,
+        range: Range<usize>,
+        new_text: &str,
+        effects: SelectionEffects,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let snapshot = self.buffer_snapshot(cx);
         let start = snapshot.clip_offset(
             MultiBufferOffset(range.start.min(snapshot.len().0)),
@@ -1128,14 +1252,14 @@ impl Editor {
         }
 
         let now = Instant::now();
-        self.start_transaction_at(now, cx);
+        self.start_transaction_at(now, window, cx);
 
         let cursor = self.buffer.update(cx, |buffer, cx| {
             let cursor = buffer.read(cx).anchor_after(&range.end);
             buffer.edit([(range, new_text)], cx);
             cursor
         });
-        self.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
+        self.change_selections(effects, window, cx, |selections| {
             selections.select_anchor_ranges([cursor..cursor]);
         });
         self.selection_goal = SelectionGoal::None;
@@ -1145,9 +1269,9 @@ impl Editor {
         cx.notify();
     }
 
-    fn replace_selection(&mut self, new_text: &str, cx: &mut Context<Self>) {
+    fn replace_selection(&mut self, new_text: &str, window: &mut Window, cx: &mut Context<Self>) {
         let range = self.selected_range(cx);
-        self.replace_range(range, new_text, cx);
+        self.replace_range(range, new_text, SelectionEffects::no_scroll(), window, cx);
     }
 
     fn text_offset_from_utf16(&self, utf16_offset: usize, cx: &App) -> usize {
@@ -1231,7 +1355,7 @@ impl Editor {
             .collect()
     }
 
-    pub fn set_text(&mut self, text: &str, cx: &mut Context<Self>) {
+    pub fn set_text(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.buffer.update(cx, |buffer, cx| {
             buffer
                 .as_singleton()
@@ -1241,7 +1365,7 @@ impl Editor {
         let cursor = self.buffer_snapshot(cx).len();
         let mode = self.selection_history.mode;
         self.selection_history.mode = SelectionHistoryMode::Skipping;
-        self.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
+        self.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
             selections.select_ranges([cursor..cursor]);
         });
         self.selection_history.mode = mode;
@@ -1275,7 +1399,7 @@ impl Editor {
         });
     }
 
-    pub fn clear(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    pub fn clear(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
@@ -1286,12 +1410,12 @@ impl Editor {
         }
 
         let now = Instant::now();
-        self.start_transaction_at(now, cx);
+        self.start_transaction_at(now, window, cx);
 
         self.buffer.update(cx, |buffer, cx| {
             buffer.edit([(MultiBufferOffset::ZERO..snapshot.len(), "")], cx);
         });
-        self.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
+        self.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
             selections.select_ranges([MultiBufferOffset::ZERO..MultiBufferOffset::ZERO]);
         });
         self.clear_highlights(HighlightKey::InputComposition, cx);
@@ -1352,38 +1476,44 @@ impl Editor {
         self.current_line_highlight = current_line_highlight;
     }
 
-    pub fn move_selection_to_end(&mut self, cx: &mut Context<Self>) {
+    pub fn move_selection_to_end(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let offset = self.buffer_snapshot(cx).len().0;
         self.selection_goal = SelectionGoal::None;
         self.change_selections(
             SelectionEffects::scroll(scroll::Autoscroll::newest()),
+            window,
             cx,
             |s| s.select_ranges([MultiBufferOffset(offset)..MultiBufferOffset(offset)]),
         );
     }
 
-    fn move_left(&mut self, _: &actions::editor::MoveLeft, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_left(
+        &mut self,
+        _: &actions::editor::MoveLeft,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let selected_range = self.selected_range(cx);
         if selected_range.is_empty() {
             let offset = self.offset_for_horizontal_move(-1, cx);
-            self.move_to(offset, cx);
+            self.move_to(offset, window, cx);
         } else {
-            self.move_to(selected_range.start, cx);
+            self.move_to(selected_range.start, window, cx);
         }
     }
 
     fn move_right(
         &mut self,
         _: &actions::editor::MoveRight,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let selected_range = self.selected_range(cx);
         if selected_range.is_empty() {
             let offset = self.offset_for_horizontal_move(1, cx);
-            self.move_to(offset, cx);
+            self.move_to(offset, window, cx);
         } else {
-            self.move_to(selected_range.end, cx);
+            self.move_to(selected_range.end, window, cx);
         }
     }
 
@@ -1395,12 +1525,12 @@ impl Editor {
     ) {
         let selected_range = self.selected_range(cx);
         if !selected_range.is_empty() {
-            self.move_to(selected_range.start, cx);
+            self.move_to(selected_range.start, window, cx);
             return;
         }
 
         let offset = self.offset_for_vertical_move(-1, window, cx);
-        self.move_to_vertical(offset, cx);
+        self.move_to_vertical(offset, window, cx);
     }
 
     fn move_down(
@@ -1411,32 +1541,32 @@ impl Editor {
     ) {
         let selected_range = self.selected_range(cx);
         if !selected_range.is_empty() {
-            self.move_to(selected_range.end, cx);
+            self.move_to(selected_range.end, window, cx);
             return;
         }
 
         let offset = self.offset_for_vertical_move(1, window, cx);
-        self.move_to_vertical(offset, cx);
+        self.move_to_vertical(offset, window, cx);
     }
 
     fn select_left(
         &mut self,
         _: &actions::editor::SelectLeft,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.offset_for_horizontal_move(-1, cx);
-        self.select_to(offset, cx);
+        self.select_to(offset, window, cx);
     }
 
     fn select_right(
         &mut self,
         _: &actions::editor::SelectRight,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.offset_for_horizontal_move(1, cx);
-        self.select_to(offset, cx);
+        self.select_to(offset, window, cx);
     }
 
     fn select_up(
@@ -1446,7 +1576,7 @@ impl Editor {
         cx: &mut Context<Self>,
     ) {
         let offset = self.offset_for_vertical_move(-1, window, cx);
-        self.select_to_vertical(offset, cx);
+        self.select_to_vertical(offset, window, cx);
     }
 
     fn select_down(
@@ -1456,18 +1586,18 @@ impl Editor {
         cx: &mut Context<Self>,
     ) {
         let offset = self.offset_for_vertical_move(1, window, cx);
-        self.select_to_vertical(offset, cx);
+        self.select_to_vertical(offset, window, cx);
     }
 
     fn select_all(
         &mut self,
         _: &actions::editor::SelectAll,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let end = self.buffer_snapshot(cx).len();
         self.selection_goal = SelectionGoal::None;
-        self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
+        self.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
             s.select_ranges([MultiBufferOffset::ZERO..end]);
         });
     }
@@ -1475,434 +1605,456 @@ impl Editor {
     fn move_to_beginning_of_line(
         &mut self,
         action: &actions::editor::MoveToBeginningOfLine,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.line_beginning_offset(action.stop_at_indent, cx);
-        self.move_to(offset, cx);
+        self.move_to(offset, window, cx);
     }
 
     fn select_to_beginning_of_line(
         &mut self,
         action: &actions::editor::SelectToBeginningOfLine,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.line_beginning_offset(action.stop_at_indent, cx);
-        self.select_to(offset, cx);
+        self.select_to(offset, window, cx);
     }
 
     fn delete_to_beginning_of_line(
         &mut self,
         action: &actions::editor::DeleteToBeginningOfLine,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.read_only(cx) {
             return;
         }
 
-        if self.selected_range(cx).is_empty() {
-            let offset = self.line_beginning_offset(action.stop_at_indent, cx);
-            let cursor = self.cursor_offset(cx);
-            if cursor == offset {
-                return;
+        self.transact(window, cx, |this, window, cx| {
+            if this.selected_range(cx).is_empty() {
+                let offset = this.line_beginning_offset(action.stop_at_indent, cx);
+                let cursor = this.cursor_offset(cx);
+                if cursor == offset {
+                    return;
+                }
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                    s.select_ranges([MultiBufferOffset(offset)..MultiBufferOffset(cursor)]);
+                });
             }
-            self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_ranges([MultiBufferOffset(offset)..MultiBufferOffset(cursor)]);
-            });
-        }
 
-        self.replace_selection("", cx);
+            this.replace_selection("", window, cx);
+        });
     }
 
     fn move_to_end_of_line(
         &mut self,
         _: &actions::editor::MoveToEndOfLine,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.line_end_offset(cx);
-        self.move_to(offset, cx);
+        self.move_to(offset, window, cx);
     }
 
     fn select_to_end_of_line(
         &mut self,
         _: &actions::editor::SelectToEndOfLine,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.line_end_offset(cx);
-        self.select_to(offset, cx);
+        self.select_to(offset, window, cx);
     }
 
     fn delete_to_end_of_line(
         &mut self,
         _: &actions::editor::DeleteToEndOfLine,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.read_only(cx) {
             return;
         }
 
-        if self.selected_range(cx).is_empty() {
-            let cursor = self.cursor_offset(cx);
-            let end = self.line_end_offset(cx);
-            if cursor == end {
-                return;
+        self.transact(window, cx, |this, window, cx| {
+            if this.selected_range(cx).is_empty() {
+                let cursor = this.cursor_offset(cx);
+                let end = this.line_end_offset(cx);
+                if cursor == end {
+                    return;
+                }
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                    s.select_ranges([MultiBufferOffset(cursor)..MultiBufferOffset(end)]);
+                });
             }
-            self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_ranges([MultiBufferOffset(cursor)..MultiBufferOffset(end)]);
-            });
-        }
 
-        self.replace_selection("", cx);
+            this.replace_selection("", window, cx);
+        });
     }
 
     fn move_to_beginning(
         &mut self,
         _: &actions::editor::MoveToBeginning,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.move_to(0, cx);
+        self.move_to(0, window, cx);
     }
 
     fn move_to_end(
         &mut self,
         _: &actions::editor::MoveToEnd,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.buffer_snapshot(cx).len().0;
-        self.move_to(offset, cx);
+        self.move_to(offset, window, cx);
     }
 
     fn select_to_beginning(
         &mut self,
         _: &actions::editor::SelectToBeginning,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.select_to(0, cx);
+        self.select_to(0, window, cx);
     }
 
     fn select_to_end(
         &mut self,
         _: &actions::editor::SelectToEnd,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.buffer_snapshot(cx).len().0;
-        self.select_to(offset, cx);
+        self.select_to(offset, window, cx);
     }
 
     fn move_to_previous_word_start(
         &mut self,
         _: &actions::editor::MoveToPreviousWordStart,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.previous_word_start(self.cursor_offset(cx), cx);
-        self.move_to(offset, cx);
+        self.move_to(offset, window, cx);
     }
 
     fn move_to_previous_subword_start(
         &mut self,
         _: &actions::editor::MoveToPreviousSubwordStart,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.previous_subword_start(self.cursor_offset(cx), cx);
-        self.move_to(offset, cx);
+        self.move_to(offset, window, cx);
     }
 
     fn move_to_next_word_end(
         &mut self,
         _: &actions::editor::MoveToNextWordEnd,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.next_word_end(self.cursor_offset(cx), cx);
-        self.move_to(offset, cx);
+        self.move_to(offset, window, cx);
     }
 
     fn move_to_next_subword_end(
         &mut self,
         _: &actions::editor::MoveToNextSubwordEnd,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.next_subword_end(self.cursor_offset(cx), cx);
-        self.move_to(offset, cx);
+        self.move_to(offset, window, cx);
     }
 
     fn select_to_previous_word_start(
         &mut self,
         _: &actions::editor::SelectToPreviousWordStart,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.previous_word_start(self.cursor_offset(cx), cx);
-        self.select_to(offset, cx);
+        self.select_to(offset, window, cx);
     }
 
     fn select_to_next_word_end(
         &mut self,
         _: &actions::editor::SelectToNextWordEnd,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.next_word_end(self.cursor_offset(cx), cx);
-        self.select_to(offset, cx);
+        self.select_to(offset, window, cx);
     }
 
     fn select_to_previous_subword_start(
         &mut self,
         _: &actions::editor::SelectToPreviousSubwordStart,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.previous_subword_start(self.cursor_offset(cx), cx);
-        self.select_to(offset, cx);
+        self.select_to(offset, window, cx);
     }
 
     fn select_to_next_subword_end(
         &mut self,
         _: &actions::editor::SelectToNextSubwordEnd,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.next_subword_end(self.cursor_offset(cx), cx);
-        self.select_to(offset, cx);
+        self.select_to(offset, window, cx);
     }
 
     fn backspace(
         &mut self,
         _: &actions::editor::Backspace,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.read_only(cx) {
             return;
         }
 
-        if self.selected_range(cx).is_empty() {
-            let start = self.offset_for_horizontal_move(-1, cx);
-            let end = self.cursor_offset(cx);
-            self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_ranges([MultiBufferOffset(start)..MultiBufferOffset(end)]);
-            });
+        self.transact(window, cx, |this, window, cx| {
+            if this.selected_range(cx).is_empty() {
+                let start = this.offset_for_horizontal_move(-1, cx);
+                let end = this.cursor_offset(cx);
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                    s.select_ranges([MultiBufferOffset(start)..MultiBufferOffset(end)]);
+                });
+            }
+            this.replace_selection("", window, cx);
+        });
+        if self.context_menu.borrow().is_none() {
+            self.open_or_update_completions_menu(None, window, cx);
         }
-        self.replace_selection("", cx);
     }
 
-    fn delete(&mut self, _: &actions::editor::Delete, _: &mut Window, cx: &mut Context<Self>) {
+    fn delete(&mut self, _: &actions::editor::Delete, window: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
 
-        if self.selected_range(cx).is_empty() {
-            let end = self.offset_for_horizontal_move(1, cx);
-            let start = self.cursor_offset(cx);
-            self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_ranges([MultiBufferOffset(start)..MultiBufferOffset(end)]);
-            });
+        self.transact(window, cx, |this, window, cx| {
+            if this.selected_range(cx).is_empty() {
+                let end = this.offset_for_horizontal_move(1, cx);
+                let start = this.cursor_offset(cx);
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                    s.select_ranges([MultiBufferOffset(start)..MultiBufferOffset(end)]);
+                });
+            }
+            this.replace_selection("", window, cx);
+        });
+        if self.context_menu.borrow().is_none() {
+            self.open_or_update_completions_menu(None, window, cx);
         }
-        self.replace_selection("", cx);
     }
 
     fn delete_to_previous_word_start(
         &mut self,
         action: &actions::editor::DeleteToPreviousWordStart,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.read_only(cx) {
             return;
         }
 
-        if self.selected_range(cx).is_empty() {
-            let cursor_offset = self.cursor_offset(cx);
-            let start = if action.ignore_newlines {
-                self.previous_word_start(cursor_offset, cx)
-            } else {
-                self.previous_word_start_or_newline(cursor_offset, cx)
-            };
+        self.transact(window, cx, |this, window, cx| {
+            if this.selected_range(cx).is_empty() {
+                let cursor_offset = this.cursor_offset(cx);
+                let start = if action.ignore_newlines {
+                    this.previous_word_start(cursor_offset, cx)
+                } else {
+                    this.previous_word_start_or_newline(cursor_offset, cx)
+                };
 
-            let display_snapshot = self.display_snapshot(cx);
-            let buffer_snapshot = display_snapshot.buffer_snapshot();
-            let cursor = buffer_snapshot.clip_offset(
-                MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
-                Bias::Left,
-            );
-            let start = buffer_snapshot.clip_offset(
-                MultiBufferOffset(start.min(buffer_snapshot.len().0)),
-                Bias::Left,
-            );
+                let display_snapshot = this.display_snapshot(cx);
+                let buffer_snapshot = display_snapshot.buffer_snapshot();
+                let cursor = buffer_snapshot.clip_offset(
+                    MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
+                    Bias::Left,
+                );
+                let start = buffer_snapshot.clip_offset(
+                    MultiBufferOffset(start.min(buffer_snapshot.len().0)),
+                    Bias::Left,
+                );
 
-            let cursor_display_point = display_snapshot
-                .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Left);
-            let start_display_point = display_snapshot
-                .point_to_display_point(buffer_snapshot.offset_to_point(start), Bias::Left);
-            let start = movement::adjust_greedy_deletion(
-                &display_snapshot,
-                cursor_display_point,
-                start_display_point,
-                action.ignore_brackets,
-            )
-            .to_offset(&display_snapshot, Bias::Left)
-            .0;
-            self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_ranges([MultiBufferOffset(start)..MultiBufferOffset(cursor_offset)]);
-            });
-        }
-        self.replace_selection("", cx);
+                let cursor_display_point = display_snapshot
+                    .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Left);
+                let start_display_point = display_snapshot
+                    .point_to_display_point(buffer_snapshot.offset_to_point(start), Bias::Left);
+                let start = movement::adjust_greedy_deletion(
+                    &display_snapshot,
+                    cursor_display_point,
+                    start_display_point,
+                    action.ignore_brackets,
+                )
+                .to_offset(&display_snapshot, Bias::Left)
+                .0;
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                    s.select_ranges([MultiBufferOffset(start)..MultiBufferOffset(cursor_offset)]);
+                });
+            }
+            this.replace_selection("", window, cx);
+        });
     }
 
     fn delete_to_previous_subword_start(
         &mut self,
         action: &actions::editor::DeleteToPreviousSubwordStart,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.read_only(cx) {
             return;
         }
 
-        if self.selected_range(cx).is_empty() {
-            let cursor_offset = self.cursor_offset(cx);
-            let start = if action.ignore_newlines {
-                self.previous_subword_start(cursor_offset, cx)
-            } else {
-                self.previous_subword_start_or_newline(cursor_offset, cx)
-            };
+        self.transact(window, cx, |this, window, cx| {
+            if this.selected_range(cx).is_empty() {
+                let cursor_offset = this.cursor_offset(cx);
+                let start = if action.ignore_newlines {
+                    this.previous_subword_start(cursor_offset, cx)
+                } else {
+                    this.previous_subword_start_or_newline(cursor_offset, cx)
+                };
 
-            let display_snapshot = self.display_snapshot(cx);
-            let buffer_snapshot = display_snapshot.buffer_snapshot();
-            let cursor = buffer_snapshot.clip_offset(
-                MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
-                Bias::Left,
-            );
-            let start = buffer_snapshot.clip_offset(
-                MultiBufferOffset(start.min(buffer_snapshot.len().0)),
-                Bias::Left,
-            );
+                let display_snapshot = this.display_snapshot(cx);
+                let buffer_snapshot = display_snapshot.buffer_snapshot();
+                let cursor = buffer_snapshot.clip_offset(
+                    MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
+                    Bias::Left,
+                );
+                let start = buffer_snapshot.clip_offset(
+                    MultiBufferOffset(start.min(buffer_snapshot.len().0)),
+                    Bias::Left,
+                );
 
-            let cursor_display_point = display_snapshot
-                .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Left);
-            let start_display_point = display_snapshot
-                .point_to_display_point(buffer_snapshot.offset_to_point(start), Bias::Left);
-            let start = movement::adjust_greedy_deletion(
-                &display_snapshot,
-                cursor_display_point,
-                start_display_point,
-                action.ignore_brackets,
-            )
-            .to_offset(&display_snapshot, Bias::Left)
-            .0;
-            self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_ranges([MultiBufferOffset(start)..MultiBufferOffset(cursor_offset)]);
-            });
-        }
-        self.replace_selection("", cx);
+                let cursor_display_point = display_snapshot
+                    .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Left);
+                let start_display_point = display_snapshot
+                    .point_to_display_point(buffer_snapshot.offset_to_point(start), Bias::Left);
+                let start = movement::adjust_greedy_deletion(
+                    &display_snapshot,
+                    cursor_display_point,
+                    start_display_point,
+                    action.ignore_brackets,
+                )
+                .to_offset(&display_snapshot, Bias::Left)
+                .0;
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                    s.select_ranges([MultiBufferOffset(start)..MultiBufferOffset(cursor_offset)]);
+                });
+            }
+            this.replace_selection("", window, cx);
+        });
     }
 
     fn delete_to_next_word_end(
         &mut self,
         action: &actions::editor::DeleteToNextWordEnd,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.read_only(cx) {
             return;
         }
 
-        if self.selected_range(cx).is_empty() {
-            let cursor_offset = self.cursor_offset(cx);
-            let end = if action.ignore_newlines {
-                self.next_word_end(cursor_offset, cx)
-            } else {
-                self.next_word_end_or_newline(cursor_offset, cx)
-            };
+        self.transact(window, cx, |this, window, cx| {
+            if this.selected_range(cx).is_empty() {
+                let cursor_offset = this.cursor_offset(cx);
+                let end = if action.ignore_newlines {
+                    this.next_word_end(cursor_offset, cx)
+                } else {
+                    this.next_word_end_or_newline(cursor_offset, cx)
+                };
 
-            let display_snapshot = self.display_snapshot(cx);
-            let buffer_snapshot = display_snapshot.buffer_snapshot();
-            let cursor = buffer_snapshot.clip_offset(
-                MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
-                Bias::Right,
-            );
-            let end = buffer_snapshot.clip_offset(
-                MultiBufferOffset(end.min(buffer_snapshot.len().0)),
-                Bias::Right,
-            );
+                let display_snapshot = this.display_snapshot(cx);
+                let buffer_snapshot = display_snapshot.buffer_snapshot();
+                let cursor = buffer_snapshot.clip_offset(
+                    MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
+                    Bias::Right,
+                );
+                let end = buffer_snapshot.clip_offset(
+                    MultiBufferOffset(end.min(buffer_snapshot.len().0)),
+                    Bias::Right,
+                );
 
-            let cursor_display_point = display_snapshot
-                .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Right);
-            let end_display_point = display_snapshot
-                .point_to_display_point(buffer_snapshot.offset_to_point(end), Bias::Right);
-            let end = movement::adjust_greedy_deletion(
-                &display_snapshot,
-                cursor_display_point,
-                end_display_point,
-                action.ignore_brackets,
-            )
-            .to_offset(&display_snapshot, Bias::Right)
-            .0;
-            self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_ranges([MultiBufferOffset(cursor_offset)..MultiBufferOffset(end)]);
-            });
-        }
-        self.replace_selection("", cx);
+                let cursor_display_point = display_snapshot
+                    .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Right);
+                let end_display_point = display_snapshot
+                    .point_to_display_point(buffer_snapshot.offset_to_point(end), Bias::Right);
+                let end = movement::adjust_greedy_deletion(
+                    &display_snapshot,
+                    cursor_display_point,
+                    end_display_point,
+                    action.ignore_brackets,
+                )
+                .to_offset(&display_snapshot, Bias::Right)
+                .0;
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                    s.select_ranges([MultiBufferOffset(cursor_offset)..MultiBufferOffset(end)]);
+                });
+            }
+            this.replace_selection("", window, cx);
+        });
     }
 
     fn delete_to_next_subword_end(
         &mut self,
         action: &actions::editor::DeleteToNextSubwordEnd,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.read_only(cx) {
             return;
         }
 
-        if self.selected_range(cx).is_empty() {
-            let cursor_offset = self.cursor_offset(cx);
-            let end = if action.ignore_newlines {
-                self.next_subword_end(cursor_offset, cx)
-            } else {
-                self.next_subword_end_or_newline(cursor_offset, cx)
-            };
+        self.transact(window, cx, |this, window, cx| {
+            if this.selected_range(cx).is_empty() {
+                let cursor_offset = this.cursor_offset(cx);
+                let end = if action.ignore_newlines {
+                    this.next_subword_end(cursor_offset, cx)
+                } else {
+                    this.next_subword_end_or_newline(cursor_offset, cx)
+                };
 
-            let display_snapshot = self.display_snapshot(cx);
-            let buffer_snapshot = display_snapshot.buffer_snapshot();
-            let cursor = buffer_snapshot.clip_offset(
-                MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
-                Bias::Right,
-            );
-            let end = buffer_snapshot.clip_offset(
-                MultiBufferOffset(end.min(buffer_snapshot.len().0)),
-                Bias::Right,
-            );
+                let display_snapshot = this.display_snapshot(cx);
+                let buffer_snapshot = display_snapshot.buffer_snapshot();
+                let cursor = buffer_snapshot.clip_offset(
+                    MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
+                    Bias::Right,
+                );
+                let end = buffer_snapshot.clip_offset(
+                    MultiBufferOffset(end.min(buffer_snapshot.len().0)),
+                    Bias::Right,
+                );
 
-            let cursor_display_point = display_snapshot
-                .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Right);
-            let end_display_point = display_snapshot
-                .point_to_display_point(buffer_snapshot.offset_to_point(end), Bias::Right);
-            let end = movement::adjust_greedy_deletion(
-                &display_snapshot,
-                cursor_display_point,
-                end_display_point,
-                action.ignore_brackets,
-            )
-            .to_offset(&display_snapshot, Bias::Right)
-            .0;
-            self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_ranges([MultiBufferOffset(cursor_offset)..MultiBufferOffset(end)]);
-            });
-        }
-        self.replace_selection("", cx);
+                let cursor_display_point = display_snapshot
+                    .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Right);
+                let end_display_point = display_snapshot
+                    .point_to_display_point(buffer_snapshot.offset_to_point(end), Bias::Right);
+                let end = movement::adjust_greedy_deletion(
+                    &display_snapshot,
+                    cursor_display_point,
+                    end_display_point,
+                    action.ignore_brackets,
+                )
+                .to_offset(&display_snapshot, Bias::Right)
+                .0;
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                    s.select_ranges([MultiBufferOffset(cursor_offset)..MultiBufferOffset(end)]);
+                });
+            }
+            this.replace_selection("", window, cx);
+        });
     }
 
     fn copy(&mut self, _: &actions::editor::Copy, _: &mut Window, cx: &mut Context<Self>) {
@@ -1944,7 +2096,7 @@ impl Editor {
         ));
     }
 
-    fn cut(&mut self, _: &actions::editor::Cut, _: &mut Window, cx: &mut Context<Self>) {
+    fn cut(&mut self, _: &actions::editor::Cut, window: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
@@ -1985,7 +2137,7 @@ impl Editor {
             text,
             vec![selection_metadata],
         ));
-        self.replace_selection("", cx);
+        self.replace_selection("", window, cx);
     }
 
     pub fn do_paste(
@@ -2012,22 +2164,23 @@ impl Editor {
             }
         }
 
-        if selected_range.is_empty() && handle_entire_lines && is_entire_line {
-            let snapshot = self.buffer_snapshot(cx);
-            let cursor = snapshot.clip_offset(
-                MultiBufferOffset(self.cursor_offset(cx).min(snapshot.len().0)),
-                Bias::Left,
-            );
-            let cursor_point = snapshot.offset_to_point(cursor);
-            let line_start = snapshot.point_to_offset(text::Point::new(cursor_point.row, 0));
-            self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_ranges([line_start..line_start]);
-            });
-        }
+        self.transact(window, cx, |this, window, cx| {
+            if selected_range.is_empty() && handle_entire_lines && is_entire_line {
+                let snapshot = this.buffer_snapshot(cx);
+                let cursor = snapshot.clip_offset(
+                    MultiBufferOffset(this.cursor_offset(cx).min(snapshot.len().0)),
+                    Bias::Left,
+                );
+                let cursor_point = snapshot.offset_to_point(cursor);
+                let line_start = snapshot.point_to_offset(text::Point::new(cursor_point.row, 0));
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                    s.select_ranges([line_start..line_start]);
+                });
+            }
 
-        let _ = window;
-        let sanitized_text_to_insert = self.sanitize_to_single_line(text_to_insert);
-        self.replace_selection(sanitized_text_to_insert.as_ref(), cx);
+            let sanitized_text_to_insert = this.sanitize_to_single_line(text_to_insert);
+            this.replace_selection(sanitized_text_to_insert.as_ref(), window, cx);
+        });
     }
 
     fn sanitize_to_single_line<'a>(&self, text: &'a str) -> Cow<'a, str> {
@@ -2083,16 +2236,24 @@ impl Editor {
         self.handle_input("\n", window, cx);
     }
 
-    fn handle_input(&mut self, text: &str, _: &mut Window, cx: &mut Context<Self>) {
+    fn handle_input(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
 
         let sanitized_text = self.sanitize_to_single_line(text);
-        self.replace_selection(sanitized_text.as_ref(), cx);
+        let range = self.selected_range(cx);
+        self.replace_range(
+            range,
+            sanitized_text.as_ref(),
+            SelectionEffects::no_scroll().completions(false),
+            window,
+            cx,
+        );
+        self.trigger_completion_on_input(&sanitized_text, window, cx);
     }
 
-    pub fn undo(&mut self, _: &actions::editor::Undo, _: &mut Window, cx: &mut Context<Self>) {
+    pub fn undo(&mut self, _: &actions::editor::Undo, window: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
@@ -2108,7 +2269,7 @@ impl Editor {
             .get(&transaction_id)
             .cloned()
         {
-            self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
+            self.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
                 s.select_anchors(&selections);
             });
         }
@@ -2120,7 +2281,7 @@ impl Editor {
         cx.notify();
     }
 
-    pub fn redo(&mut self, _: &actions::editor::Redo, _: &mut Window, cx: &mut Context<Self>) {
+    pub fn redo(&mut self, _: &actions::editor::Redo, window: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
@@ -2136,7 +2297,7 @@ impl Editor {
             .get(&transaction_id)
             .cloned()
         {
-            self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
+            self.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
                 s.select_anchors(&selections);
             });
         }
@@ -2151,15 +2312,16 @@ impl Editor {
     fn undo_selection(
         &mut self,
         _: &actions::editor::UndoSelection,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if let Some(entry) = self.selection_history.undo_stack.pop_back() {
             self.selection_history.mode = SelectionHistoryMode::Undoing;
-            self.with_selection_effects_deferred(cx, |this, cx| {
-                this.end_selection(cx);
+            self.with_selection_effects_deferred(window, cx, |this, window, cx| {
+                this.end_selection(window, cx);
                 this.change_selections(
                     SelectionEffects::scroll(scroll::Autoscroll::newest()),
+                    window,
                     cx,
                     |s| {
                         s.select_anchors(&entry.selections);
@@ -2174,15 +2336,16 @@ impl Editor {
     fn redo_selection(
         &mut self,
         _: &actions::editor::RedoSelection,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if let Some(entry) = self.selection_history.redo_stack.pop_back() {
             self.selection_history.mode = SelectionHistoryMode::Redoing;
-            self.with_selection_effects_deferred(cx, |this, cx| {
-                this.end_selection(cx);
+            self.with_selection_effects_deferred(window, cx, |this, window, cx| {
+                this.end_selection(window, cx);
                 this.change_selections(
                     SelectionEffects::scroll(scroll::Autoscroll::newest()),
+                    window,
                     cx,
                     |s| {
                         s.select_anchors(&entry.selections);
@@ -2198,6 +2361,7 @@ impl Editor {
         &mut self,
         position: DisplayPoint,
         click_count: usize,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let display_snapshot = self.display_snapshot(cx);
@@ -2234,7 +2398,7 @@ impl Editor {
             }
         };
 
-        self.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
+        self.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
             selections.clear_disjoint();
             selections.set_pending_anchor_range(start..end, mode);
         });
@@ -2244,6 +2408,7 @@ impl Editor {
         &mut self,
         position: DisplayPoint,
         click_count: usize,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let display_snapshot = self.display_snapshot(cx);
@@ -2257,7 +2422,7 @@ impl Editor {
             SelectMode::Line(_) => 3,
             SelectMode::All => 4,
         });
-        self.begin_selection(position, click_count, cx);
+        self.begin_selection(position, click_count, window, cx);
 
         let tail_anchor = display_snapshot.buffer_snapshot().anchor_before(&tail);
         let current_selection = match self.selections.select_mode() {
@@ -2290,13 +2455,18 @@ impl Editor {
             SelectMode::Character | SelectMode::All => {}
         }
 
-        self.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
+        self.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
             selections.set_pending(pending_selection, pending_mode);
             selections.set_is_extending(true);
         });
     }
 
-    pub fn update_selection(&mut self, position: DisplayPoint, cx: &mut Context<Self>) {
+    pub fn update_selection(
+        &mut self,
+        position: DisplayPoint,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let display_snapshot = self.display_snapshot(cx);
         let Some(mut pending) = self.selections.pending_anchor().copied() else {
             return;
@@ -2378,25 +2548,30 @@ impl Editor {
             pending.reversed = false;
         }
 
-        self.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
+        self.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
             selections.set_pending(pending, mode);
         });
     }
 
-    pub fn end_selection(&mut self, cx: &mut Context<Self>) {
+    pub fn end_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(pending_mode) = self.selections.pending_mode() {
             let selections = self
                 .selections
                 .all::<MultiBufferOffset>(&self.display_snapshot(cx));
-            self.change_selections(SelectionEffects::no_scroll(), cx, |selections_collection| {
-                selections_collection.select(selections);
-                selections_collection.clear_pending();
-                if selections_collection.is_extending() {
-                    selections_collection.set_is_extending(false);
-                } else {
-                    selections_collection.set_select_mode(pending_mode);
-                }
-            });
+            self.change_selections(
+                SelectionEffects::no_scroll(),
+                window,
+                cx,
+                |selections_collection| {
+                    selections_collection.select(selections);
+                    selections_collection.clear_pending();
+                    if selections_collection.is_extending() {
+                        selections_collection.set_is_extending(false);
+                    } else {
+                        selections_collection.set_select_mode(pending_mode);
+                    }
+                },
+            );
         }
     }
 
@@ -2414,21 +2589,26 @@ impl Editor {
         self.selection_goal = SelectionGoal::None;
 
         if event.modifiers.shift {
-            self.extend_selection(position, click_count, cx);
+            self.extend_selection(position, click_count, window, cx);
         } else {
-            self.begin_selection(position, click_count, cx);
+            self.begin_selection(position, click_count, window, cx);
         }
     }
 
-    fn on_mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_mouse_up(&mut self, _: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.selecting = false;
-        self.end_selection(cx);
+        self.end_selection(window, cx);
     }
 
-    fn on_mouse_move(&mut self, position: DisplayPoint, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_mouse_move(
+        &mut self,
+        position: DisplayPoint,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.selecting {
             self.selection_goal = SelectionGoal::None;
-            self.update_selection(position, cx);
+            self.update_selection(position, window, cx);
         }
     }
 
@@ -2450,6 +2630,11 @@ impl Editor {
             key_context.add("selection_mode");
         }
 
+        if self.context_menu_visible() {
+            key_context.add("menu");
+            key_context.add("showing_completions");
+        }
+
         let selected_range = self.selected_range(cx);
         if self.mode == EditorMode::SingleLine
             && selected_range.is_empty()
@@ -2459,6 +2644,110 @@ impl Editor {
         }
 
         key_context
+    }
+
+    pub fn context_menu(&self) -> &RefCell<Option<CompletionsMenu>> {
+        &self.context_menu
+    }
+
+    pub fn context_menu_visible(&self) -> bool {
+        self.context_menu
+            .borrow()
+            .as_ref()
+            .is_some_and(|menu| menu.visible())
+    }
+
+    pub fn render_context_menu(
+        &mut self,
+        max_height_in_lines: u32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let menu = self.context_menu.borrow();
+        let menu = menu.as_ref()?;
+        if !menu.visible() {
+            return None;
+        }
+        self.style
+            .as_ref()
+            .map(|style| menu.render(style, max_height_in_lines, window, cx))
+    }
+
+    fn render_context_menu_aside(&mut self, max_size: Size<Pixels>) -> Option<AnyElement> {
+        let style = self.style.as_ref()?;
+        self.context_menu.borrow_mut().as_mut().and_then(|menu| {
+            if menu.visible() {
+                menu.render_aside(style, max_size)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn hide_context_menu(&mut self, cx: &mut Context<Self>) -> Option<CompletionsMenu> {
+        cx.notify();
+        self.completion_tasks.clear();
+        self.context_menu.borrow_mut().take()
+    }
+
+    fn context_menu_first(
+        &mut self,
+        _: &actions::editor::ContextMenuFirst,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(context_menu) = self.context_menu.borrow_mut().as_mut() {
+            context_menu.select_first(cx);
+        }
+    }
+
+    fn context_menu_prev(
+        &mut self,
+        _: &actions::editor::ContextMenuPrevious,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(context_menu) = self.context_menu.borrow_mut().as_mut() {
+            context_menu.select_prev(cx);
+        }
+    }
+
+    fn context_menu_next(
+        &mut self,
+        _: &actions::editor::ContextMenuNext,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(context_menu) = self.context_menu.borrow_mut().as_mut() {
+            context_menu.select_next(cx);
+        }
+    }
+
+    fn context_menu_last(
+        &mut self,
+        _: &actions::editor::ContextMenuLast,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(context_menu) = self.context_menu.borrow_mut().as_mut() {
+            context_menu.select_last(cx);
+        }
+    }
+
+    fn cancel(&mut self, _: &actions::editor::Cancel, _: &mut Window, cx: &mut Context<Self>) {
+        if self.dismiss_menus_and_popups(cx) {
+            cx.notify();
+            return;
+        }
+
+        cx.propagate();
+    }
+
+    fn dismiss_menus_and_popups(&mut self, cx: &mut Context<Self>) -> bool {
+        let mut dismissed = false;
+        dismissed |= hover_popover::hide_hover(self, cx);
+        dismissed |= self.hide_context_menu(cx).is_some();
+        dismissed
     }
 
     fn text_layout_details(
@@ -2471,6 +2760,26 @@ impl Editor {
             editor_style: self.create_style(cx),
             rem_size: window.rem_size(),
         }
+    }
+
+    pub fn display_to_pixel_point(
+        &mut self,
+        source: DisplayPoint,
+        editor_snapshot: &EditorSnapshot,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Point<Pixels>> {
+        let line_height = self.style(cx).text.line_height_in_pixels(window.rem_size());
+        let text_layout_details = self.text_layout_details(window, cx);
+        let scroll_top = self.scroll_position(editor_snapshot).y;
+
+        if f64::from(source.row().0) < scroll_top.floor() {
+            return None;
+        }
+        let source_x = editor_snapshot.x_for_display_point(source, &text_layout_details);
+        let source_y =
+            Pixels::from(f64::from(line_height) * (f64::from(source.row().0) - scroll_top));
+        Some(Point::new(source_x, source_y))
     }
 
     pub fn create_style(&self, cx: &App) -> EditorStyle {
@@ -2551,9 +2860,35 @@ impl Editor {
         }
     }
 
+    pub fn highlight_background(
+        &mut self,
+        key: HighlightKey,
+        ranges: &[Range<Anchor>],
+        color_fetcher: impl Fn(&usize, &Theme) -> Hsla + Send + Sync + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        self.background_highlights
+            .insert(key, (Arc::new(color_fetcher), Arc::from(ranges)));
+        cx.notify();
+    }
+
+    pub fn clear_background_highlights(&mut self, key: HighlightKey, cx: &mut Context<Self>) {
+        if self
+            .background_highlights
+            .remove(&key)
+            .is_some_and(|(_, ranges)| !ranges.is_empty())
+        {
+            cx.notify();
+        }
+    }
+
+    pub fn set_semantics_provider(&mut self, provider: Option<Rc<dyn SemanticsProvider>>) {
+        self.semantics_provider = provider;
+    }
+
     pub fn highlight_variables(
         &mut self,
-        variables: Option<&HashMap<String, String, impl BuildHasher>>,
+        variables: Option<&[(VariableScope, Variable)]>,
         cx: &mut Context<Self>,
     ) {
         let mut defined_ranges = Vec::new();
@@ -2564,7 +2899,7 @@ impl Editor {
             for (range, name) in project::variable_ranges_in_str(&text) {
                 let range = snapshot.anchor_after(&MultiBufferOffset(range.start))
                     ..snapshot.anchor_before(&MultiBufferOffset(range.end));
-                if variables.contains_key(name) {
+                if variables.iter().any(|(_, variable)| variable.name == name) {
                     defined_ranges.push(range);
                 } else {
                     undefined_ranges.push(range);
@@ -2587,11 +2922,16 @@ impl Editor {
             if ranges.is_empty() {
                 self.clear_highlights(key, cx);
             } else {
+                let color = color.color(cx);
                 self.highlight_text(
                     key,
                     ranges,
                     HighlightStyle {
-                        color: Some(color.color(cx)),
+                        color: Some(if self.muted {
+                            color.opacity(0.5)
+                        } else {
+                            color
+                        }),
                         ..Default::default()
                     },
                     cx,
@@ -2704,7 +3044,7 @@ impl EntityInputHandler for Editor {
                 let should_backspace = new_selected_ranges
                     .iter()
                     .any(|range| range.start != range.end);
-                this.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
                     selections.select_ranges(new_selected_ranges);
                 });
                 if should_backspace {
@@ -2757,7 +3097,7 @@ impl EntityInputHandler for Editor {
             };
 
             if let Some(ranges) = ranges_to_replace {
-                this.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
                     selections.select_ranges(ranges);
                 });
             }
@@ -2809,7 +3149,7 @@ impl EntityInputHandler for Editor {
                             ..snapshot.clip_offset_utf16(new_end, Bias::Right)
                     })
                     .collect::<Vec<_>>();
-                this.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
+                this.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
                     selections.select_ranges(new_selected_ranges);
                 });
             }
@@ -2850,14 +3190,9 @@ impl EntityInputHandler for Editor {
             ));
 
         let row = start_point.row;
-        let scroll_row = position_map
-            .scroll_position
-            .y
-            .max(0.0)
-            .to_u32()
-            .expect("scroll row should fit in u32");
-        let line_index = usize::try_from(row.saturating_sub(scroll_row))
-            .expect("line index should fit in usize");
+        let line_index = row
+            .checked_sub(position_map.visible_row_range.start.0)
+            .and_then(|row| usize::try_from(row).ok())?;
         let line = position_map.line_layouts.get(line_index)?;
         if line.row.0 != row {
             return None;
@@ -2969,9 +3304,9 @@ impl ErasedEditor for ErasedEditorImpl {
         self.0.read(cx).buffer_snapshot(cx).text()
     }
 
-    fn set_text(&self, text: &str, _: &mut Window, cx: &mut App) {
+    fn set_text(&self, text: &str, window: &mut Window, cx: &mut App) {
         self.0.update(cx, |editor, cx| {
-            editor.set_text(text, cx);
+            editor.set_text(text, window, cx);
         });
     }
 
@@ -2985,9 +3320,9 @@ impl ErasedEditor for ErasedEditorImpl {
         });
     }
 
-    fn move_selection_to_end(&self, _: &mut Window, cx: &mut App) {
+    fn move_selection_to_end(&self, window: &mut Window, cx: &mut App) {
         self.0.update(cx, |editor, cx| {
-            editor.move_selection_to_end(cx);
+            editor.move_selection_to_end(window, cx);
         });
     }
 

@@ -193,16 +193,17 @@ pub(crate) fn open_window(cx: &mut App) {
         return;
     }
 
-    let display_size = cx
-        .primary_display()
-        .map(|display| display.visible_bounds().size);
+    let display = cx.active_display();
+    let display_id = display.as_ref().map(|display| display.id());
+    let display_size = display.map(|display| display.visible_bounds().size);
     let window_size = AboutWindow::window_size(display_size, cx);
 
     let mut window_options = workspace::build_window_options(None, cx);
     if let Some(titlebar) = window_options.titlebar.as_mut() {
         titlebar.title = Some(format!("About {ZAKU_NAME}").into());
     }
-    window_options.window_bounds = Some(WindowBounds::centered(window_size, cx));
+    window_options.window_bounds = Some(WindowBounds::centered(display_id, window_size, cx));
+    window_options.display_id = display_id;
     window_options.is_resizable = false;
     window_options.is_minimizable = false;
 

@@ -94,7 +94,7 @@ impl Item for ProjectConfigEditor {
                     .color(entry_text_color(params.selected))
             }
             (ProjectConfigEditorState::Ready(_), ConfigFileType::Environment) => {
-                environment_selector::environment_icon(
+                editor::environment_icon(
                     self.environment_color(cx),
                     entry_text_color(params.selected),
                 )

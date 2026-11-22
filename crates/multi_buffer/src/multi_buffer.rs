@@ -14,7 +14,7 @@ use std::{
     sync::Arc,
 };
 use text::{
-    Bias, OffsetUtf16, Point, PointUtf16, TextDimension, TextSummary,
+    Bias, BufferId, OffsetUtf16, Point, PointUtf16, TextDimension, TextSummary,
     subscription::{Subscription, Topic},
 };
 
@@ -475,6 +475,10 @@ impl MultiBuffer {
         }
     }
 
+    pub fn buffer(&self, buffer_id: BufferId) -> Option<Entity<Buffer>> {
+        (self.snapshot.borrow().buffer.remote_id() == buffer_id).then(|| self.buffer.clone())
+    }
+
     pub fn read_only(&self) -> bool {
         !self.capability.editable()
     }
@@ -814,6 +818,34 @@ impl MultiBufferSnapshot {
         Anchor::in_buffer(text_anchor)
     }
 
+    pub fn anchor_to_buffer_anchor(
+        &self,
+        anchor: Anchor,
+    ) -> Option<(text::Anchor, &BufferSnapshot)> {
+        let buffer_id = self.buffer.remote_id();
+        match anchor {
+            Anchor::Min => Some((text::Anchor::min_for_buffer(buffer_id), &self.buffer)),
+            Anchor::Excerpt(excerpt_anchor) => {
+                if excerpt_anchor.buffer_id() != buffer_id {
+                    return None;
+                }
+                Some((excerpt_anchor.text_anchor, &self.buffer))
+            }
+            Anchor::Max => Some((text::Anchor::max_for_buffer(buffer_id), &self.buffer)),
+        }
+    }
+
+    pub fn buffer_anchor_range_to_anchor_range(
+        &self,
+        text_anchor: Range<text::Anchor>,
+    ) -> Option<Range<Anchor>> {
+        let buffer_id = self.buffer.remote_id();
+        if text_anchor.start.buffer_id != buffer_id || text_anchor.end.buffer_id != buffer_id {
+            return None;
+        }
+        Some(Anchor::in_buffer(text_anchor.start)..Anchor::in_buffer(text_anchor.end))
+    }
+
     pub fn summary_for_anchor<MBD>(&self, anchor: &Anchor) -> MBD
     where
         MBD: MultiBufferDimension
@@ -979,6 +1011,18 @@ impl MultiBufferSnapshot {
         }
 
         (start..end, word_kind)
+    }
+
+    pub fn char_kind_before<T: ToOffset>(
+        &self,
+        start: &T,
+        _: Option<CharScopeContext>,
+    ) -> Option<CharKind> {
+        let start = start.to_offset(self);
+        let classifier = self.char_classifier_at(&start);
+        self.reversed_chars_at(&start)
+            .next()
+            .map(|character| classifier.kind(character))
     }
 
     pub fn reversed_chars_at<T: ToOffset>(&self, position: &T) -> impl Iterator<Item = char> + '_ {
