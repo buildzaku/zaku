@@ -8035,6 +8035,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "time_format"
+version = "26.2.0-dev"
+dependencies = [
+ "anyhow",
+ "jiff",
+ "log",
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
+ "sys-locale",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "tiny-keccak"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
