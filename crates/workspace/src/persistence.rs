@@ -847,7 +847,7 @@ pub fn delete_unloaded_items(
 
 fn parse_timestamp(text: &str) -> Timestamp {
     DateTime::strptime("%Y-%m-%d %H:%M:%S", text)
-        .and_then(|datetime| datetime.to_zoned(TimeZone::UTC))
+        .and_then(|datetime| datetime.to_zoned_datetime(TimeZone::UTC))
         .map_or_else(|_| Timestamp::now(), |datetime| datetime.timestamp())
 }
 

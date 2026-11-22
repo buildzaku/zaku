@@ -121,7 +121,7 @@ indoc = { version = "2.0" }
 inventory = { version = "0.3" }
 is_executable = { version = "1.0" }
 itertools = { version = "0.14" }
-jiff = { version = "0.2" }
+jiff = { version = "1.0" }
 jsonc-parser = {
   version = "0.32",
   features = ["cst", "error_unicode_width", "serde", "serde_json"]
