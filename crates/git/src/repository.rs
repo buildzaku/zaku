@@ -9,6 +9,7 @@ use std::{
     sync::Arc,
 };
 
+use collections::HashMap;
 use path::{PathStyle, RelPath};
 use util::command;
 
@@ -198,8 +199,15 @@ pub struct CommitDetails {
 
 pub trait GitRepository: Send + Sync {
     fn branches(&self) -> BoxFuture<'_, anyhow::Result<BranchesScanResult>>;
+    fn change_branch(&self, name: String) -> BoxFuture<'_, anyhow::Result<()>>;
+    fn create_branch(
+        &self,
+        name: String,
+        base_branch: Option<String>,
+    ) -> BoxFuture<'_, anyhow::Result<()>>;
     fn show(&self, commit: String) -> BoxFuture<'_, anyhow::Result<CommitDetails>>;
     fn status(&self, path_prefixes: &[RepoPath]) -> Task<anyhow::Result<GitStatus>>;
+    fn default_branch(&self) -> BoxFuture<'_, anyhow::Result<Option<SharedString>>>;
 }
 
 impl fmt::Debug for dyn GitRepository {
@@ -361,6 +369,75 @@ impl GitRepository for SystemGitRepository {
             .boxed()
     }
 
+    fn change_branch(&self, name: String) -> BoxFuture<'_, anyhow::Result<()>> {
+        let git = self.git_binary_in_worktree();
+        self.executor
+            .spawn(async move {
+                let local_ref = format!("refs/heads/{name}");
+                if git
+                    .run(&["show-ref", "--verify", "--quiet", &local_ref])
+                    .await
+                    .is_ok()
+                {
+                    git.run(&["checkout", &name]).await?;
+                    return anyhow::Ok(());
+                }
+
+                let remote_ref = format!("refs/remotes/{name}");
+                if git
+                    .run(&["show-ref", "--verify", "--quiet", &remote_ref])
+                    .await
+                    .is_ok()
+                {
+                    let name = match git.run(&["symbolic-ref", &remote_ref]).await {
+                        Ok(resolved) => resolved
+                            .strip_prefix("refs/remotes/")
+                            .map(str::to_owned)
+                            .unwrap_or(name),
+                        Err(_) => name,
+                    };
+                    let (_, branch_name) =
+                        name.split_once('/').context("unexpected branch format")?;
+                    let local_branch_ref = format!("refs/heads/{branch_name}");
+                    if git
+                        .run(&["show-ref", "--verify", "--quiet", &local_branch_ref])
+                        .await
+                        .is_ok()
+                    {
+                        git.run(&["branch", "--set-upstream-to", &name, branch_name])
+                            .await?;
+                    } else {
+                        git.run(&["branch", "--track", branch_name, &name]).await?;
+                    }
+
+                    git.run(&["checkout", branch_name]).await?;
+                    return anyhow::Ok(());
+                }
+
+                anyhow::bail!("branch '{name}' not found");
+            })
+            .boxed()
+    }
+
+    fn create_branch(
+        &self,
+        name: String,
+        base_branch: Option<String>,
+    ) -> BoxFuture<'_, anyhow::Result<()>> {
+        let git = self.git_binary_in_worktree();
+        self.executor
+            .spawn(async move {
+                let mut args = vec!["switch", "-c", &name];
+                if let Some(base_branch) = &base_branch {
+                    args.push(base_branch);
+                }
+
+                git.run(&args).await?;
+                anyhow::Ok(())
+            })
+            .boxed()
+    }
+
     fn show(&self, commit: String) -> BoxFuture<'_, anyhow::Result<CommitDetails>> {
         let git = self.git_binary_in_worktree();
         self.executor
@@ -427,6 +504,58 @@ impl GitRepository for SystemGitRepository {
                 anyhow::bail!("Git status failed: {stderr}");
             }
         })
+    }
+
+    fn default_branch(&self) -> BoxFuture<'_, anyhow::Result<Option<SharedString>>> {
+        let git = self.git_binary_in_worktree();
+        self.executor
+            .spawn(async move {
+                let output = git
+                    .run(&[
+                        "for-each-ref",
+                        "--format=%(refname)\t%(symref)",
+                        "refs/remotes/upstream/HEAD",
+                        "refs/remotes/origin/HEAD",
+                        "refs/heads/",
+                    ])
+                    .await?;
+                let refs: HashMap<&str, &str> = output
+                    .lines()
+                    .filter_map(|line| line.split_once('\t'))
+                    .collect();
+
+                if let Some(target) = refs.get("refs/remotes/upstream/HEAD")
+                    && let Some(branch) = target.strip_prefix("refs/remotes/upstream/")
+                {
+                    return Ok(Some(branch.into()));
+                }
+
+                if let Some(target) = refs.get("refs/remotes/origin/HEAD")
+                    && let Some(branch) = target.strip_prefix("refs/remotes/origin/")
+                {
+                    return Ok(Some(branch.into()));
+                }
+
+                let local_branch_exists =
+                    |branch: &str| refs.contains_key(format!("refs/heads/{branch}").as_str());
+
+                if let Ok(default_branch) = git.run(&["config", "init.defaultBranch"]).await
+                    && local_branch_exists(&default_branch)
+                {
+                    return Ok(Some(default_branch.into()));
+                }
+
+                if local_branch_exists("main") {
+                    return Ok(Some("main".into()));
+                }
+
+                if local_branch_exists("master") {
+                    return Ok(Some("master".into()));
+                }
+
+                anyhow::Ok(None)
+            })
+            .boxed()
     }
 }
 
@@ -558,6 +687,24 @@ impl GitBinary {
         command.args(args);
 
         command
+    }
+
+    async fn run<S>(&self, args: &[S]) -> anyhow::Result<String>
+    where
+        S: AsRef<OsStr>,
+    {
+        let output = self.build_command(args).output().await?;
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Git command failed:\n{stdout}{stderr}\n");
+        }
+
+        let mut stdout = String::from_utf8(output.stdout)?;
+        if stdout.ends_with('\n') {
+            stdout.pop();
+        }
+        Ok(stdout)
     }
 }
 

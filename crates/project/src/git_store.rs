@@ -1,7 +1,12 @@
 pub mod git_traversal;
 
 use anyhow::Context as _;
-use futures::{FutureExt, StreamExt, channel::mpsc, future, stream::FuturesOrdered};
+use futures::{
+    FutureExt, StreamExt,
+    channel::{mpsc, oneshot},
+    future,
+    stream::FuturesOrdered,
+};
 use gpui::{
     App, AppContext, AsyncApp, Context, Entity, EventEmitter, SharedString, Subscription, Task,
 };
@@ -742,6 +747,25 @@ impl Repository {
         (job_tx, worker_task)
     }
 
+    fn send_job<F, Fut, R>(&mut self, job: F) -> oneshot::Receiver<R>
+    where
+        F: FnOnce(RepositoryState, AsyncApp) -> Fut + 'static,
+        Fut: Future<Output = R> + 'static,
+        R: Send + 'static,
+    {
+        let (result_tx, result_rx) = oneshot::channel();
+        self.send_keyed_job(None, move |state, cx| {
+            let job = job(state, cx.clone());
+            cx.spawn(async move |_| {
+                let result = job.await;
+                if result_tx.send(result).is_err() {
+                    log::trace!("Git job receiver dropped");
+                }
+            })
+        });
+        result_rx
+    }
+
     fn send_keyed_job<F>(&mut self, key: Option<GitJobKey>, job: F)
     where
         F: FnOnce(RepositoryState, &mut AsyncApp) -> Task<()> + 'static,
@@ -854,6 +878,28 @@ impl Repository {
                 }
             })
         });
+    }
+
+    pub fn create_branch(
+        &mut self,
+        branch_name: String,
+        base_branch: Option<String>,
+    ) -> oneshot::Receiver<anyhow::Result<()>> {
+        self.send_job(move |RepositoryState { backend }, _| async move {
+            backend.create_branch(branch_name, base_branch).await
+        })
+    }
+
+    pub fn change_branch(&mut self, branch_name: String) -> oneshot::Receiver<anyhow::Result<()>> {
+        self.send_job(move |RepositoryState { backend }, _| async move {
+            backend.change_branch(branch_name).await
+        })
+    }
+
+    pub fn default_branch(&mut self) -> oneshot::Receiver<anyhow::Result<Option<SharedString>>> {
+        self.send_job(move |RepositoryState { backend }, _| async move {
+            backend.default_branch().await
+        })
     }
 }
 

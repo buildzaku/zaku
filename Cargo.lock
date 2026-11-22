@@ -2530,6 +2530,7 @@ name = "git"
 version = "26.2.0-dev"
 dependencies = [
  "anyhow",
+ "collections 26.2.0-dev",
  "fs",
  "futures",
  "gpui",
