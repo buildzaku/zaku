@@ -29,7 +29,7 @@ use project::{
 use settings::{GitSettings, Settings, SettingsStore};
 use theme::ActiveTheme;
 use ui::{
-    ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, ContextMenu, DynamicSpacing,
+    Button, ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, ContextMenu, DynamicSpacing,
     FixedWidth, Icon, IconAsset, IconButton, IconButtonShape, IconSize, IndentGuideColors,
     IndentGuideLayout, Indicator, KeyBinding, ListItem, ListItemSpacing, RenderedIndentGuide,
     ScrollAxes, Scrollbars, Text, TextCommon, TextSize, Tooltip, TrackLayout, WithScrollbar,
@@ -3124,23 +3124,16 @@ impl Render for ProjectPanel {
                                         ),
                                 )
                                 .child(
-                                    ButtonLike::new("project-panel-open-project")
+                                    Button::new("project-panel-open-project", "Open Project")
                                         .size(ButtonSize::Medium)
                                         .full_width()
-                                        .child(
-                                            gpui::div()
-                                                .flex()
-                                                .items_center()
-                                                .gap(DynamicSpacing::Base08.rems(cx))
-                                                .child(Text::new("Open Project"))
-                                                .child(
-                                                    KeyBinding::for_action_in(
-                                                        &actions::workspace::Open::DEFAULT,
-                                                        &self.focus_handle,
-                                                        cx,
-                                                    )
-                                                    .size(ui::rems_from_px(12.0_f32)),
-                                                ),
+                                        .key_binding(
+                                            KeyBinding::for_action_in(
+                                                &actions::workspace::Open::DEFAULT,
+                                                &self.focus_handle,
+                                                cx,
+                                            )
+                                            .size(ui::rems_from_px(12.0_f32)),
                                         )
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             telemetry::event!(

@@ -18,8 +18,8 @@ use ::svg::IconAsset;
 use theme::ActiveTheme;
 
 use crate::{
-    Clickable, Color, Disableable, DynamicSpacing, FixedWidth, Icon, IconSize, StyledTypography,
-    TextSize, Toggleable,
+    Clickable, Color, Disableable, DynamicSpacing, FixedWidth, Icon, IconSize, KeyBinding,
+    StyledTypography, TextSize, Toggleable,
 };
 
 #[derive(Debug, Clone)]
@@ -284,6 +284,7 @@ pub struct Button {
     icon_color: Option<Color>,
     start_icon: Option<Icon>,
     end_icon: Option<Icon>,
+    key_binding: Option<KeyBinding>,
     font_weight: Option<FontWeight>,
 }
 
@@ -301,6 +302,7 @@ impl Button {
             icon_color: None,
             start_icon: None,
             end_icon: None,
+            key_binding: None,
             font_weight: None,
         };
         this.base.base = this.base.base.debug_selector(|| format!("BUTTON-{id}"));
@@ -349,6 +351,11 @@ impl Button {
 
     pub fn end_icon(mut self, icon: impl Into<Option<Icon>>) -> Self {
         self.end_icon = icon.into();
+        self
+    }
+
+    pub fn key_binding(mut self, key_binding: impl Into<Option<KeyBinding>>) -> Self {
+        self.key_binding = key_binding.into();
         self
     }
 
@@ -482,19 +489,27 @@ impl RenderOnce for Button {
                 .justify_center()
                 .gap(DynamicSpacing::Base04.rems(cx))
                 .text_ui_size(text_size, cx)
-                .map(|this| match size {
-                    ButtonSize::Large | ButtonSize::Medium => {
-                        this.px(DynamicSpacing::Base12.rems(cx) - DynamicSpacing::Base08.rems(cx))
-                    }
-                    ButtonSize::Default | ButtonSize::Compact => {
-                        this.px(DynamicSpacing::Base08.rems(cx) - DynamicSpacing::Base04.rems(cx))
-                    }
-                    ButtonSize::None => this,
+                .when(self.key_binding.is_none(), |this| {
+                    this.map(|this| match size {
+                        ButtonSize::Large | ButtonSize::Medium => this
+                            .px(DynamicSpacing::Base12.rems(cx) - DynamicSpacing::Base08.rems(cx)),
+                        ButtonSize::Default | ButtonSize::Compact => this
+                            .px(DynamicSpacing::Base08.rems(cx) - DynamicSpacing::Base04.rems(cx)),
+                        ButtonSize::None => this,
+                    })
                 })
                 .text_color(text_color)
                 .when_some(self.font_weight, |this, weight| this.font_weight(weight))
                 .when_some(start_icon, |this, icon| this.child(icon))
-                .child(self.text)
+                .child(
+                    gpui::div()
+                        .flex()
+                        .items_center()
+                        .gap(DynamicSpacing::Base08.rems(cx))
+                        .justify_between()
+                        .child(self.text)
+                        .children(self.key_binding),
+                )
                 .when_some(end_icon, |this, icon| this.child(icon)),
         )
     }

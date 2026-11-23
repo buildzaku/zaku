@@ -11,10 +11,9 @@ use fs::Fs;
 use path::PathExt;
 use picker::{Picker, PickerDelegate, ScrollBehavior};
 use ui::{
-    ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, Color,
-    DynamicSpacing, HighlightedText, IconAsset, IconButton, IconSize, KeyBinding, ListItem,
-    ListItemSpacing, ListSubHeader, Text, TextCommon, TextSize, Toggleable, Tooltip,
-    VisibleOnHover,
+    ActiveTheme, Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, DynamicSpacing,
+    HighlightedText, IconAsset, IconButton, IconSize, KeyBinding, ListItem, ListItemSpacing,
+    ListSubHeader, TextCommon, TextSize, Toggleable, Tooltip, VisibleOnHover,
 };
 use workspace::{
     ModalView, OpenMode, RecentWorkspace, Root, Workspace, WorkspaceDb,
@@ -546,18 +545,11 @@ impl PickerDelegate for RecentProjectsDelegate {
                 .border_t_1()
                 .border_color(theme_colors.border_variant)
                 .child(
-                    ButtonLike::new("open-folder")
+                    Button::new("open-folder", "Open Folder")
                         .size(ButtonSize::Medium)
-                        .child(
-                            gpui::div()
-                                .flex()
-                                .items_center()
-                                .gap(DynamicSpacing::Base08.rems(cx))
-                                .child(Text::new("Open Folder"))
-                                .child(
-                                    KeyBinding::for_action(&actions::workspace::Open::DEFAULT, cx)
-                                        .size(ui::rems_from_px(12.0_f32)),
-                                ),
+                        .key_binding(
+                            KeyBinding::for_action(&actions::workspace::Open::DEFAULT, cx)
+                                .size(ui::rems_from_px(12.0_f32)),
                         )
                         .on_click(|_, window, cx| {
                             window.dispatch_action(

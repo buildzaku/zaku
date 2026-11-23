@@ -8,7 +8,7 @@ use std::{iter, sync::Arc};
 use picker::{Picker, PickerDelegate};
 use project::{EnvironmentColor, Project, ProjectEvent, ProjectPath};
 use ui::{
-    ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, DynamicSpacing,
+    ActiveTheme, Button, ButtonCommon, ButtonSize, Clickable, Color, DynamicSpacing,
     HighlightedText, Icon, IconAsset, IconSize, KeyBinding, ListItem, ListItemSpacing,
     ListSubHeader, Text, TextCommon, TextSize, Toggleable,
 };
@@ -404,21 +404,11 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                 .border_t_1()
                 .border_color(theme_colors.border_variant)
                 .child(
-                    ButtonLike::new("manage-environments")
+                    Button::new("manage-environments", "Manage Environments")
                         .size(ButtonSize::Medium)
-                        .child(
-                            gpui::div()
-                                .flex()
-                                .items_center()
-                                .gap(DynamicSpacing::Base08.rems(cx))
-                                .child(Text::new("Manage Environments"))
-                                .child(
-                                    KeyBinding::for_action(
-                                        &actions::variables_panel::ToggleFocus,
-                                        cx,
-                                    )
-                                    .size(ui::rems_from_px(12.0_f32)),
-                                ),
+                        .key_binding(
+                            KeyBinding::for_action(&actions::variables_panel::ToggleFocus, cx)
+                                .size(ui::rems_from_px(12.0_f32)),
                         )
                         .on_click(cx.listener(|_, _, window, cx| {
                             window.dispatch_action(
