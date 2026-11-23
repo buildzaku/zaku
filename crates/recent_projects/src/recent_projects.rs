@@ -1,7 +1,7 @@
 use fuzzy_nucleo::{MaxResults, StringMatch, StringMatchCandidate, StringMatchOptions};
 use gpui::{
     Action, AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
-    SharedString, Subscription, Task, TaskExt, WeakEntity, Window, prelude::*,
+    Rems, SharedString, Subscription, Task, TaskExt, WeakEntity, Window, prelude::*,
 };
 #[cfg(any(test, feature = "test"))]
 use std::path::PathBuf;
@@ -52,7 +52,7 @@ impl RecentProjects {
     fn new(
         delegate: RecentProjectsDelegate,
         fs: Option<Arc<dyn Fs>>,
-        rem_width: f32,
+        width: Rems,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -60,7 +60,7 @@ impl RecentProjects {
         let picker = cx.new(|cx| {
             Picker::list(delegate, window, cx)
                 .list_measure_all()
-                .initial_width(gpui::rems(rem_width))
+                .initial_width(width)
                 .minimum_results_width(gpui::rems(20.0))
                 .height(gpui::rems(24.0))
                 .no_vertical_padding()
@@ -102,7 +102,7 @@ impl RecentProjects {
 
         workspace.toggle_modal(window, cx, |window, cx| {
             let delegate = RecentProjectsDelegate::new(workspace_handle, ProjectPickerStyle::Modal);
-            Self::new(delegate, fs, 42.0, window, cx)
+            Self::new(delegate, fs, gpui::rems(42.0), window, cx)
         });
     }
 
@@ -117,7 +117,7 @@ impl RecentProjects {
 
         cx.new(|cx| {
             let delegate = RecentProjectsDelegate::new(workspace, ProjectPickerStyle::Popover);
-            let list = Self::new(delegate, fs, 20.0, window, cx);
+            let list = Self::new(delegate, fs, gpui::rems(20.0), window, cx);
             list.picker.focus_handle(cx).focus(window, cx);
             list
         })
