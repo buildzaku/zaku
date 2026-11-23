@@ -241,6 +241,19 @@ impl Entry {
             Entry::NewBranch { .. } => None,
         }
     }
+
+    #[cfg(any(test, feature = "test"))]
+    fn name(&self) -> &str {
+        match self {
+            Entry::Branch { branch, .. } => branch.name(),
+            Entry::NewBranch { name } => name.as_str(),
+        }
+    }
+
+    #[cfg(any(test, feature = "test"))]
+    fn is_new_branch(&self) -> bool {
+        matches!(self, Entry::NewBranch { .. })
+    }
 }
 
 #[derive(Debug)]
@@ -342,6 +355,14 @@ impl BranchListDelegate {
             Some(error.to_string())
         });
         cx.emit(DismissEvent);
+    }
+
+    #[cfg(any(test, feature = "test"))]
+    pub fn matched_entries(&self) -> Vec<(String, bool)> {
+        self.matches
+            .iter()
+            .map(|entry| (entry.name().to_string(), entry.is_new_branch()))
+            .collect()
     }
 }
 
@@ -633,7 +654,7 @@ impl PickerDelegate for BranchListDelegate {
                     .items_center()
                     .when(!selected, |this| this.visible_on_hover("list-item"))
                     .child(
-                        IconButton::new("create_from_default", IconAsset::GitBranchPlus)
+                        IconButton::new("create-from-default", IconAsset::GitBranchPlus)
                             .icon_size(IconSize::Small)
                             .tooltip(move |_, cx| {
                                 Tooltip::for_action_in(
@@ -880,7 +901,7 @@ impl PickerDelegate for BranchListDelegate {
                         .child(create_button(cx))
                 } else {
                     footer_container.child(
-                        Button::new("switch_branch", "Switch")
+                        Button::new("switch-branch", "Switch")
                             .size(ButtonSize::Medium)
                             .key_binding(
                                 KeyBinding::for_action_in(

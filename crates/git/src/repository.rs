@@ -666,7 +666,7 @@ impl GitBinary {
     {
         let mut command = command::new_command(&self.git_binary_path);
         command.current_dir(&self.working_directory);
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test"))]
         command
             .env("GIT_CONFIG_GLOBAL", "")
             .env("GIT_CONFIG_SYSTEM", "");
@@ -698,6 +698,28 @@ impl GitBinary {
     }
 }
 
+#[cfg(any(test, feature = "test"))]
+pub async fn git_command(
+    working_directory: &Path,
+    arguments: impl IntoIterator<Item: AsRef<OsStr>>,
+) -> Output {
+    let arguments = arguments.into_iter().collect::<Vec<_>>();
+    let git = GitBinary::new(PathBuf::from("git"), working_directory.to_path_buf());
+    let mut command = git.build_command(&arguments);
+    let output = command
+        .env("GIT_AUTHOR_NAME", "test")
+        .env("GIT_AUTHOR_EMAIL", "test@zaku.dev")
+        .env("GIT_COMMITTER_NAME", "test")
+        .env("GIT_COMMITTER_EMAIL", "test@zaku.dev")
+        .output()
+        .await
+        .expect("git command should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "Git command failed: {stderr}");
+
+    output
+}
+
 fn git_status_args(path_prefixes: &[RepoPath]) -> Vec<OsString> {
     let mut args = vec![
         OsString::from("status"),
@@ -726,28 +748,6 @@ mod tests {
 
     use fs::TempFs;
     use util_macros::path;
-
-    async fn git_command<I, S>(working_directory: &Path, arguments: I) -> std::process::Output
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<OsStr>,
-    {
-        let arguments = arguments.into_iter().collect::<Vec<_>>();
-        let git = GitBinary::new(PathBuf::from("git"), working_directory.to_path_buf());
-        let mut command = git.build_command(&arguments);
-        let output = command
-            .env("GIT_AUTHOR_NAME", "test")
-            .env("GIT_AUTHOR_EMAIL", "test@zaku.dev")
-            .env("GIT_COMMITTER_NAME", "test")
-            .env("GIT_COMMITTER_EMAIL", "test@zaku.dev")
-            .output()
-            .await
-            .unwrap();
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(output.status.success(), "Git command failed: {stderr}");
-
-        output
-    }
 
     async fn clone_remote_repository_with_main_and_feature(temp_fs: &TempFs) -> (PathBuf, PathBuf) {
         let remote_directory = temp_fs.path().join(path!("remote.git"));

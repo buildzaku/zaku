@@ -1,7 +1,10 @@
 use futures::{FutureExt, channel::oneshot};
-use gpui::{Entity, Focusable, ListOffset, TestAppContext, WindowHandle};
+use gpui::{
+    Entity, Focusable, ListOffset, Modifiers, TestAppContext, VisualTestContext, WindowHandle,
+};
 use indoc::{formatdoc, indoc};
 use parking_lot::Mutex;
+use rand::{RngExt, rngs::StdRng};
 use serde_json::json;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
@@ -10,6 +13,8 @@ use db::{AppDatabase, kv::KeyValueStore};
 use editor::Editor;
 use environment_selector::EnvironmentSelector;
 use fs::{Fs, RemoveOptions, TempFs};
+use git::repository;
+use git_ui::branch_picker::BranchList;
 use http_client::{AsyncBody, FakeHttpClient, Response, StatusCode};
 use path::rel_path;
 use picker::PickerDelegate;
@@ -37,6 +42,7 @@ fn init_test(app_state: Arc<AppState>, app_db: AppDatabase, cx: &mut TestAppCont
         response_panel::init(cx);
         recent_projects::init(cx);
         environment_selector::init(cx);
+        git_ui::init(cx);
         zaku::init(cx);
     });
 }
@@ -508,6 +514,213 @@ async fn test_environment_selector(cx: &mut TestAppContext) {
                 .active_environment(),
             Some("Staging-10")
         );
+    });
+}
+
+#[gpui::test]
+async fn test_update_branch_matches_with_query(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("project", json!({}));
+    let project_path = temp_fs.path().join("project");
+    repository::git_command(&project_path, ["init", "-b", "main"]).await;
+    repository::git_command(
+        &project_path,
+        ["commit", "--allow-empty", "-m", "Initial commit"],
+    )
+    .await;
+    for branch_name in ["feature-auth", "feature-ui", "dev"] {
+        repository::git_command(&project_path, ["branch", branch_name]).await;
+    }
+
+    let (open_result, _) = open_workspace(project_path, app_state, cx).await;
+    wait_until(cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .is_some_and(|repository| repository.read(cx).branch_list.len() == 4)
+        })
+    })
+    .await;
+
+    cx.dispatch_action(open_result.window.into(), actions::git::Branch);
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<BranchList>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+
+    cx.simulate_input(open_result.window.into(), "feature");
+
+    picker.read_with(cx, |picker, _| {
+        let matched_entries = picker.delegate.matched_entries();
+        assert_eq!(matched_entries.len(), 3);
+        assert!(matched_entries.contains(&("feature-auth".to_string(), false)));
+        assert!(matched_entries.contains(&("feature-ui".to_string(), false)));
+        assert_eq!(matched_entries.last(), Some(&("feature".to_string(), true)));
+    });
+}
+
+#[gpui::test]
+async fn test_new_branch_creation_with_query(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("project", json!({}));
+    let project_path = temp_fs.path().join("project");
+    repository::git_command(&project_path, ["init", "-b", "main"]).await;
+    repository::git_command(
+        &project_path,
+        ["commit", "--allow-empty", "-m", "Initial commit"],
+    )
+    .await;
+    repository::git_command(&project_path, ["branch", "feature"]).await;
+
+    let (open_result, _) = open_workspace(project_path, app_state, cx).await;
+    wait_until(cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .is_some_and(|repository| repository.read(cx).branch_list.len() == 2)
+        })
+    })
+    .await;
+
+    cx.dispatch_action(open_result.window.into(), actions::git::Branch);
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<BranchList>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+
+    cx.simulate_input(open_result.window.into(), " new-feature-branch ");
+
+    picker.read_with(cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_entries(),
+            vec![("new-feature-branch".to_string(), true)]
+        );
+    });
+
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    let create_button_bounds = cx.debug_bounds("BUTTON-create-new-branch").unwrap();
+    cx.simulate_click(create_button_bounds.center(), Modifiers::default());
+
+    wait_until(&cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .is_some_and(|repository| {
+                    repository
+                        .read(cx)
+                        .branch_list
+                        .iter()
+                        .any(|branch| branch.name() == "new-feature-branch")
+                })
+        })
+    })
+    .await;
+
+    open_result.workspace.read_with(&cx, |workspace, cx| {
+        let repository = workspace
+            .project()
+            .read(cx)
+            .git_store()
+            .read(cx)
+            .active_repository()
+            .unwrap();
+        let repository = repository.read(cx);
+        let new_branch = repository
+            .branch_list
+            .iter()
+            .find(|branch| branch.name() == "new-feature-branch")
+            .expect("new-feature-branch should exist");
+        assert_eq!(
+            new_branch.ref_name.as_ref(),
+            "refs/heads/new-feature-branch"
+        );
+    });
+}
+
+#[gpui::test(iterations = 10)]
+async fn test_empty_query_displays_all_branches(cx: &mut TestAppContext, mut rng: StdRng) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    let branch_count = rng.random_range(13..540);
+
+    temp_fs.insert_tree("project", json!({}));
+    let project_path = temp_fs.path().join("project");
+    repository::git_command(&project_path, ["init", "-b", "branch-00"]).await;
+    repository::git_command(
+        &project_path,
+        ["commit", "--allow-empty", "-m", "Initial commit"],
+    )
+    .await;
+    let mut arguments = vec!["fetch".to_string(), ".".to_string()];
+    arguments.extend((1..branch_count).map(|index| format!("HEAD:refs/heads/branch-{index:02}")));
+    repository::git_command(&project_path, arguments).await;
+
+    let (open_result, _) = open_workspace(project_path, app_state, cx).await;
+    wait_until(cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .is_some_and(|repository| repository.read(cx).branch_list.len() == branch_count)
+        })
+    })
+    .await;
+
+    cx.dispatch_action(open_result.window.into(), actions::git::Branch);
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<BranchList>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+
+    picker.read_with(cx, |picker, _| {
+        assert_eq!(picker.delegate.matched_entries().len(), branch_count);
     });
 }
 
