@@ -2543,6 +2543,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "git_ui"
+version = "26.2.0-dev"
+dependencies = [
+ "actions",
+ "anyhow",
+ "collections 26.2.0-dev",
+ "fuzzy_nucleo",
+ "git",
+ "gpui",
+ "input",
+ "jiff",
+ "log",
+ "picker",
+ "project",
+ "time_format",
+ "ui",
+ "util 26.2.0-dev",
+ "workspace",
+]
+
+[[package]]
 name = "gl_generator"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8116,6 +8137,7 @@ dependencies = [
  "actions",
  "editor",
  "environment_selector",
+ "git_ui",
  "gpui",
  "path 26.2.0-dev",
  "platform_title_bar",
@@ -10386,6 +10408,7 @@ dependencies = [
  "environment_selector",
  "fs",
  "futures",
+ "git_ui",
  "gpui",
  "gpui_platform",
  "http_client 26.2.0-dev",

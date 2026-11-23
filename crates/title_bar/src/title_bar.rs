@@ -10,6 +10,7 @@ use smallvec::SmallVec;
 use std::ffi::OsStr;
 
 use environment_selector::EnvironmentSelector;
+use git_ui::branch_picker::BranchList;
 use path::PathStyle;
 use project::{
     Project, ProjectEvent,
@@ -50,6 +51,7 @@ pub struct TitleBar {
     workspace: Option<WeakEntity<Workspace>>,
     application_menu: Option<Entity<ApplicationMenu>>,
     recent_projects_handle: PopoverMenuHandle<RecentProjects>,
+    branch_picker_handle: PopoverMenuHandle<BranchList>,
     environment_selector_handle: PopoverMenuHandle<EnvironmentSelector>,
     _workspace_subscription: Option<Subscription>,
     _project_subscription: Option<Subscription>,
@@ -115,6 +117,7 @@ impl TitleBar {
             workspace,
             application_menu,
             recent_projects_handle: PopoverMenuHandle::default(),
+            branch_picker_handle: PopoverMenuHandle::default(),
             environment_selector_handle: PopoverMenuHandle::default(),
             _workspace_subscription: workspace_subscription,
             _project_subscription: project_subscription,
@@ -172,12 +175,13 @@ impl TitleBar {
     fn render_branch(
         &self,
         repository: &Entity<project::git_store::Repository>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let branch_name = {
+        let (branch_name, is_detached_head) = {
             let repository = repository.read(cx).snapshot();
 
-            repository
+            let branch_name = repository
                 .branch
                 .as_ref()
                 .map(|branch| branch.name())
@@ -190,29 +194,70 @@ impl TitleBar {
                             .take(MAX_SHORT_SHA_LENGTH)
                             .collect::<String>()
                     })
-                })
+                });
+
+            (branch_name, repository.branch.is_none())
         };
 
         let branch_name = branch_name?;
+        let repository = repository.clone();
+        let text_color = if self.branch_picker_handle.is_deployed() {
+            Color::Accent
+        } else {
+            Color::Muted
+        };
+        let (icon, label) = if is_detached_head {
+            (IconAsset::GitBranchPlus, "Create Branch".to_string())
+        } else {
+            (IconAsset::GitBranch, branch_name.clone())
+        };
+        let tooltip_meta = if is_detached_head {
+            format!("Detached HEAD: {branch_name}")
+        } else {
+            format!("Currently Checked Out: {branch_name}")
+        };
+        let selected_background = cx.theme().colors().ghost_element_hover;
 
         Some(
-            gpui::div()
-                .flex()
-                .items_center()
-                .gap_1()
-                .pl(DynamicSpacing::Base06.rems(cx))
-                .child(
-                    Icon::new(IconAsset::GitBranch)
-                        .size(IconSize::XSmall)
-                        .color(Color::Muted),
+            PopoverMenu::new("branch-menu")
+                .menu(move |window, cx| {
+                    Some(git_ui::branch_picker::popover(
+                        Some(repository.clone()),
+                        window,
+                        cx,
+                    ))
+                })
+                .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
+                .trigger_with_tooltip(
+                    ButtonLike::new("branch-trigger")
+                        .height(IconSize::Small.square(window, cx))
+                        .tab_index(0)
+                        .selected_background(selected_background)
+                        .child(
+                            gpui::div()
+                                .flex()
+                                .items_center()
+                                .gap(DynamicSpacing::Base04.rems(cx))
+                                .px(DynamicSpacing::Base02.rems(cx))
+                                .child(Icon::new(icon).size(IconSize::XSmall).color(text_color))
+                                .child(
+                                    Text::new(label)
+                                        .size(TextSize::Small)
+                                        .color(text_color)
+                                        .single_line(),
+                                ),
+                        ),
+                    move |_, cx| {
+                        Tooltip::with_meta(
+                            "Branches",
+                            Some(&actions::git::Branch),
+                            tooltip_meta.clone(),
+                            cx,
+                        )
+                    },
                 )
-                .child(
-                    Text::new(branch_name)
-                        .size(TextSize::Small)
-                        .color(Color::Muted)
-                        .single_line()
-                        .truncate(),
-                )
+                .anchor(Anchor::TopLeft)
+                .with_handle(self.branch_picker_handle.clone())
                 .into_any_element(),
         )
     }
@@ -384,7 +429,7 @@ impl Render for TitleBar {
         }
         let branch = repository
             .as_ref()
-            .and_then(|repository| self.render_branch(repository, cx));
+            .and_then(|repository| self.render_branch(repository, window, cx));
         let environment = self
             .project
             .as_ref()

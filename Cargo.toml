@@ -14,6 +14,7 @@ members = [
   "crates/environment_selector",
   "crates/fs",
   "crates/git",
+  "crates/git_ui",
   "crates/grammars",
   "crates/http_client",
   "crates/input",
@@ -269,6 +270,7 @@ editor = { path = "crates/editor" }
 environment_selector = { path = "crates/environment_selector" }
 fs = { path = "crates/fs" }
 git = { path = "crates/git" }
+git_ui = { path = "crates/git_ui" }
 grammars = { path = "crates/grammars" }
 http_client = { path = "crates/http_client" }
 input = { path = "crates/input" }
