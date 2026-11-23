@@ -448,30 +448,16 @@ impl GitRepository for SystemGitRepository {
                         "--no-patch",
                         "--format=%H%x00%B%x00%at%x00%ae%x00%an%x00",
                         &commit,
+                        "--",
                     ])
                     .output()
                     .await?;
                 let output = std::str::from_utf8(&output.stdout)?;
-                let mut fields = output.split('\0');
-                let (
-                    Some(sha),
-                    Some(message),
-                    Some(commit_timestamp),
-                    Some(author_email),
-                    Some(author_name),
-                    Some(""),
-                    None,
-                ) = (
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                )
+                let fields = output.split('\0').collect::<Vec<_>>();
+                let [sha, message, commit_timestamp, author_email, author_name, _] =
+                    fields.as_slice()
                 else {
-                    anyhow::bail!("Unexpected git-show output for {commit:?}: {output:?}");
+                    anyhow::bail!("unexpected git-show output for {commit:?}: {output:?}");
                 };
                 let sha = sha.to_string().into();
                 let message = message.to_string().into();
