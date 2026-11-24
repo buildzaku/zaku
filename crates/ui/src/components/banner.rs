@@ -1,6 +1,6 @@
 use gpui::{AnyElement, App, IntoElement, ParentElement, RenderOnce, Window, prelude::*};
 
-use crate::{ActiveTheme, Color, Icon, IconAsset, IconSize, Severity};
+use crate::{ActiveTheme, Color, Icon, IconAsset, IconSize, Severity, TextSize};
 
 #[derive(IntoElement)]
 pub struct Banner {
@@ -90,6 +90,12 @@ impl RenderOnce for Banner {
 
         let mut banner = banner.bg(bg_color).border_color(border_color);
 
+        let line_height = {
+            let mut text_style = window.text_style();
+            text_style.font_size = TextSize::Default.rems(cx).into();
+            text_style.line_height_in_pixels(window.rem_size())
+        };
+
         let icon_and_child = gpui::div()
             .flex()
             .items_start()
@@ -100,7 +106,7 @@ impl RenderOnce for Banner {
                 gpui::div()
                     .flex()
                     .items_center()
-                    .h(window.line_height())
+                    .h(line_height)
                     .flex_shrink_0()
                     .child(Icon::new(icon).size(IconSize::XSmall).color(icon_color)),
             )
