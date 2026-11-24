@@ -47,6 +47,7 @@ pub enum IconAsset {
     FileLock,
     FileToml,
     FileTomlPlus,
+    Filter,
     Folder,
     FolderClose,
     FolderOpen,

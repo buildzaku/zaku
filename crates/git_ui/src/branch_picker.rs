@@ -1,8 +1,8 @@
 use fuzzy_nucleo::StringMatchCandidate;
 use gpui::{
-    AnyElement, App, Context, DismissEvent, Div, Entity, EventEmitter, FocusHandle, Focusable,
-    Modifiers, ModifiersChangedEvent, PromptLevel, Rems, SharedString, Subscription, Task,
-    WeakEntity, Window, prelude::*,
+    Action, Anchor, AnyElement, AnyView, App, Context, DismissEvent, Div, Entity, EventEmitter,
+    FocusHandle, Focusable, Global, Modifiers, ModifiersChangedEvent, PromptLevel, Rems,
+    SharedString, Subscription, Task, WeakEntity, Window, prelude::*,
 };
 use jiff::Timestamp;
 use std::sync::Arc;
@@ -15,8 +15,9 @@ use project::git_store::{Repository, RepositoryEvent};
 use time_format::TimestampFormat;
 use ui::{
     ActiveTheme, Banner, Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color,
-    HighlightedText, Icon, IconAsset, IconButton, IconSize, KeyBinding, ListItem, ListItemSpacing,
-    ListSubHeader, Severity, Text, TextCommon, TextSize, Toggleable, Tooltip, VisibleOnHover,
+    ContextMenu, HighlightedText, Icon, IconAsset, IconButton, IconPosition, IconSize, Indicator,
+    KeyBinding, ListItem, ListItemSpacing, ListSubHeader, PopoverMenu, PopoverMenuHandle, Severity,
+    Text, TextCommon, TextSize, Toggleable, Tooltip, VisibleOnHover,
 };
 use util::ResultExt;
 use workspace::{
@@ -173,13 +174,17 @@ impl BranchList {
             picker.delegate.focus_handle = picker_focus_handle.clone();
         });
 
-        let mut subscriptions = vec![cx.subscribe(&picker, |_, _, _: &DismissEvent, cx| {
-            cx.emit(DismissEvent);
+        let mut subscriptions = vec![cx.subscribe(&picker, |this, _, _: &DismissEvent, cx| {
+            if !this.branch_filter_menu_open(cx) {
+                cx.emit(DismissEvent);
+            }
         })];
         if style == BranchListStyle::Popover {
             subscriptions.push(
-                cx.on_focus_out(&picker_focus_handle, window, |_, _, _, cx| {
-                    cx.emit(DismissEvent);
+                cx.on_focus_out(&picker_focus_handle, window, |this, _, _, cx| {
+                    if !this.branch_filter_menu_open(cx) {
+                        cx.emit(DismissEvent);
+                    }
                 }),
             );
         }
@@ -248,6 +253,35 @@ impl BranchList {
                 .delete_at(picker.delegate.selected_index, true, window, cx);
         });
     }
+
+    fn set_branch_filter(
+        &mut self,
+        branch_filter: BranchFilter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        cx.set_global(GlobalBranchFilter(branch_filter));
+        self.picker.update(cx, |picker, cx| {
+            if picker.delegate.branch_filter == branch_filter {
+                return;
+            }
+            picker.delegate.branch_filter = branch_filter;
+            picker.update_matches(picker.query(cx), window, cx);
+        });
+    }
+
+    fn branch_filter_menu_open(&self, cx: &App) -> bool {
+        self.picker
+            .read(cx)
+            .delegate
+            .branch_filter_menu_handle
+            .is_deployed()
+    }
+
+    fn cycle_branch_filter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let branch_filter = self.picker.read(cx).delegate.branch_filter.next();
+        self.set_branch_filter(branch_filter, window, cx);
+    }
 }
 
 impl ModalView for BranchList {}
@@ -269,6 +303,37 @@ impl Render for BranchList {
             .on_modifiers_changed(cx.listener(Self::handle_modifiers_changed))
             .on_action(cx.listener(Self::handle_delete))
             .on_action(cx.listener(Self::handle_force_delete))
+            .on_action(cx.listener(
+                |this, _: &actions::branch_picker::ShowAllBranches, window, cx| {
+                    this.set_branch_filter(BranchFilter::All, window, cx);
+                },
+            ))
+            .on_action(cx.listener(
+                |this, _: &actions::branch_picker::ShowLocalBranches, window, cx| {
+                    this.set_branch_filter(BranchFilter::Local, window, cx);
+                },
+            ))
+            .on_action(cx.listener(
+                |this, _: &actions::branch_picker::ShowRemoteBranches, window, cx| {
+                    this.set_branch_filter(BranchFilter::Remote, window, cx);
+                },
+            ))
+            .on_action(cx.listener(
+                |this, _: &actions::branch_picker::CycleBranchFilter, window, cx| {
+                    this.cycle_branch_filter(window, cx);
+                },
+            ))
+            .on_action(cx.listener(
+                |this, _: &actions::branch_picker::ToggleFilterMenu, window, cx| {
+                    let menu_handle = this
+                        .picker
+                        .read(cx)
+                        .delegate
+                        .branch_filter_menu_handle
+                        .clone();
+                    menu_handle.toggle(window, cx);
+                },
+            ))
             .child(self.picker.clone())
     }
 }
@@ -304,6 +369,77 @@ impl Entry {
     fn is_new_branch(&self) -> bool {
         matches!(self, Entry::NewBranch { .. })
     }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum BranchFilter {
+    All,
+    Local,
+    Remote,
+}
+
+impl BranchFilter {
+    fn next(self) -> Self {
+        match self {
+            Self::All => Self::Local,
+            Self::Local => Self::Remote,
+            Self::Remote => Self::All,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::All => "All Branches",
+            Self::Local => "Local Branches",
+            Self::Remote => "Remote Branches",
+        }
+    }
+}
+
+struct GlobalBranchFilter(BranchFilter);
+
+impl Global for GlobalBranchFilter {}
+
+fn branch_filter_menu(
+    branch_filter: BranchFilter,
+    focus_handle: &FocusHandle,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<ContextMenu> {
+    ContextMenu::build(window, cx, |mut menu, _, _| {
+        menu = menu.context(focus_handle.clone());
+
+        let filter_actions: [(BranchFilter, Box<dyn Action>); 3] = [
+            (
+                BranchFilter::All,
+                Box::new(actions::branch_picker::ShowAllBranches),
+            ),
+            (
+                BranchFilter::Local,
+                Box::new(actions::branch_picker::ShowLocalBranches),
+            ),
+            (
+                BranchFilter::Remote,
+                Box::new(actions::branch_picker::ShowRemoteBranches),
+            ),
+        ];
+
+        for (filter, action) in filter_actions {
+            let handler_focus = focus_handle.clone();
+            let dispatched = action.boxed_clone();
+            menu = menu.toggleable_entry(
+                filter.label(),
+                filter == branch_filter,
+                IconPosition::End,
+                Some(action),
+                move |window, cx| {
+                    window.focus(&handler_focus, cx);
+                    window.dispatch_action(dispatched.boxed_clone(), cx);
+                },
+            );
+        }
+        menu
+    })
 }
 
 #[derive(Debug)]
@@ -429,6 +565,8 @@ pub struct BranchListDelegate {
     style: BranchListStyle,
     selected_index: usize,
     modifiers: Modifiers,
+    branch_filter: BranchFilter,
+    branch_filter_menu_handle: PopoverMenuHandle<ContextMenu>,
     state: PickerState,
     focus_handle: FocusHandle,
     restore_selected_branch: Option<SharedString>,
@@ -442,6 +580,10 @@ impl BranchListDelegate {
         style: BranchListStyle,
         cx: &mut Context<BranchList>,
     ) -> Self {
+        let branch_filter = cx
+            .try_global::<GlobalBranchFilter>()
+            .map_or(BranchFilter::All, |filter| filter.0);
+
         Self {
             workspace,
             matches: Vec::new(),
@@ -452,10 +594,37 @@ impl BranchListDelegate {
             style,
             selected_index: 0,
             modifiers: Modifiers::default(),
+            branch_filter,
+            branch_filter_menu_handle: PopoverMenuHandle::default(),
             state: PickerState::List,
             focus_handle: cx.focus_handle(),
             restore_selected_branch: None,
             hovered_delete_index: None,
+        }
+    }
+
+    fn branch_filter_trigger(&self) -> IconButton {
+        IconButton::new("branch-filter", IconAsset::Filter)
+            .icon_size(IconSize::Small)
+            .toggle_state(self.branch_filter != BranchFilter::All)
+            .when(self.branch_filter != BranchFilter::All, |this| {
+                this.indicator(
+                    Indicator::dot()
+                        .color(Color::Info)
+                        .size(ui::rems_from_px(6.0_f32)),
+                )
+            })
+    }
+
+    fn branch_filter_tooltip(&self) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+        let focus_handle = self.focus_handle.clone();
+        move |_, cx| {
+            Tooltip::for_action_in(
+                "Filter Branches",
+                &actions::branch_picker::ToggleFilterMenu,
+                &focus_handle,
+                cx,
+            )
         }
     }
 
@@ -652,6 +821,8 @@ impl PickerDelegate for BranchListDelegate {
                     .child(gpui::div().min_w_0().flex_1().child(Text::new(message))),
             )
         });
+        let branch_filter = self.branch_filter;
+        let focus_handle = self.focus_handle.clone();
 
         gpui::div()
             .flex()
@@ -663,14 +834,54 @@ impl PickerDelegate for BranchListDelegate {
                     .flex_none()
                     .flex()
                     .items_center()
+                    .justify_between()
+                    .gap_1()
                     .overflow_hidden()
                     .h_9()
                     .px_2p5()
                     .border_b_1()
                     .border_color(cx.theme().colors().border_variant)
-                    .child(gpui::div().flex_1().child(editor.render(window, cx))),
+                    .child(gpui::div().flex_1().child(editor.render(window, cx)))
+                    .child(
+                        PopoverMenu::new("branch-filter-menu")
+                            .with_handle(self.branch_filter_menu_handle.clone())
+                            .trigger_with_tooltip(
+                                self.branch_filter_trigger(),
+                                self.branch_filter_tooltip(),
+                            )
+                            .menu(move |window, cx| {
+                                Some(branch_filter_menu(branch_filter, &focus_handle, window, cx))
+                            })
+                            .anchor(Anchor::TopRight)
+                            .attach(Anchor::BottomRight)
+                            .offset(gpui::point(gpui::px(1.0), gpui::px(1.0))),
+                    ),
             )
             .children(warning_banner)
+    }
+
+    fn render_header(&self, _: &mut Window, _: &mut Context<Picker<Self>>) -> Option<AnyElement> {
+        if self.branch_filter == BranchFilter::All
+            || !self
+                .matches
+                .first()
+                .is_some_and(|entry| entry.as_branch().is_some())
+        {
+            return None;
+        }
+
+        Some(
+            gpui::div()
+                .pt_1p5()
+                .mb_neg_0p5()
+                .child(ListSubHeader::new(self.branch_filter.label()).inset(true))
+                .into_any_element(),
+        )
+    }
+
+    fn has_another_open_menu(&self, window: &Window, cx: &App) -> bool {
+        self.branch_filter_menu_handle.is_deployed()
+            || self.branch_filter_menu_handle.is_focused(window, cx)
     }
 
     fn match_count(&self) -> usize {
@@ -692,18 +903,30 @@ impl PickerDelegate for BranchListDelegate {
         cx: &mut Context<Picker<Self>>,
     ) -> Task<()> {
         let all_branches = self.all_branches.clone();
+        let branch_filter = self.branch_filter;
 
         cx.spawn_in(window, async move |picker, cx| {
+            let branch_matches_filter = |branch: &Branch| match branch_filter {
+                BranchFilter::All => true,
+                BranchFilter::Local => !branch.is_remote(),
+                BranchFilter::Remote => branch.is_remote(),
+            };
+
             let mut matches: Vec<Entry> = if query.is_empty() {
                 all_branches
                     .iter()
+                    .filter(|branch| branch_matches_filter(branch))
                     .map(|branch| Entry::Branch {
                         branch: branch.clone(),
                         positions: Vec::new(),
                     })
                     .collect()
             } else {
-                let candidates = all_branches
+                let branches = all_branches
+                    .iter()
+                    .filter(|branch| branch_matches_filter(branch))
+                    .collect::<Vec<_>>();
+                let candidates = branches
                     .iter()
                     .enumerate()
                     .map(|(index, branch)| StringMatchCandidate::new(index, branch.name()))
@@ -721,7 +944,7 @@ impl PickerDelegate for BranchListDelegate {
                 .into_iter()
                 .filter_map(|candidate| {
                     Some(Entry::Branch {
-                        branch: all_branches.get(candidate.candidate_id)?.clone(),
+                        branch: (*branches.get(candidate.candidate_id)?).clone(),
                         positions: candidate.positions,
                     })
                 })
@@ -1130,23 +1353,26 @@ impl PickerDelegate for BranchListDelegate {
                 )
             });
 
-        let section_header = entry.as_branch().and_then(|branch| {
-            let starts_section = index == 0
-                || self
-                    .matches
-                    .get(index - 1)
-                    .and_then(Entry::as_branch)
-                    .is_none_or(|previous_branch| {
-                        previous_branch.is_remote() != branch.is_remote()
-                    });
-            starts_section.then(|| {
-                if branch.is_remote() {
-                    ("Remote Branches", index != 0)
-                } else {
-                    ("Local Branches", false)
-                }
-            })
-        });
+        let section_header = (self.branch_filter == BranchFilter::All)
+            .then(|| entry.as_branch())
+            .flatten()
+            .and_then(|branch| {
+                let starts_section = index == 0
+                    || self
+                        .matches
+                        .get(index - 1)
+                        .and_then(Entry::as_branch)
+                        .is_none_or(|previous_branch| {
+                            previous_branch.is_remote() != branch.is_remote()
+                        });
+                starts_section.then(|| {
+                    if branch.is_remote() {
+                        ("Remote Branches", index != 0)
+                    } else {
+                        ("Local Branches", false)
+                    }
+                })
+            });
 
         Some(
             gpui::div()
