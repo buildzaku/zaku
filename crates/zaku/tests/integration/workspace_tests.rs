@@ -6,7 +6,7 @@ use indoc::{formatdoc, indoc};
 use parking_lot::Mutex;
 use rand::{RngExt, rngs::StdRng};
 use serde_json::json;
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashSet, path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use db::{AppDatabase, kv::KeyValueStore};
@@ -572,6 +572,280 @@ async fn test_update_branch_matches_with_query(cx: &mut TestAppContext) {
         assert!(matched_entries.contains(&("feature-ui".to_string(), false)));
         assert_eq!(matched_entries.last(), Some(&("feature".to_string(), true)));
     });
+}
+
+#[gpui::test]
+async fn test_delete_branch(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("project", json!({}));
+    let project_path = temp_fs.path().join("project");
+    repository::git_command(&project_path, ["init", "-b", "main"]).await;
+    repository::git_command(
+        &project_path,
+        ["commit", "--allow-empty", "-m", "Initial commit"],
+    )
+    .await;
+    for branch_name in ["feature-auth", "feature-ui", "dev"] {
+        repository::git_command(&project_path, ["branch", branch_name]).await;
+    }
+
+    let (open_result, _) = open_workspace(project_path, app_state, cx).await;
+    wait_until(cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .is_some_and(|repository| repository.read(cx).branch_list.len() == 4)
+        })
+    })
+    .await;
+
+    cx.dispatch_action(open_result.window.into(), actions::git::Branch);
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<BranchList>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+
+    picker.read_with(cx, |picker, _| {
+        assert_eq!(
+            picker
+                .delegate
+                .matched_entries()
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            ["main", "dev", "feature-auth", "feature-ui"]
+        );
+    });
+    cx.dispatch_action(open_result.window.into(), actions::menu::SelectNext);
+
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    let delete_button_bounds = cx.debug_bounds("ICON_BUTTON-delete-1").unwrap();
+    cx.simulate_click(delete_button_bounds.center(), Modifiers::default());
+
+    let expected_branches = HashSet::from(["main", "feature-auth", "feature-ui"]);
+    wait_until(&cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .unwrap()
+                .read(cx)
+                .branch_list
+                .iter()
+                .map(|branch| branch.name())
+                .collect::<HashSet<_>>()
+                == expected_branches
+        }) && picker.read_with(cx, |picker, _| picker.delegate.matched_entries().len() == 3)
+    })
+    .await;
+
+    picker.read_with(&cx, |picker, _| {
+        assert_eq!(
+            picker
+                .delegate
+                .matched_entries()
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            ["main", "feature-auth", "feature-ui"]
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_delete_unmerged_branch_prompts_for_force_delete(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("project", json!({}));
+    let project_path = temp_fs.path().join("project");
+    repository::git_command(&project_path, ["init", "-b", "main"]).await;
+    repository::git_command(
+        &project_path,
+        ["commit", "--allow-empty", "-m", "Initial commit"],
+    )
+    .await;
+    repository::git_command(&project_path, ["switch", "-c", "feature-auth"]).await;
+    repository::git_command(
+        &project_path,
+        ["commit", "--allow-empty", "-m", "Add feature"],
+    )
+    .await;
+    repository::git_command(&project_path, ["switch", "main"]).await;
+    for branch_name in ["feature-ui", "dev"] {
+        repository::git_command(&project_path, ["branch", branch_name]).await;
+    }
+
+    let (open_result, _) = open_workspace(project_path, app_state, cx).await;
+    wait_until(cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .is_some_and(|repository| repository.read(cx).branch_list.len() == 4)
+        })
+    })
+    .await;
+
+    cx.dispatch_action(open_result.window.into(), actions::git::Branch);
+
+    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .active_modal::<BranchList>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+
+    cx.simulate_input(open_result.window.into(), "feature-auth");
+    let initial_match_count =
+        picker.read_with(cx, |picker, _| picker.delegate.matched_entries().len());
+
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    let delete_button_bounds = cx.debug_bounds("ICON_BUTTON-delete-0").unwrap();
+    cx.simulate_click(delete_button_bounds.center(), Modifiers::default());
+    wait_until(&cx, TestAppContext::has_pending_prompt).await;
+
+    cx.simulate_prompt_answer("Cancel");
+    cx.run_until_parked();
+    assert!(!cx.has_pending_prompt());
+
+    open_result.workspace.read_with(&cx, |workspace, cx| {
+        let repository = workspace
+            .project()
+            .read(cx)
+            .git_store()
+            .read(cx)
+            .active_repository()
+            .unwrap();
+        assert!(
+            repository
+                .read(cx)
+                .branch_list
+                .iter()
+                .any(|branch| branch.name() == "feature-auth")
+        );
+    });
+
+    let final_match_count =
+        picker.read_with(&cx, |picker, _| picker.delegate.matched_entries().len());
+    assert_eq!(initial_match_count, final_match_count);
+
+    let delete_button_bounds = cx.debug_bounds("ICON_BUTTON-delete-0").unwrap();
+    cx.simulate_click(delete_button_bounds.center(), Modifiers::default());
+    wait_until(&cx, TestAppContext::has_pending_prompt).await;
+
+    cx.simulate_prompt_answer("Force Delete");
+    wait_until(&cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .unwrap()
+                .read(cx)
+                .branch_list
+                .iter()
+                .all(|branch| branch.name() != "feature-auth")
+        })
+    })
+    .await;
+}
+
+#[gpui::test]
+async fn test_force_delete_click_deletes_branch_without_prompt(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("project", json!({}));
+    let project_path = temp_fs.path().join("project");
+    repository::git_command(&project_path, ["init", "-b", "main"]).await;
+    repository::git_command(
+        &project_path,
+        ["commit", "--allow-empty", "-m", "Initial commit"],
+    )
+    .await;
+    repository::git_command(&project_path, ["switch", "-c", "feature-auth"]).await;
+    repository::git_command(
+        &project_path,
+        ["commit", "--allow-empty", "-m", "Add feature"],
+    )
+    .await;
+    repository::git_command(&project_path, ["switch", "main"]).await;
+    for branch_name in ["feature-ui", "dev"] {
+        repository::git_command(&project_path, ["branch", branch_name]).await;
+    }
+
+    let (open_result, _) = open_workspace(project_path, app_state, cx).await;
+    wait_until(cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .is_some_and(|repository| repository.read(cx).branch_list.len() == 4)
+        })
+    })
+    .await;
+
+    cx.dispatch_action(open_result.window.into(), actions::git::Branch);
+    cx.simulate_input(open_result.window.into(), "feature-auth");
+
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    cx.simulate_modifiers_change(Modifiers::alt());
+    let delete_button_bounds = cx.debug_bounds("ICON_BUTTON-delete-0").unwrap();
+    cx.simulate_click(delete_button_bounds.center(), Modifiers::alt());
+    wait_until(&cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .unwrap()
+                .read(cx)
+                .branch_list
+                .iter()
+                .all(|branch| branch.name() != "feature-auth")
+        })
+    })
+    .await;
+    assert!(!cx.has_pending_prompt());
 }
 
 #[gpui::test]

@@ -161,6 +161,7 @@
   },
   {
     "context": "(RequestEditor || ResponsePanel) && !menu",
+    "use_key_equivalents": true,
     "bindings": {
       "escape": "workspace::CancelRequest"
     }
@@ -230,12 +231,14 @@
   },
   {
     "context": "RequestForm > Editor && mode == auto_height",
+    "use_key_equivalents": true,
     "bindings": {
       "enter": "editor::Newline"
     }
   },
   {
     "context": "ProjectConfigEditor > Editor && mode == auto_height",
+    "use_key_equivalents": true,
     "bindings": {
       "enter": "editor::Newline"
     }
@@ -268,6 +271,14 @@
     "use_key_equivalents": true,
     "bindings": {
       "shift-backspace": "recent_projects::RemoveSelected"
+    }
+  },
+  {
+    "context": "GitBranchSelector || (GitBranchSelector > Picker > Editor)",
+    "use_key_equivalents": true,
+    "bindings": {
+      "ctrl-shift-backspace": "branch_picker::DeleteBranch",
+      "ctrl-alt-shift-backspace": "branch_picker::ForceDeleteBranch"
     }
   }
 ]
