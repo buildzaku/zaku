@@ -896,6 +896,17 @@ impl Repository {
         })
     }
 
+    pub fn delete_branch(
+        &mut self,
+        is_remote: bool,
+        branch_name: String,
+        force: bool,
+    ) -> oneshot::Receiver<anyhow::Result<()>> {
+        self.send_job(move |RepositoryState { backend }, _| async move {
+            backend.delete_branch(is_remote, branch_name, force).await
+        })
+    }
+
     pub fn default_branch(&mut self) -> oneshot::Receiver<anyhow::Result<Option<SharedString>>> {
         self.send_job(move |RepositoryState { backend }, _| async move {
             backend.default_branch().await

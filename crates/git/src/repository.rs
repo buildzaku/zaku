@@ -197,6 +197,15 @@ pub struct CommitDetails {
     pub author_name: SharedString,
 }
 
+fn delete_branch_flag(is_remote_tracking_ref: bool, force: bool) -> &'static str {
+    match (is_remote_tracking_ref, force) {
+        (true, true) => "-Dr",
+        (true, false) => "-dr",
+        (false, true) => "-D",
+        (false, false) => "-d",
+    }
+}
+
 pub trait GitRepository: Send + Sync {
     fn branches(&self) -> BoxFuture<'_, anyhow::Result<BranchesScanResult>>;
     fn change_branch(&self, name: String) -> BoxFuture<'_, anyhow::Result<()>>;
@@ -204,6 +213,12 @@ pub trait GitRepository: Send + Sync {
         &self,
         name: String,
         base_branch: Option<String>,
+    ) -> BoxFuture<'_, anyhow::Result<()>>;
+    fn delete_branch(
+        &self,
+        is_remote: bool,
+        name: String,
+        force: bool,
     ) -> BoxFuture<'_, anyhow::Result<()>>;
     fn show(&self, commit: String) -> BoxFuture<'_, anyhow::Result<CommitDetails>>;
     fn status(&self, path_prefixes: &[RepoPath]) -> Task<anyhow::Result<GitStatus>>;
@@ -433,6 +448,22 @@ impl GitRepository for SystemGitRepository {
                 }
 
                 git.run(&args).await?;
+                anyhow::Ok(())
+            })
+            .boxed()
+    }
+
+    fn delete_branch(
+        &self,
+        is_remote: bool,
+        name: String,
+        force: bool,
+    ) -> BoxFuture<'_, anyhow::Result<()>> {
+        let git = self.git_binary_in_worktree();
+        self.executor
+            .spawn(async move {
+                let flag = delete_branch_flag(is_remote, force);
+                git.run(&["branch", flag, &name]).await?;
                 anyhow::Ok(())
             })
             .boxed()

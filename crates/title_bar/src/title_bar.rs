@@ -200,6 +200,7 @@ impl TitleBar {
         };
 
         let branch_name = branch_name?;
+        let workspace = self.workspace.clone();
         let repository = repository.clone();
         let text_color = if self.branch_picker_handle.is_deployed() {
             Color::Accent
@@ -222,6 +223,7 @@ impl TitleBar {
             PopoverMenu::new("branch-menu")
                 .menu(move |window, cx| {
                     Some(git_ui::branch_picker::popover(
+                        workspace.clone()?,
                         Some(repository.clone()),
                         window,
                         cx,
