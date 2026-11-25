@@ -61,7 +61,7 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          source_version=$(cargo app-version show)
+          source_version=$(cargo app-version show --package zaku)
           if [[ "$BUMP_YEAR" == "true" ]]; then
             source_version=$(cargo app-version bump "$source_version" year)
           fi
@@ -96,7 +96,7 @@ jobs:
           else
             cargo set-version --workspace --bump release
           fi
-          actual_version=$(cargo app-version show)
+          actual_version=$(cargo app-version show --package zaku)
           if [[ "$actual_version" != "$release_version" ]]; then
             echo "::error::Expected Zaku $release_version, found $actual_version"
             exit 1
@@ -112,7 +112,7 @@ jobs:
 
           git restore --source "$source_sha" -- "${files[@]}"
           cargo set-version --workspace "$main_long_version"
-          actual_version=$(cargo app-version show)
+          actual_version=$(cargo app-version show --package zaku)
           if [[ "$actual_version" != "$main_version" ]]; then
             echo "::error::Expected Zaku $main_version, found $actual_version"
             exit 1
@@ -173,7 +173,7 @@ jobs:
           gpg --batch --import "${release_keys[@]}"
           git verify-tag "$GITHUB_REF_NAME"
 
-          version=$(cargo app-version show)
+          version=$(cargo app-version show --package zaku)
           if [[ "$GITHUB_REF_NAME" != "$version" ]]; then
             echo "::error::Release tag $GITHUB_REF_NAME does not match workspace version $version"
             exit 1

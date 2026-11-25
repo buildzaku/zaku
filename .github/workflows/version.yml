@@ -77,7 +77,7 @@ jobs:
             ;;
           esac
 
-          current_version=$(cargo app-version show)
+          current_version=$(cargo app-version show --package zaku)
           release_branch=$(cargo app-version show "$current_version" --branch)
           if [[ "$TARGET_BRANCH" != "$release_branch" ]]; then
             echo "::error::Release branch $TARGET_BRANCH contains version $current_version"
@@ -98,7 +98,7 @@ jobs:
 
           files=(Cargo.toml Cargo.lock)
           cargo set-version --workspace --bump "$cargo_bump"
-          actual_version=$(cargo app-version show)
+          actual_version=$(cargo app-version show --package zaku)
           if [[ "$actual_version" != "$version" ]]; then
             echo "::error::Expected Zaku $version, found $actual_version"
             exit 1

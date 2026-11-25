@@ -24,3 +24,4 @@ clap = { workspace = true }
 jiff = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
