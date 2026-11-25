@@ -1,7 +1,7 @@
 use fuzzy_nucleo::{MaxResults, StringMatch, StringMatchCandidate, StringMatchOptions};
 use gpui::{
     Action, AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
-    SharedString, Subscription, Task, TaskExt, WeakEntity, Window, prelude::*,
+    Rems, SharedString, Subscription, Task, TaskExt, WeakEntity, Window, prelude::*,
 };
 #[cfg(any(test, feature = "test"))]
 use std::path::PathBuf;
@@ -11,10 +11,9 @@ use fs::Fs;
 use path::PathExt;
 use picker::{Picker, PickerDelegate, ScrollBehavior};
 use ui::{
-    ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, Color,
-    DynamicSpacing, HighlightedText, IconAsset, IconButton, IconSize, KeyBinding, ListItem,
-    ListItemSpacing, ListSubHeader, Text, TextCommon, TextSize, Toggleable, Tooltip,
-    VisibleOnHover,
+    ActiveTheme, Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, DynamicSpacing,
+    HighlightedText, IconAsset, IconButton, IconSize, KeyBinding, ListItem, ListItemSpacing,
+    ListSubHeader, TextCommon, TextSize, Toggleable, Tooltip, VisibleOnHover,
 };
 use workspace::{
     ModalView, OpenMode, RecentWorkspace, Root, Workspace, WorkspaceDb,
@@ -53,7 +52,7 @@ impl RecentProjects {
     fn new(
         delegate: RecentProjectsDelegate,
         fs: Option<Arc<dyn Fs>>,
-        rem_width: f32,
+        width: Rems,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -61,7 +60,7 @@ impl RecentProjects {
         let picker = cx.new(|cx| {
             Picker::list(delegate, window, cx)
                 .list_measure_all()
-                .initial_width(gpui::rems(rem_width))
+                .initial_width(width)
                 .minimum_results_width(gpui::rems(20.0))
                 .height(gpui::rems(24.0))
                 .no_vertical_padding()
@@ -103,7 +102,7 @@ impl RecentProjects {
 
         workspace.toggle_modal(window, cx, |window, cx| {
             let delegate = RecentProjectsDelegate::new(workspace_handle, ProjectPickerStyle::Modal);
-            Self::new(delegate, fs, 42.0, window, cx)
+            Self::new(delegate, fs, gpui::rems(42.0), window, cx)
         });
     }
 
@@ -118,7 +117,7 @@ impl RecentProjects {
 
         cx.new(|cx| {
             let delegate = RecentProjectsDelegate::new(workspace, ProjectPickerStyle::Popover);
-            let list = Self::new(delegate, fs, 20.0, window, cx);
+            let list = Self::new(delegate, fs, gpui::rems(20.0), window, cx);
             list.picker.focus_handle(cx).focus(window, cx);
             list
         })
@@ -546,18 +545,11 @@ impl PickerDelegate for RecentProjectsDelegate {
                 .border_t_1()
                 .border_color(theme_colors.border_variant)
                 .child(
-                    ButtonLike::new("open-folder")
+                    Button::new("open-folder", "Open Folder")
                         .size(ButtonSize::Medium)
-                        .child(
-                            gpui::div()
-                                .flex()
-                                .items_center()
-                                .gap(DynamicSpacing::Base08.rems(cx))
-                                .child(Text::new("Open Folder"))
-                                .child(
-                                    KeyBinding::for_action(&actions::workspace::Open::DEFAULT, cx)
-                                        .size(ui::rems_from_px(12.0_f32)),
-                                ),
+                        .key_binding(
+                            KeyBinding::for_action(&actions::workspace::Open::DEFAULT, cx)
+                                .size(ui::rems_from_px(12.0_f32)),
                         )
                         .on_click(|_, window, cx| {
                             window.dispatch_action(

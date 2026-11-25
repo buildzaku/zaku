@@ -47,11 +47,13 @@ pub enum IconAsset {
     FileLock,
     FileToml,
     FileTomlPlus,
+    Filter,
     Folder,
     FolderClose,
     FolderOpen,
     FolderPlus,
     GitBranch,
+    GitBranchPlus,
     Info,
     LinuxClose,
     LinuxMaximize,
@@ -64,6 +66,7 @@ pub enum IconAsset {
     Option,
     Plus,
     Return,
+    Server,
     Shift,
     SquareDashed,
     SquareDot,
@@ -75,6 +78,7 @@ pub enum IconAsset {
     Tree,
     Warning,
     WarningCircle,
+    XCircle,
 }
 
 impl IconAsset {

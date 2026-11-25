@@ -9,6 +9,7 @@ use std::{
     sync::Arc,
 };
 
+use collections::HashMap;
 use path::{PathStyle, RelPath};
 use util::command;
 
@@ -196,10 +197,32 @@ pub struct CommitDetails {
     pub author_name: SharedString,
 }
 
+fn delete_branch_flag(is_remote_tracking_ref: bool, force: bool) -> &'static str {
+    match (is_remote_tracking_ref, force) {
+        (true, true) => "-Dr",
+        (true, false) => "-dr",
+        (false, true) => "-D",
+        (false, false) => "-d",
+    }
+}
+
 pub trait GitRepository: Send + Sync {
     fn branches(&self) -> BoxFuture<'_, anyhow::Result<BranchesScanResult>>;
+    fn change_branch(&self, name: String) -> BoxFuture<'_, anyhow::Result<()>>;
+    fn create_branch(
+        &self,
+        name: String,
+        base_branch: Option<String>,
+    ) -> BoxFuture<'_, anyhow::Result<()>>;
+    fn delete_branch(
+        &self,
+        is_remote: bool,
+        name: String,
+        force: bool,
+    ) -> BoxFuture<'_, anyhow::Result<()>>;
     fn show(&self, commit: String) -> BoxFuture<'_, anyhow::Result<CommitDetails>>;
     fn status(&self, path_prefixes: &[RepoPath]) -> Task<anyhow::Result<GitStatus>>;
+    fn default_branch(&self) -> BoxFuture<'_, anyhow::Result<Option<SharedString>>>;
 }
 
 impl fmt::Debug for dyn GitRepository {
@@ -361,6 +384,91 @@ impl GitRepository for SystemGitRepository {
             .boxed()
     }
 
+    fn change_branch(&self, name: String) -> BoxFuture<'_, anyhow::Result<()>> {
+        let git = self.git_binary_in_worktree();
+        self.executor
+            .spawn(async move {
+                let local_ref = format!("refs/heads/{name}");
+                if git
+                    .run(&["show-ref", "--verify", "--quiet", &local_ref])
+                    .await
+                    .is_ok()
+                {
+                    git.run(&["checkout", &name]).await?;
+                    return anyhow::Ok(());
+                }
+
+                let remote_ref = format!("refs/remotes/{name}");
+                if git
+                    .run(&["show-ref", "--verify", "--quiet", &remote_ref])
+                    .await
+                    .is_ok()
+                {
+                    let name = match git.run(&["symbolic-ref", &remote_ref]).await {
+                        Ok(resolved) => resolved
+                            .strip_prefix("refs/remotes/")
+                            .map(str::to_owned)
+                            .unwrap_or(name),
+                        Err(_) => name,
+                    };
+                    let (_, branch_name) =
+                        name.split_once('/').context("unexpected branch format")?;
+                    let local_branch_ref = format!("refs/heads/{branch_name}");
+                    if git
+                        .run(&["show-ref", "--verify", "--quiet", &local_branch_ref])
+                        .await
+                        .is_ok()
+                    {
+                        git.run(&["branch", "--set-upstream-to", &name, branch_name])
+                            .await?;
+                    } else {
+                        git.run(&["branch", "--track", branch_name, &name]).await?;
+                    }
+
+                    git.run(&["checkout", branch_name]).await?;
+                    return anyhow::Ok(());
+                }
+
+                anyhow::bail!("branch '{name}' not found");
+            })
+            .boxed()
+    }
+
+    fn create_branch(
+        &self,
+        name: String,
+        base_branch: Option<String>,
+    ) -> BoxFuture<'_, anyhow::Result<()>> {
+        let git = self.git_binary_in_worktree();
+        self.executor
+            .spawn(async move {
+                let mut args = vec!["switch", "-c", &name];
+                if let Some(base_branch) = &base_branch {
+                    args.push(base_branch);
+                }
+
+                git.run(&args).await?;
+                anyhow::Ok(())
+            })
+            .boxed()
+    }
+
+    fn delete_branch(
+        &self,
+        is_remote: bool,
+        name: String,
+        force: bool,
+    ) -> BoxFuture<'_, anyhow::Result<()>> {
+        let git = self.git_binary_in_worktree();
+        self.executor
+            .spawn(async move {
+                let flag = delete_branch_flag(is_remote, force);
+                git.run(&["branch", flag, &name]).await?;
+                anyhow::Ok(())
+            })
+            .boxed()
+    }
+
     fn show(&self, commit: String) -> BoxFuture<'_, anyhow::Result<CommitDetails>> {
         let git = self.git_binary_in_worktree();
         self.executor
@@ -371,30 +479,16 @@ impl GitRepository for SystemGitRepository {
                         "--no-patch",
                         "--format=%H%x00%B%x00%at%x00%ae%x00%an%x00",
                         &commit,
+                        "--",
                     ])
                     .output()
                     .await?;
                 let output = std::str::from_utf8(&output.stdout)?;
-                let mut fields = output.split('\0');
-                let (
-                    Some(sha),
-                    Some(message),
-                    Some(commit_timestamp),
-                    Some(author_email),
-                    Some(author_name),
-                    Some(""),
-                    None,
-                ) = (
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                )
+                let fields = output.split('\0').collect::<Vec<_>>();
+                let [sha, message, commit_timestamp, author_email, author_name, _] =
+                    fields.as_slice()
                 else {
-                    anyhow::bail!("Unexpected git-show output for {commit:?}: {output:?}");
+                    anyhow::bail!("unexpected git-show output for {commit:?}: {output:?}");
                 };
                 let sha = sha.to_string().into();
                 let message = message.to_string().into();
@@ -427,6 +521,58 @@ impl GitRepository for SystemGitRepository {
                 anyhow::bail!("Git status failed: {stderr}");
             }
         })
+    }
+
+    fn default_branch(&self) -> BoxFuture<'_, anyhow::Result<Option<SharedString>>> {
+        let git = self.git_binary_in_worktree();
+        self.executor
+            .spawn(async move {
+                let output = git
+                    .run(&[
+                        "for-each-ref",
+                        "--format=%(refname)\t%(symref)",
+                        "refs/remotes/upstream/HEAD",
+                        "refs/remotes/origin/HEAD",
+                        "refs/heads/",
+                    ])
+                    .await?;
+                let refs: HashMap<&str, &str> = output
+                    .lines()
+                    .filter_map(|line| line.split_once('\t'))
+                    .collect();
+
+                if let Some(target) = refs.get("refs/remotes/upstream/HEAD")
+                    && let Some(branch) = target.strip_prefix("refs/remotes/upstream/")
+                {
+                    return Ok(Some(branch.into()));
+                }
+
+                if let Some(target) = refs.get("refs/remotes/origin/HEAD")
+                    && let Some(branch) = target.strip_prefix("refs/remotes/origin/")
+                {
+                    return Ok(Some(branch.into()));
+                }
+
+                let local_branch_exists =
+                    |branch: &str| refs.contains_key(format!("refs/heads/{branch}").as_str());
+
+                if let Ok(default_branch) = git.run(&["config", "init.defaultBranch"]).await
+                    && local_branch_exists(&default_branch)
+                {
+                    return Ok(Some(default_branch.into()));
+                }
+
+                if local_branch_exists("main") {
+                    return Ok(Some("main".into()));
+                }
+
+                if local_branch_exists("master") {
+                    return Ok(Some("master".into()));
+                }
+
+                anyhow::Ok(None)
+            })
+            .boxed()
     }
 }
 
@@ -551,6 +697,10 @@ impl GitBinary {
     {
         let mut command = command::new_command(&self.git_binary_path);
         command.current_dir(&self.working_directory);
+        #[cfg(any(test, feature = "test"))]
+        command
+            .env("GIT_CONFIG_GLOBAL", "")
+            .env("GIT_CONFIG_SYSTEM", "");
         command.args(["-c", "core.fsmonitor=false"]);
         command.args(["-c", "log.showSignature=false"]);
         command.arg("--no-optional-locks");
@@ -559,6 +709,46 @@ impl GitBinary {
 
         command
     }
+
+    async fn run<S>(&self, args: &[S]) -> anyhow::Result<String>
+    where
+        S: AsRef<OsStr>,
+    {
+        let output = self.build_command(args).output().await?;
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Git command failed:\n{stdout}{stderr}\n");
+        }
+
+        let mut stdout = String::from_utf8(output.stdout)?;
+        if stdout.ends_with('\n') {
+            stdout.pop();
+        }
+        Ok(stdout)
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+pub async fn git_command(
+    working_directory: &Path,
+    arguments: impl IntoIterator<Item: AsRef<OsStr>>,
+) -> Output {
+    let arguments = arguments.into_iter().collect::<Vec<_>>();
+    let git = GitBinary::new(PathBuf::from("git"), working_directory.to_path_buf());
+    let mut command = git.build_command(&arguments);
+    let output = command
+        .env("GIT_AUTHOR_NAME", "test")
+        .env("GIT_AUTHOR_EMAIL", "test@zaku.dev")
+        .env("GIT_COMMITTER_NAME", "test")
+        .env("GIT_COMMITTER_EMAIL", "test@zaku.dev")
+        .output()
+        .await
+        .expect("git command should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "Git command failed: {stderr}");
+
+    output
 }
 
 fn git_status_args(path_prefixes: &[RepoPath]) -> Vec<OsString> {
@@ -590,28 +780,45 @@ mod tests {
     use fs::TempFs;
     use util_macros::path;
 
-    async fn git_command<I, S>(working_directory: &Path, arguments: I) -> std::process::Output
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<OsStr>,
-    {
-        let arguments = arguments.into_iter().collect::<Vec<_>>();
-        let git = GitBinary::new(PathBuf::from("git"), working_directory.to_path_buf());
-        let mut command = git.build_command(&arguments);
-        let output = command
-            .env("GIT_CONFIG_GLOBAL", "")
-            .env("GIT_CONFIG_SYSTEM", "")
-            .env("GIT_AUTHOR_NAME", "test")
-            .env("GIT_AUTHOR_EMAIL", "test@zaku.dev")
-            .env("GIT_COMMITTER_NAME", "test")
-            .env("GIT_COMMITTER_EMAIL", "test@zaku.dev")
-            .output()
-            .await
-            .unwrap();
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(output.status.success(), "Git command failed: {stderr}");
+    async fn clone_remote_repository_with_main_and_feature(temp_fs: &TempFs) -> (PathBuf, PathBuf) {
+        let remote_directory = temp_fs.path().join(path!("remote.git"));
+        let seed_directory = temp_fs.path().join(path!("seed"));
+        let clone_directory = temp_fs.path().join(path!("clone"));
 
-        output
+        let arguments = [
+            OsStr::new("init"),
+            OsStr::new("--bare"),
+            OsStr::new("-b"),
+            OsStr::new("main"),
+            remote_directory.as_os_str(),
+        ];
+        git_command(temp_fs.path(), arguments).await;
+        temp_fs.insert_tree(path!("seed"), json!({}));
+        git_command(&seed_directory, ["init", "-b", "main"]).await;
+        temp_fs.insert_tree(path!("seed"), json!({ "file.txt": "main" }));
+        git_command(&seed_directory, ["add", "file.txt"]).await;
+        git_command(&seed_directory, ["commit", "-m", "Initial commit"]).await;
+        git_command(&seed_directory, ["switch", "-c", "feature"]).await;
+        temp_fs.insert_tree(path!("seed"), json!({ "feature.txt": "feature" }));
+        git_command(&seed_directory, ["add", "feature.txt"]).await;
+        git_command(&seed_directory, ["commit", "-m", "Add feature"]).await;
+        let arguments = [
+            OsStr::new("remote"),
+            OsStr::new("add"),
+            OsStr::new("origin"),
+            remote_directory.as_os_str(),
+        ];
+        git_command(&seed_directory, arguments).await;
+        git_command(&seed_directory, ["push", "-u", "origin", "main"]).await;
+        git_command(&seed_directory, ["push", "-u", "origin", "feature"]).await;
+        let arguments = [
+            OsStr::new("clone"),
+            remote_directory.as_os_str(),
+            clone_directory.as_os_str(),
+        ];
+        git_command(temp_fs.path(), arguments).await;
+
+        (remote_directory, clone_directory)
     }
 
     #[test]
@@ -813,6 +1020,220 @@ mod tests {
                 .to_string()
                 .contains("expected .git file to start with 'gitdir: '"),
             "Unexpected error: {error:#}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_change_branch_creates_local_tracking_branch_from_remote(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (_remote_directory, clone_directory) =
+            clone_remote_repository_with_main_and_feature(&temp_fs).await;
+
+        let repository = SystemGitRepository::new(
+            &clone_directory.join(path!(".git")),
+            Some("git".into()),
+            cx.executor(),
+        )
+        .unwrap();
+        let git = repository.git_binary_in_worktree();
+        git.run(&[
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "refs/remotes/origin/feature",
+        ])
+        .await
+        .unwrap();
+        git.run(&["show-ref", "--verify", "--quiet", "refs/heads/feature"])
+            .await
+            .unwrap_err();
+
+        repository
+            .change_branch("origin/feature".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            git.run(&["branch", "--show-current"]).await.unwrap(),
+            "feature"
+        );
+        assert_eq!(
+            git.run(&["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+                .await
+                .unwrap(),
+            "origin/feature"
+        );
+
+        git.run(&["checkout", "main"]).await.unwrap();
+        git.run(&["branch", "--unset-upstream", "feature"])
+            .await
+            .unwrap();
+
+        repository
+            .change_branch("origin/feature".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            git.run(&["branch", "--show-current"]).await.unwrap(),
+            "feature"
+        );
+        assert_eq!(
+            git.run(&["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+                .await
+                .unwrap(),
+            "origin/feature"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_change_branch_resolves_remote_head_to_tracking_branch(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (_remote_directory, clone_directory) =
+            clone_remote_repository_with_main_and_feature(&temp_fs).await;
+
+        let repository = SystemGitRepository::new(
+            &clone_directory.join(path!(".git")),
+            Some("git".into()),
+            cx.executor(),
+        )
+        .unwrap();
+        let git = repository.git_binary_in_worktree();
+        git.run(&[
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/feature",
+        ])
+        .await
+        .unwrap();
+        assert_eq!(
+            git.run(&["symbolic-ref", "refs/remotes/origin/HEAD"])
+                .await
+                .unwrap(),
+            "refs/remotes/origin/feature"
+        );
+        git.run(&["show-ref", "--verify", "--quiet", "refs/heads/feature"])
+            .await
+            .unwrap_err();
+
+        repository
+            .change_branch("origin/HEAD".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            git.run(&["branch", "--show-current"]).await.unwrap(),
+            "feature"
+        );
+        assert_eq!(
+            git.run(&["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+                .await
+                .unwrap(),
+            "origin/feature"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_change_branch_resolves_non_origin_remote_head(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let (remote_directory, clone_directory) =
+            clone_remote_repository_with_main_and_feature(&temp_fs).await;
+
+        let arguments = [
+            OsStr::new("remote"),
+            OsStr::new("add"),
+            OsStr::new("upstream"),
+            remote_directory.as_os_str(),
+        ];
+        git_command(&clone_directory, arguments).await;
+        git_command(&clone_directory, ["fetch", "upstream"]).await;
+
+        let repository = SystemGitRepository::new(
+            &clone_directory.join(path!(".git")),
+            Some("git".into()),
+            cx.executor(),
+        )
+        .unwrap();
+        let git = repository.git_binary_in_worktree();
+        git.run(&[
+            "symbolic-ref",
+            "refs/remotes/upstream/HEAD",
+            "refs/remotes/upstream/main",
+        ])
+        .await
+        .unwrap();
+        git.run(&["checkout", "-b", "scratch"]).await.unwrap();
+
+        repository
+            .change_branch("upstream/HEAD".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            git.run(&["branch", "--show-current"]).await.unwrap(),
+            "main"
+        );
+        assert_eq!(
+            git.run(&["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+                .await
+                .unwrap(),
+            "upstream/main"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_default_branch(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        temp_fs.insert_tree(path!("repo"), json!({}));
+        let repository_dir = temp_fs.path().join(path!("repo"));
+        git_command(&repository_dir, ["init", "-b", "main"]).await;
+
+        let repository = SystemGitRepository::new(
+            &repository_dir.join(path!(".git")),
+            Some("git".into()),
+            cx.executor(),
+        )
+        .unwrap();
+
+        assert_eq!(repository.default_branch().await.unwrap(), None);
+
+        git_command(
+            &repository_dir,
+            ["commit", "--allow-empty", "-m", "Initial commit"],
+        )
+        .await;
+
+        assert_eq!(
+            repository.default_branch().await.unwrap(),
+            Some("main".into())
+        );
+
+        git_command(
+            &repository_dir,
+            ["update-ref", "refs/remotes/origin/main", "HEAD"],
+        )
+        .await;
+        git_command(
+            &repository_dir,
+            [
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/main",
+            ],
+        )
+        .await;
+
+        assert_eq!(
+            repository.default_branch().await.unwrap(),
+            Some("main".into())
         );
     }
 }

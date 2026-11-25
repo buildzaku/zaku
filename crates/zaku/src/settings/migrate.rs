@@ -6,11 +6,7 @@ use editor::Editor;
 use fs::Fs;
 use migrator::{migrate_keymap, migrate_settings};
 use settings::{KeymapFile, SettingsStore};
-use theme::ActiveTheme;
-use ui::{
-    Button, ButtonCommon, ButtonVariant, Clickable, Color, DynamicSpacing, Icon, IconAsset,
-    IconSize, Text, TextCommon,
-};
+use ui::{Banner, Button, ButtonCommon, ButtonVariant, Clickable, Severity, Text, TextCommon};
 use workspace::{
     AppState, ItemHandle, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView,
     notifications::DetachAndPromptErr,
@@ -185,38 +181,15 @@ impl ToolbarItemView for MigrationBanner {
 }
 
 impl Render for MigrationBanner {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let migration_type = self.migration_type;
 
-        gpui::div()
-            .flex()
-            .items_center()
-            .justify_between()
-            .gap(DynamicSpacing::Base08.rems(cx))
-            .py_1()
-            .pl_2()
-            .pr_1()
-            .bg(cx.theme().status().info_background.opacity(0.6))
-            .border_1()
-            .border_color(cx.theme().colors().border_variant)
-            .rounded_sm()
-            .child(
-                gpui::div()
-                    .flex()
-                    .items_center()
-                    .gap(DynamicSpacing::Base08.rems(cx))
-                    .min_w_0()
-                    .overflow_hidden()
-                    .child(
-                        Icon::new(IconAsset::Warning)
-                            .size(IconSize::XSmall)
-                            .color(Color::Warning),
-                    )
-                    .when_some(self.message.clone(), |this, message| {
-                        this.child(Text::new(message).truncate())
-                    }),
-            )
-            .child(
+        Banner::new()
+            .severity(Severity::Warning)
+            .when_some(self.message.clone(), |this, message| {
+                this.child(Text::new(message).truncate())
+            })
+            .action_slot(
                 Button::new("backup-and-migrate", "Backup and Update")
                     .variant(ButtonVariant::Solid)
                     .on_click(move |_, window, cx| {

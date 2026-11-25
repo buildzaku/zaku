@@ -1,8 +1,10 @@
-use gpui::{App, IntoElement, Pixels, Rems, SharedString, Transformation, Window, prelude::*};
+use gpui::{
+    AnyElement, App, IntoElement, Pixels, Rems, SharedString, Transformation, Window, prelude::*,
+};
 
 use ::svg::IconAsset;
 
-use crate::{Color, DynamicSpacing, Transformable};
+use crate::{ActiveTheme, Color, DynamicSpacing, Indicator, Transformable};
 
 #[derive(Clone, Copy, Default, PartialEq)]
 pub enum IconSize {
@@ -130,5 +132,43 @@ impl RenderOnce for Icon {
                 this.group_hover(group_name, |style| style.text_color(color))
             })
             .into_any_element()
+    }
+}
+
+#[derive(IntoElement)]
+pub struct IconWithIndicator {
+    icon: AnyElement,
+    indicator: Option<Indicator>,
+}
+
+impl IconWithIndicator {
+    pub fn new(icon: impl IntoElement, indicator: Option<Indicator>) -> Self {
+        Self {
+            icon: icon.into_any_element(),
+            indicator,
+        }
+    }
+}
+
+impl RenderOnce for IconWithIndicator {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let indicator_border_color = cx.theme().colors().elevated_surface_background;
+
+        gpui::div()
+            .relative()
+            .child(self.icon)
+            .when_some(self.indicator, |this, indicator| {
+                this.child(
+                    gpui::div()
+                        .absolute()
+                        .size_2p5()
+                        .border_2()
+                        .border_color(indicator_border_color)
+                        .rounded_full()
+                        .bottom_neg_0p5()
+                        .right_neg_0p5()
+                        .child(indicator),
+                )
+            })
     }
 }

@@ -1,0 +1,30 @@
+[package]
+name = "time_format"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "time_format"
+path = "src/time_format.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+jiff = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+sys-locale = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { workspace = true }
+objc2-foundation = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+anyhow = { workspace = true }
+log = { workspace = true }
+windows = { workspace = true }

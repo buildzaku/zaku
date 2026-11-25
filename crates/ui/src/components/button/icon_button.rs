@@ -9,7 +9,10 @@ use super::{
     ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, SelectableButton, styled_icon::StyledIcon,
 };
 
-use crate::{Clickable, Color, Disableable, FixedWidth, IconSize, Toggleable, VisibleOnHover};
+use crate::{
+    Clickable, Color, Disableable, FixedWidth, IconSize, IconWithIndicator, Indicator, Toggleable,
+    VisibleOnHover,
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum IconButtonShape {
@@ -28,6 +31,7 @@ pub struct IconButton {
     icon_color: Color,
     selected_icon_color: Option<Color>,
     hover_icon_color: Option<Color>,
+    indicator: Option<Indicator>,
 }
 
 impl IconButton {
@@ -42,6 +46,7 @@ impl IconButton {
             icon_color: Color::Default,
             selected_icon_color: None,
             hover_icon_color: None,
+            indicator: None,
         };
         this.base.base = this
             .base
@@ -82,6 +87,11 @@ impl IconButton {
 
     pub fn selected_icon(mut self, selected_icon: impl Into<Option<IconAsset>>) -> Self {
         self.selected_icon = selected_icon.into();
+        self
+    }
+
+    pub fn indicator(mut self, indicator: Indicator) -> Self {
+        self.indicator = Some(indicator);
         self
     }
 }
@@ -163,6 +173,14 @@ impl RenderOnce for IconButton {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let is_disabled = self.base.disabled;
         let is_selected = self.base.selected;
+        let icon_element = StyledIcon::new(self.icon)
+            .size(self.icon_size)
+            .color(self.icon_color)
+            .selected_icon(self.selected_icon)
+            .selected_icon_color(self.selected_icon_color)
+            .hover_icon_color(self.hover_icon_color)
+            .disabled(is_disabled)
+            .toggle_state(is_selected);
 
         self.base
             .map(|this| match self.shape {
@@ -172,15 +190,11 @@ impl RenderOnce for IconButton {
                 }
                 IconButtonShape::Wide => this,
             })
-            .child(
-                StyledIcon::new(self.icon)
-                    .size(self.icon_size)
-                    .color(self.icon_color)
-                    .selected_icon(self.selected_icon)
-                    .selected_icon_color(self.selected_icon_color)
-                    .hover_icon_color(self.hover_icon_color)
-                    .disabled(is_disabled)
-                    .toggle_state(is_selected),
-            )
+            .child(match self.indicator {
+                Some(indicator) => {
+                    IconWithIndicator::new(icon_element, Some(indicator)).into_any_element()
+                }
+                None => icon_element.into_any_element(),
+            })
     }
 }

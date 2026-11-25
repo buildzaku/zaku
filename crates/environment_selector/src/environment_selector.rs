@@ -1,14 +1,14 @@
 use fuzzy_nucleo::{MaxResults, StringMatch, StringMatchCandidate, StringMatchOptions};
 use gpui::{
     Action, AnyElement, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
-    SharedString, Subscription, Task, Window, prelude::*,
+    Rems, SharedString, Subscription, Task, Window, prelude::*,
 };
 use std::{iter, sync::Arc};
 
 use picker::{Picker, PickerDelegate};
 use project::{EnvironmentColor, Project, ProjectEvent, ProjectPath};
 use ui::{
-    ActiveTheme, ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, DynamicSpacing,
+    ActiveTheme, Button, ButtonCommon, ButtonSize, Clickable, Color, DynamicSpacing,
     HighlightedText, Icon, IconAsset, IconSize, KeyBinding, ListItem, ListItemSpacing,
     ListSubHeader, Text, TextCommon, TextSize, Toggleable,
 };
@@ -16,6 +16,12 @@ use workspace::{ModalView, Workspace};
 
 pub fn init(cx: &mut App) {
     cx.observe_new(EnvironmentSelector::register).detach();
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EnvironmentSelectorStyle {
+    Modal,
+    Popover,
 }
 
 pub struct EnvironmentSelector {
@@ -34,22 +40,22 @@ impl EnvironmentSelector {
 
     fn new(
         delegate: EnvironmentSelectorDelegate,
-        rem_width: f32,
-        is_popover: bool,
+        width: Rems,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let style = delegate.style;
         let picker = cx.new(|cx| {
             Picker::list(delegate, window, cx)
                 .list_measure_all()
-                .initial_width(gpui::rems(rem_width))
+                .initial_width(width)
                 .height(gpui::rems(24.0))
                 .no_vertical_padding()
         });
 
         let mut dismiss_subscriptions =
             vec![cx.subscribe(&picker, |_, _, _: &DismissEvent, cx| cx.emit(DismissEvent))];
-        if is_popover {
+        if style == EnvironmentSelectorStyle::Popover {
             let picker_focus = picker.focus_handle(cx);
             dismiss_subscriptions
                 .push(cx.on_focus_out(&picker_focus, window, |_, _, _, cx| cx.emit(DismissEvent)));
@@ -65,15 +71,17 @@ impl EnvironmentSelector {
         let project = workspace.project().clone();
 
         workspace.toggle_modal(window, cx, |window, cx| {
-            let delegate = EnvironmentSelectorDelegate::new(project, cx);
-            Self::new(delegate, 34.0, false, window, cx)
+            let delegate =
+                EnvironmentSelectorDelegate::new(project, EnvironmentSelectorStyle::Modal, cx);
+            Self::new(delegate, gpui::rems(34.0), window, cx)
         });
     }
 
     pub fn popover(project: Entity<Project>, window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| {
-            let delegate = EnvironmentSelectorDelegate::new(project, cx);
-            let environment_selector = Self::new(delegate, 20.0, true, window, cx);
+            let delegate =
+                EnvironmentSelectorDelegate::new(project, EnvironmentSelectorStyle::Popover, cx);
+            let environment_selector = Self::new(delegate, gpui::rems(20.0), window, cx);
             environment_selector
                 .picker
                 .focus_handle(cx)
@@ -115,10 +123,15 @@ pub struct EnvironmentSelectorDelegate {
     environments: Vec<Environment>,
     matches: Vec<StringMatch>,
     selected_index: usize,
+    style: EnvironmentSelectorStyle,
 }
 
 impl EnvironmentSelectorDelegate {
-    fn new(project: Entity<Project>, cx: &mut Context<EnvironmentSelector>) -> Self {
+    fn new(
+        project: Entity<Project>,
+        style: EnvironmentSelectorStyle,
+        cx: &mut Context<EnvironmentSelector>,
+    ) -> Self {
         let worktree_id = project
             .read(cx)
             .root_worktree(cx)
@@ -197,6 +210,7 @@ impl EnvironmentSelectorDelegate {
             environments,
             matches: Vec::new(),
             selected_index: 0,
+            style,
         }
     }
 
@@ -404,21 +418,11 @@ impl PickerDelegate for EnvironmentSelectorDelegate {
                 .border_t_1()
                 .border_color(theme_colors.border_variant)
                 .child(
-                    ButtonLike::new("manage-environments")
+                    Button::new("manage-environments", "Manage Environments")
                         .size(ButtonSize::Medium)
-                        .child(
-                            gpui::div()
-                                .flex()
-                                .items_center()
-                                .gap(DynamicSpacing::Base08.rems(cx))
-                                .child(Text::new("Manage Environments"))
-                                .child(
-                                    KeyBinding::for_action(
-                                        &actions::variables_panel::ToggleFocus,
-                                        cx,
-                                    )
-                                    .size(ui::rems_from_px(12.0_f32)),
-                                ),
+                        .key_binding(
+                            KeyBinding::for_action(&actions::variables_panel::ToggleFocus, cx)
+                                .size(ui::rems_from_px(12.0_f32)),
                         )
                         .on_click(cx.listener(|_, _, window, cx| {
                             window.dispatch_action(

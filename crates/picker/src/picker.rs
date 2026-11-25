@@ -134,6 +134,10 @@ pub trait PickerDelegate: Sized + 'static {
         PickerEditorPosition::default()
     }
 
+    fn has_another_open_menu(&self, _: &Window, _: &App) -> bool {
+        false
+    }
+
     fn searchbar_trailer(
         &self,
         _: &mut Window,
@@ -570,7 +574,10 @@ impl<D: PickerDelegate> Picker<D> {
                 self.update_matches(query, window, cx);
             }
             ErasedEditorEvent::Blurred => {
-                if self.is_modal && window.is_window_active() {
+                if self.is_modal
+                    && window.is_window_active()
+                    && !self.delegate.has_another_open_menu(window, cx)
+                {
                     self.cancel(&actions::menu::Cancel, window, cx);
                 }
             }

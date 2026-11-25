@@ -49,13 +49,18 @@ impl<D: PickerDelegate> Picker<D> {
             .children(match &self.head {
                 Head::Editor(editor) => {
                     if editor_position == PickerEditorPosition::Start {
-                        Some(gpui::div().flex().items_center().w_full().child(
-                            gpui::div().flex_1().child(self.delegate.render_editor(
-                                &editor.clone(),
-                                window,
-                                cx,
-                            )),
-                        ))
+                        Some(
+                            gpui::div().flex().items_center().w_full().child(
+                                gpui::div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(self.delegate.render_editor(
+                                        &editor.clone(),
+                                        window,
+                                        cx,
+                                    )),
+                            ),
+                        )
                     } else {
                         None
                     }
