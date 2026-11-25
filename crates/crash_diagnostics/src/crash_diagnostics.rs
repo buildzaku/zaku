@@ -534,8 +534,7 @@ impl minidumper::ServerHandler for CrashServer {
 
 pub fn panic_hook(crash_client: &Arc<Client>, message: &str, location: Option<&Location>) {
     let span = location
-        .map(|location| format!("{}:{}", location.file(), location.line()))
-        .unwrap_or_default();
+        .map_or_default(|location| format!("{}:{}", location.file(), location.line()));
     let current_thread = thread::current();
     let thread_name = current_thread.name().unwrap_or("<unnamed>");
     let location = location.map_or_else(|| "<unknown>".to_owned(), ToString::to_string);

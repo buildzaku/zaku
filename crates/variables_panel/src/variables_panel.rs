@@ -1122,8 +1122,7 @@ impl VariablesPanel {
         let project = self.project.read(cx);
         let git_status = project
             .project_path_git_status(&project_path, cx)
-            .map(|status| status.summary())
-            .unwrap_or_default();
+            .map_or_default(|status| status.summary());
         let is_ignored = project
             .entry_for_path(&project_path, cx)
             .is_some_and(|entry| entry.is_ignored);
