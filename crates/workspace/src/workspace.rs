@@ -224,7 +224,10 @@ impl AppState {
         }
         let http_client =
             http_client.unwrap_or_else(|| FakeHttpClient::with_response(StatusCode::NOT_FOUND));
-        metadata::init_test("26.1-dev".parse().unwrap(), cx);
+        metadata::init_test(
+            "26.1-dev".parse().expect("test version should be valid"),
+            cx,
+        );
         let client = Client::test_new(http_client, cx);
         let languages = Arc::new(LanguageRegistry::test_new(cx.background_executor().clone()));
         let session = cx.new(|cx| AppSession::new(Session::test_new(), cx));

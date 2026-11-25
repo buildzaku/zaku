@@ -96,8 +96,8 @@ jobs:
             exit 1
           fi
 
-          files=(Cargo.toml Cargo.lock)
-          cargo set-version --workspace --bump "$cargo_bump"
+          files=(crates/zaku/Cargo.toml Cargo.lock)
+          cargo set-version --package zaku --bump "$cargo_bump"
           actual_version=$(cargo app-version show --package zaku)
           if [[ "$actual_version" != "$version" ]]; then
             echo "::error::Expected Zaku $version, found $actual_version"

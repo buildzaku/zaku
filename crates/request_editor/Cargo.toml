@@ -1,6 +1,5 @@
 [package]
 name = "request_editor"
-version.workspace = true
 license.workspace = true
 repository.workspace = true
 edition.workspace = true

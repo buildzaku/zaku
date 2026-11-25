@@ -1,6 +1,5 @@
 [package]
 name = "app_version"
-version.workspace = true
 license.workspace = true
 repository.workspace = true
 edition.workspace = true
