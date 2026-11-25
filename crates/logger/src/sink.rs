@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use jiff::Zoned;
+use jiff::ZonedDateTime;
 use log::Level;
 use std::{
     fmt::{Arguments, Display, Formatter, Write as FmtWrite},
@@ -121,7 +121,7 @@ pub fn submit(mut record: Record) {
         _ = writeln!(
             &mut stdout,
             "{} {ANSI_BOLD}{}{}{ANSI_RESET} {} {}",
-            Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
+            ZonedDateTime::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
             ansi_color,
             text,
             SourceFmt {
@@ -137,7 +137,7 @@ pub fn submit(mut record: Record) {
         _ = writeln!(
             &mut stdout,
             "{} {ANSI_BOLD}{}{}{ANSI_RESET} {} {}",
-            Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
+            ZonedDateTime::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
             ansi_color,
             text,
             SourceFmt {
@@ -178,7 +178,7 @@ pub fn submit(mut record: Record) {
             _ = writeln!(
                 &mut writer,
                 "{} {} {} {}",
-                Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
+                ZonedDateTime::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
                 text,
                 SourceFmt {
                     scope: record.scope,

@@ -14,6 +14,7 @@ members = [
   "crates/environment_selector",
   "crates/fs",
   "crates/git",
+  "crates/git_ui",
   "crates/grammars",
   "crates/http_client",
   "crates/input",
@@ -53,6 +54,7 @@ members = [
   "crates/telemetry_events",
   "crates/theme",
   "crates/theme_settings",
+  "crates/time_format",
   "crates/title_bar",
   "crates/ui",
   "crates/ui_macros",
@@ -121,7 +123,7 @@ indoc = { version = "2.0" }
 inventory = { version = "0.3" }
 is_executable = { version = "1.0" }
 itertools = { version = "0.14" }
-jiff = { version = "0.2" }
+jiff = { version = "1.0" }
 jsonc-parser = {
   version = "0.32",
   features = ["cst", "error_unicode_width", "serde", "serde_json"]
@@ -135,10 +137,11 @@ mimalloc = { version = "0.1" }
 minidumper = { version = "0.11" }
 notify = { version = "8.2" }
 num-traits = { version = "0.2" }
+objc2 = { version = "0.6" }
 objc2-foundation = {
   version = "0.3",
   default-features = false,
-  features = ["NSProcessInfo", "NSString", "std"]
+  features = ["NSDate", "NSDateFormatter", "NSFormatter", "NSProcessInfo", "NSString", "std"]
 }
 ordered-float = { version = "5.5" }
 oxc_allocator = {
@@ -183,6 +186,7 @@ sum_tree = {
   package = "sum_tree"
 }
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
+sys-locale = { version = "0.3" }
 sysinfo = { version = "0.39" }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
@@ -230,6 +234,7 @@ which = { version = "8.0" }
 windows = {
   version = "0.62",
   features = [
+    "Globalization_DateTimeFormatting",
     "Wdk_System_SystemServices",
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -265,6 +270,7 @@ editor = { path = "crates/editor" }
 environment_selector = { path = "crates/environment_selector" }
 fs = { path = "crates/fs" }
 git = { path = "crates/git" }
+git_ui = { path = "crates/git_ui" }
 grammars = { path = "crates/grammars" }
 http_client = { path = "crates/http_client" }
 input = { path = "crates/input" }
@@ -304,6 +310,7 @@ telemetry = { path = "crates/telemetry" }
 telemetry_events = { path = "crates/telemetry_events" }
 theme = { path = "crates/theme" }
 theme_settings = { path = "crates/theme_settings" }
+time_format = { path = "crates/time_format" }
 title_bar = { path = "crates/title_bar" }
 ui = { path = "crates/ui" }
 ui_macros = { path = "crates/ui_macros" }
