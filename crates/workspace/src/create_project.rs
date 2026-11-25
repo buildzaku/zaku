@@ -11,8 +11,8 @@ use input::{ErasedEditorEvent, InputField};
 use settings::{GitSettings, Settings};
 use theme::ActiveTheme;
 use ui::{
-    Button, ButtonCommon, ButtonSize, ButtonVariant, Checkbox, Clickable, Color, Disableable,
-    Headline, HeadlineSize, StyledExt, Text, TextCommon, TextSize, ToggleState,
+    Banner, Button, ButtonCommon, ButtonSize, ButtonVariant, Checkbox, Clickable, Disableable,
+    Headline, HeadlineSize, Severity, StyledExt, Text, TextCommon, TextSize, ToggleState,
 };
 use util::ResultExt;
 
@@ -417,7 +417,11 @@ impl Render for CreateProjectModal {
                         ),
                     )
                     .when_some(self.error.clone(), |this, error| {
-                        this.child(Text::new(error).size(TextSize::Small).color(Color::Error))
+                        this.child(
+                            Banner::new()
+                                .severity(Severity::Error)
+                                .child(Text::new(error)),
+                        )
                     }),
             )
             .child(

@@ -51,6 +51,7 @@ impl Toggleable for ListSubHeader {
 impl RenderOnce for ListSubHeader {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         gpui::div()
+            .debug_selector(|| format!("LIST_SUB_HEADER-{}", self.text))
             .flex()
             .items_center()
             .flex_1()

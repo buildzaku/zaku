@@ -2294,6 +2294,14 @@ impl Workspace {
         }
         window.dispatch_action(actions::menu::Cancel.boxed_clone(), cx);
 
+        if let Some(panel) = dock.read(cx).active_panel() {
+            telemetry::event!(
+                "Panel Button Clicked",
+                name = panel.persistent_name(),
+                toggle_state = !was_visible
+            );
+        }
+
         let mut focus_center = false;
 
         dock.update(cx, |dock, cx| {
@@ -2714,6 +2722,12 @@ impl Workspace {
             self.serialize_workspace(window, cx);
             cx.notify();
         }
+
+        telemetry::event!(
+            "Panel Button Clicked",
+            name = T::persistent_name(),
+            toggle_state = did_focus_panel
+        );
 
         did_focus_panel
     }

@@ -1126,7 +1126,6 @@ dependencies = [
  "gpui",
  "hex",
  "http_client 26.1.0-beta.2",
- "jiff",
  "log",
  "metadata",
  "objc2-foundation 0.3.2",
@@ -1677,37 +1676,6 @@ name = "deflate64"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6b926516df9c60bfa16e107b21086399f8285a44ca9711344b9e553c5146e2"
-
-[[package]]
-name = "defmt"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4a0795ac740cb54d7b3775c9c17345f6aaecf884c01733b39d6017738e0e3e1"
-dependencies = [
- "bitflags 1.3.2",
- "defmt-macros",
-]
-
-[[package]]
-name = "defmt-macros"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "840bb056bd99c495c9188198a258ab787c79f306d864db3e6e8451442d6d8366"
-dependencies = [
- "defmt-parser",
- "proc-macro2",
- "quote",
- "syn 3.0.9",
-]
-
-[[package]]
-name = "defmt-parser"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71958f69fb2de856c5dd51ac9377e986ca1aa5919f931bf5395a807277f889a0"
-dependencies = [
- "thiserror 2.0.21",
-]
 
 [[package]]
 name = "deranged"
@@ -2562,6 +2530,7 @@ name = "git"
 version = "26.1.0-beta.2"
 dependencies = [
  "anyhow",
+ "collections 26.1.0-beta.2",
  "fs",
  "futures",
  "gpui",
@@ -2572,6 +2541,27 @@ dependencies = [
  "sum_tree",
  "util 26.1.0-beta.2",
  "util_macros 26.1.0-beta.2",
+]
+
+[[package]]
+name = "git_ui"
+version = "26.1.0-beta.2"
+dependencies = [
+ "actions",
+ "anyhow",
+ "collections 26.1.0-beta.2",
+ "fuzzy_nucleo",
+ "git",
+ "gpui",
+ "input",
+ "jiff",
+ "log",
+ "picker",
+ "project",
+ "time_format",
+ "ui",
+ "util 26.1.0-beta.2",
+ "workspace",
 ]
 
 [[package]]
@@ -3722,11 +3712,10 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jiff"
-version = "0.2.39"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ac703058abac89e5c39b0b879dce2b6b14a4ba36600c7e7e3d0c60a6883ef3c"
+checksum = "107f2e89536b6818514025f6787b0d94d819e54fe3b40365275fc753de485b3f"
 dependencies = [
- "defmt",
  "jiff-core",
  "jiff-static",
  "jiff-tzdb-platform",
@@ -3739,37 +3728,36 @@ dependencies = [
 
 [[package]]
 name = "jiff-core"
-version = "0.1.2"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aee43309eb53bafb8c36d35d6e444769c8f8e6206a9fbf7546f5db9d7d4a0e93"
+checksum = "d44c923edf2bf456a982253f1a9ee1f6e89e421dffd0065d9b9a581da0def58f"
 dependencies = [
- "defmt",
  "log",
 ]
 
 [[package]]
 name = "jiff-static"
-version = "0.2.39"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dc32470c67eb7d0e9ccb74303fa925313dc04cecb1aa048beaa6f391e36a93d"
+checksum = "4996f71e569e3a3e32b925c28ef8f0027dc30bb1d594b33eeda409eea185f5c8"
 dependencies = [
  "jiff-core",
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.9",
 ]
 
 [[package]]
 name = "jiff-tzdb"
-version = "0.1.9"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa8377070c6bae868759445e5a77f66d84f0b72f3a054bfb00e6d038b8282da7"
+checksum = "12e71a1b68a875a44a33bb7a1dd84392cb77145a3367a552a3cfe6a4f5cf3afc"
 
 [[package]]
 name = "jiff-tzdb-platform"
-version = "0.1.3"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "875a5a69ac2bab1a891711cf5eccbec1ce0341ea805560dcd90b7a2e925132e8"
+checksum = "dc65b284afcfa8f6cf189c7274c805505314a7ab975c60e1f548bff56525420e"
 dependencies = [
  "jiff-tzdb",
 ]
@@ -6674,6 +6662,7 @@ dependencies = [
  "response_panel",
  "serde_json",
  "settings",
+ "telemetry",
  "theme",
  "toml 1.2.1+spec-1.1.0",
  "ui",
@@ -8080,6 +8069,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "time_format"
+version = "26.1.0-beta.2"
+dependencies = [
+ "anyhow",
+ "jiff",
+ "log",
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
+ "sys-locale",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "tiny-keccak"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8148,6 +8150,7 @@ dependencies = [
  "actions",
  "editor",
  "environment_selector",
+ "git_ui",
  "gpui",
  "path 26.1.0-beta.2",
  "platform_title_bar",
@@ -10418,6 +10421,8 @@ dependencies = [
  "environment_selector",
  "fs",
  "futures",
+ "git",
+ "git_ui",
  "gpui",
  "gpui_platform",
  "http_client 26.1.0-beta.2",
@@ -10437,6 +10442,7 @@ dependencies = [
  "project",
  "project_config_editor",
  "project_panel",
+ "rand 0.10.3",
  "recent_projects",
  "request_editor",
  "reqwest",

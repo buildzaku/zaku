@@ -201,6 +201,7 @@ fn main() {
         recent_projects::init(cx);
         project_config_editor::init(cx);
         environment_selector::init(cx);
+        git_ui::init(cx);
         let menus = zaku::app_menu(cx);
         cx.set_menus(menus);
         telemetry.flush_events().detach();

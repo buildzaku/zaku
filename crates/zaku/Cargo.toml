@@ -46,6 +46,7 @@ editor = { workspace = true }
 environment_selector = { workspace = true }
 fs = { workspace = true }
 futures = { workspace = true }
+git_ui = { workspace = true }
 gpui = { workspace = true }
 gpui_platform = { workspace = true, features = ["font-kit"] }
 http_client = { workspace = true }
@@ -97,12 +98,15 @@ resources = { workspace = true }
 client = { workspace = true, features = ["test"] }
 environment_selector = { workspace = true, features = ["test"] }
 fs = { workspace = true, features = ["test"] }
+git = { workspace = true, features = ["test"] }
+git_ui = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
 http_client = { workspace = true, features = ["test"] }
 parking_lot = { workspace = true }
 path = { workspace = true, features = ["test"] }
 picker = { workspace = true }
 project = { workspace = true, features = ["test"] }
+rand = { workspace = true }
 recent_projects = { workspace = true, features = ["test"] }
 response_panel = { workspace = true, features = ["test"] }
 util_macros = { workspace = true }

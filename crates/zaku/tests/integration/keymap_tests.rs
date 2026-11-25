@@ -300,6 +300,7 @@ fn test_action_namespaces(cx: &mut TestAppContext) {
             all_namespaces,
             BTreeSet::from([
                 "action".to_string(),
+                "branch_picker".to_string(),
                 "command_palette".to_string(),
                 "editor".to_string(),
                 "environment_selector".to_string(),
