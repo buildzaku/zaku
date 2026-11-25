@@ -539,7 +539,8 @@ async fn test_update_branch_matches_with_query(cx: &mut TestAppContext) {
     }
 
     let (open_result, _) = open_workspace(project_path, app_state, cx).await;
-    wait_until(cx, |cx| {
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    wait_until(&cx, |cx| {
         open_result.workspace.read_with(cx, |workspace, cx| {
             workspace
                 .project()
@@ -552,9 +553,9 @@ async fn test_update_branch_matches_with_query(cx: &mut TestAppContext) {
     })
     .await;
 
-    cx.dispatch_action(open_result.window.into(), actions::git::Branch);
+    cx.dispatch_action(actions::git::Branch);
 
-    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+    let picker = open_result.workspace.read_with(&cx, |workspace, cx| {
         workspace
             .active_modal::<BranchList>(cx)
             .unwrap()
@@ -563,14 +564,62 @@ async fn test_update_branch_matches_with_query(cx: &mut TestAppContext) {
             .clone()
     });
 
-    cx.simulate_input(open_result.window.into(), "feature");
+    cx.simulate_input("feature");
 
-    picker.read_with(cx, |picker, _| {
+    picker.read_with(&cx, |picker, _| {
         let matched_entries = picker.delegate.matched_entries();
         assert_eq!(matched_entries.len(), 3);
         assert!(matched_entries.contains(&("feature-auth".to_string(), false)));
         assert!(matched_entries.contains(&("feature-ui".to_string(), false)));
         assert_eq!(matched_entries.last(), Some(&("feature".to_string(), true)));
+    });
+
+    for (menu_item_selector, header_selector) in [
+        ("MENU_ITEM-Local Branches", "LIST_SUB_HEADER-Local Branches"),
+        (
+            "MENU_ITEM-Remote Branches",
+            "LIST_SUB_HEADER-Remote Branches",
+        ),
+    ] {
+        let filter_button_bounds = cx.debug_bounds("ICON_BUTTON-branch-filter").unwrap();
+        cx.simulate_click(filter_button_bounds.center(), Modifiers::default());
+        // Popover menus defer focus until the second frame.
+        for _ in 0..2 {
+            cx.update(|window, cx| window.simulate_next_frame(cx));
+        }
+        let menu_item_bounds = cx.debug_bounds(menu_item_selector).unwrap();
+        cx.simulate_click(menu_item_bounds.center(), Modifiers::default());
+        picker.update_in(&mut cx, |picker, window, cx| {
+            picker.set_query("missing-branch", window, cx);
+        });
+        cx.run_until_parked();
+
+        assert!(cx.debug_bounds(header_selector).is_none());
+        picker.read_with(&cx, |picker, _| {
+            assert_eq!(
+                picker.delegate.matched_entries(),
+                vec![("missing-branch".to_string(), true)]
+            );
+        });
+    }
+
+    picker.update_in(&mut cx, |picker, window, cx| {
+        picker.set_query("feature-ui", window, cx);
+    });
+    cx.run_until_parked();
+    picker.read_with(&cx, |picker, _| {
+        assert!(picker.delegate.matched_entries().is_empty());
+    });
+
+    picker.update_in(&mut cx, |picker, window, cx| {
+        picker.set_query("feature-u", window, cx);
+    });
+    cx.run_until_parked();
+    picker.read_with(&cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_entries(),
+            vec![("feature-u".to_string(), true)]
+        );
     });
 }
 
@@ -596,7 +645,8 @@ async fn test_delete_branch(cx: &mut TestAppContext) {
     }
 
     let (open_result, _) = open_workspace(project_path, app_state, cx).await;
-    wait_until(cx, |cx| {
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    wait_until(&cx, |cx| {
         open_result.workspace.read_with(cx, |workspace, cx| {
             workspace
                 .project()
@@ -609,9 +659,9 @@ async fn test_delete_branch(cx: &mut TestAppContext) {
     })
     .await;
 
-    cx.dispatch_action(open_result.window.into(), actions::git::Branch);
+    cx.dispatch_action(actions::git::Branch);
 
-    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+    let picker = open_result.workspace.read_with(&cx, |workspace, cx| {
         workspace
             .active_modal::<BranchList>(cx)
             .unwrap()
@@ -620,7 +670,7 @@ async fn test_delete_branch(cx: &mut TestAppContext) {
             .clone()
     });
 
-    picker.read_with(cx, |picker, _| {
+    picker.read_with(&cx, |picker, _| {
         assert_eq!(
             picker
                 .delegate
@@ -631,9 +681,8 @@ async fn test_delete_branch(cx: &mut TestAppContext) {
             ["main", "dev", "feature-auth", "feature-ui"]
         );
     });
-    cx.dispatch_action(open_result.window.into(), actions::menu::SelectNext);
+    cx.dispatch_action(actions::menu::SelectNext);
 
-    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
     let delete_button_bounds = cx.debug_bounds("ICON_BUTTON-delete-1").unwrap();
     cx.simulate_click(delete_button_bounds.center(), Modifiers::default());
 
@@ -699,7 +748,8 @@ async fn test_delete_unmerged_branch_prompts_for_force_delete(cx: &mut TestAppCo
     }
 
     let (open_result, _) = open_workspace(project_path, app_state, cx).await;
-    wait_until(cx, |cx| {
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    wait_until(&cx, |cx| {
         open_result.workspace.read_with(cx, |workspace, cx| {
             workspace
                 .project()
@@ -712,9 +762,9 @@ async fn test_delete_unmerged_branch_prompts_for_force_delete(cx: &mut TestAppCo
     })
     .await;
 
-    cx.dispatch_action(open_result.window.into(), actions::git::Branch);
+    cx.dispatch_action(actions::git::Branch);
 
-    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+    let picker = open_result.workspace.read_with(&cx, |workspace, cx| {
         workspace
             .active_modal::<BranchList>(cx)
             .unwrap()
@@ -723,11 +773,10 @@ async fn test_delete_unmerged_branch_prompts_for_force_delete(cx: &mut TestAppCo
             .clone()
     });
 
-    cx.simulate_input(open_result.window.into(), "feature-auth");
+    cx.simulate_input("feature-auth");
     let initial_match_count =
-        picker.read_with(cx, |picker, _| picker.delegate.matched_entries().len());
+        picker.read_with(&cx, |picker, _| picker.delegate.matched_entries().len());
 
-    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
     let delete_button_bounds = cx.debug_bounds("ICON_BUTTON-delete-0").unwrap();
     cx.simulate_click(delete_button_bounds.center(), Modifiers::default());
     wait_until(&cx, TestAppContext::has_pending_prompt).await;
@@ -809,7 +858,8 @@ async fn test_force_delete_click_deletes_branch_without_prompt(cx: &mut TestAppC
     }
 
     let (open_result, _) = open_workspace(project_path, app_state, cx).await;
-    wait_until(cx, |cx| {
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    wait_until(&cx, |cx| {
         open_result.workspace.read_with(cx, |workspace, cx| {
             workspace
                 .project()
@@ -822,10 +872,9 @@ async fn test_force_delete_click_deletes_branch_without_prompt(cx: &mut TestAppC
     })
     .await;
 
-    cx.dispatch_action(open_result.window.into(), actions::git::Branch);
-    cx.simulate_input(open_result.window.into(), "feature-auth");
+    cx.dispatch_action(actions::git::Branch);
+    cx.simulate_input("feature-auth");
 
-    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
     cx.simulate_modifiers_change(Modifiers::alt());
     let delete_button_bounds = cx.debug_bounds("ICON_BUTTON-delete-0").unwrap();
     cx.simulate_click(delete_button_bounds.center(), Modifiers::alt());
@@ -849,6 +898,320 @@ async fn test_force_delete_click_deletes_branch_without_prompt(cx: &mut TestAppC
 }
 
 #[gpui::test]
+async fn test_delete_remote_branch(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("project", json!({}));
+    let project_path = temp_fs.path().join("project");
+    repository::git_command(&project_path, ["init", "-b", "main"]).await;
+    repository::git_command(
+        &project_path,
+        ["commit", "--allow-empty", "-m", "Initial commit"],
+    )
+    .await;
+    for remote_ref in [
+        "refs/remotes/origin/main",
+        "refs/remotes/origin/feature-auth",
+        "refs/remotes/fork/feature-ui",
+        "refs/remotes/private/dev",
+    ] {
+        repository::git_command(&project_path, ["update-ref", remote_ref, "HEAD"]).await;
+    }
+
+    let (open_result, _) = open_workspace(project_path, app_state, cx).await;
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    wait_until(&cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .is_some_and(|repository| repository.read(cx).branch_list.len() == 5)
+        })
+    })
+    .await;
+
+    cx.dispatch_action(actions::git::Branch);
+
+    let picker = open_result.workspace.read_with(&cx, |workspace, cx| {
+        workspace
+            .active_modal::<BranchList>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+
+    let filter_button_bounds = cx.debug_bounds("ICON_BUTTON-branch-filter").unwrap();
+    cx.simulate_click(filter_button_bounds.center(), Modifiers::default());
+    // Popover menus defer focus until the second frame.
+    for _ in 0..2 {
+        cx.update(|window, cx| window.simulate_next_frame(cx));
+    }
+    let menu_item_bounds = cx.debug_bounds("MENU_ITEM-Remote Branches").unwrap();
+    cx.simulate_click(menu_item_bounds.center(), Modifiers::default());
+    cx.run_until_parked();
+
+    picker.read_with(&cx, |picker, _| {
+        assert_eq!(
+            picker
+                .delegate
+                .matched_entries()
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "fork/feature-ui",
+                "origin/feature-auth",
+                "origin/main",
+                "private/dev"
+            ]
+        );
+    });
+    cx.dispatch_action(actions::menu::SelectNext);
+
+    let delete_button_bounds = cx.debug_bounds("ICON_BUTTON-delete-1").unwrap();
+    cx.simulate_click(delete_button_bounds.center(), Modifiers::default());
+
+    let expected_branches =
+        HashSet::from(["main", "fork/feature-ui", "origin/main", "private/dev"]);
+    wait_until(&cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .unwrap()
+                .read(cx)
+                .branch_list
+                .iter()
+                .map(|branch| branch.name())
+                .collect::<HashSet<_>>()
+                == expected_branches
+        }) && picker.read_with(cx, |picker, _| picker.delegate.matched_entries().len() == 3)
+    })
+    .await;
+
+    picker.read_with(&cx, |picker, _| {
+        assert_eq!(
+            picker
+                .delegate
+                .matched_entries()
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            ["fork/feature-ui", "origin/main", "private/dev"]
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_branch_filter_shows_all_local_and_remote_branches(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("project", json!({}));
+    let project_path = temp_fs.path().join("project");
+    repository::git_command(&project_path, ["init", "-b", "main"]).await;
+    repository::git_command(
+        &project_path,
+        ["commit", "--allow-empty", "-m", "Initial commit"],
+    )
+    .await;
+    for branch_name in ["feature-ui", "dev"] {
+        repository::git_command(&project_path, ["branch", branch_name]).await;
+    }
+    for remote_ref in ["refs/remotes/origin/main", "refs/remotes/fork/feature-auth"] {
+        repository::git_command(&project_path, ["update-ref", remote_ref, "HEAD"]).await;
+    }
+
+    let (open_result, _) = open_workspace(project_path, app_state, cx).await;
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    wait_until(&cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .is_some_and(|repository| repository.read(cx).branch_list.len() == 5)
+        })
+    })
+    .await;
+
+    cx.dispatch_action(actions::git::Branch);
+
+    let picker = open_result.workspace.read_with(&cx, |workspace, cx| {
+        workspace
+            .active_modal::<BranchList>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+
+    picker.read_with(&cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_entries(),
+            vec![
+                ("main".to_string(), false),
+                ("dev".to_string(), false),
+                ("feature-ui".to_string(), false),
+                ("fork/feature-auth".to_string(), false),
+                ("origin/main".to_string(), false),
+            ]
+        );
+    });
+
+    let filter_button_bounds = cx.debug_bounds("ICON_BUTTON-branch-filter").unwrap();
+    cx.simulate_click(filter_button_bounds.center(), Modifiers::default());
+    // Popover menus defer focus until the second frame.
+    for _ in 0..2 {
+        cx.update(|window, cx| window.simulate_next_frame(cx));
+    }
+    let menu_item_bounds = cx.debug_bounds("MENU_ITEM-Local Branches").unwrap();
+    cx.simulate_click(menu_item_bounds.center(), Modifiers::default());
+    cx.run_until_parked();
+
+    picker.read_with(&cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_entries(),
+            vec![
+                ("main".to_string(), false),
+                ("dev".to_string(), false),
+                ("feature-ui".to_string(), false),
+            ]
+        );
+    });
+
+    let filter_button_bounds = cx.debug_bounds("ICON_BUTTON-branch-filter").unwrap();
+    cx.simulate_click(filter_button_bounds.center(), Modifiers::default());
+    // Popover menus defer focus until the second frame.
+    for _ in 0..2 {
+        cx.update(|window, cx| window.simulate_next_frame(cx));
+    }
+    let menu_item_bounds = cx.debug_bounds("MENU_ITEM-Remote Branches").unwrap();
+    cx.simulate_click(menu_item_bounds.center(), Modifiers::default());
+    cx.run_until_parked();
+
+    picker.read_with(&cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_entries(),
+            vec![
+                ("fork/feature-auth".to_string(), false),
+                ("origin/main".to_string(), false),
+            ]
+        );
+    });
+
+    picker.update_in(&mut cx, |picker, window, cx| {
+        picker.set_query("fork", window, cx);
+    });
+    cx.run_until_parked();
+
+    picker.read_with(&cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_entries(),
+            vec![
+                ("fork/feature-auth".to_string(), false),
+                ("fork".to_string(), true),
+            ]
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_branch_filter_is_restored_for_new_pickers(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree("project", json!({}));
+    let project_path = temp_fs.path().join("project");
+    repository::git_command(&project_path, ["init", "-b", "main"]).await;
+    repository::git_command(
+        &project_path,
+        ["commit", "--allow-empty", "-m", "Initial commit"],
+    )
+    .await;
+    for branch_name in ["feature-auth", "feature-ui", "dev"] {
+        repository::git_command(&project_path, ["branch", branch_name]).await;
+    }
+    repository::git_command(
+        &project_path,
+        ["update-ref", "refs/remotes/origin/main", "HEAD"],
+    )
+    .await;
+
+    let (open_result, _) = open_workspace(project_path, app_state, cx).await;
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    wait_until(&cx, |cx| {
+        open_result.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .git_store()
+                .read(cx)
+                .active_repository()
+                .is_some_and(|repository| repository.read(cx).branch_list.len() == 5)
+        })
+    })
+    .await;
+
+    cx.dispatch_action(actions::git::Branch);
+
+    let filter_button_bounds = cx.debug_bounds("ICON_BUTTON-branch-filter").unwrap();
+    cx.simulate_click(filter_button_bounds.center(), Modifiers::default());
+    // Popover menus defer focus until the second frame.
+    for _ in 0..2 {
+        cx.update(|window, cx| window.simulate_next_frame(cx));
+    }
+    let menu_item_bounds = cx.debug_bounds("MENU_ITEM-Local Branches").unwrap();
+    cx.simulate_click(menu_item_bounds.center(), Modifiers::default());
+    cx.run_until_parked();
+
+    cx.dispatch_action(actions::menu::Cancel);
+    cx.dispatch_action(actions::git::Branch);
+
+    let picker = open_result.workspace.read_with(&cx, |workspace, cx| {
+        workspace
+            .active_modal::<BranchList>(cx)
+            .unwrap()
+            .read(cx)
+            .picker
+            .clone()
+    });
+    picker.read_with(&cx, |picker, _| {
+        assert_eq!(
+            picker.delegate.matched_entries(),
+            vec![
+                ("main".to_string(), false),
+                ("dev".to_string(), false),
+                ("feature-auth".to_string(), false),
+                ("feature-ui".to_string(), false),
+            ]
+        );
+    });
+}
+
+#[gpui::test]
 async fn test_new_branch_creation_with_query(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
@@ -868,7 +1231,8 @@ async fn test_new_branch_creation_with_query(cx: &mut TestAppContext) {
     repository::git_command(&project_path, ["branch", "feature"]).await;
 
     let (open_result, _) = open_workspace(project_path, app_state, cx).await;
-    wait_until(cx, |cx| {
+    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
+    wait_until(&cx, |cx| {
         open_result.workspace.read_with(cx, |workspace, cx| {
             workspace
                 .project()
@@ -881,9 +1245,9 @@ async fn test_new_branch_creation_with_query(cx: &mut TestAppContext) {
     })
     .await;
 
-    cx.dispatch_action(open_result.window.into(), actions::git::Branch);
+    cx.dispatch_action(actions::git::Branch);
 
-    let picker = open_result.workspace.read_with(cx, |workspace, cx| {
+    let picker = open_result.workspace.read_with(&cx, |workspace, cx| {
         workspace
             .active_modal::<BranchList>(cx)
             .unwrap()
@@ -892,16 +1256,15 @@ async fn test_new_branch_creation_with_query(cx: &mut TestAppContext) {
             .clone()
     });
 
-    cx.simulate_input(open_result.window.into(), " new-feature-branch ");
+    cx.simulate_input(" new-feature-branch ");
 
-    picker.read_with(cx, |picker, _| {
+    picker.read_with(&cx, |picker, _| {
         assert_eq!(
             picker.delegate.matched_entries(),
             vec![("new-feature-branch".to_string(), true)]
         );
     });
 
-    let mut cx = VisualTestContext::from_window(open_result.window.into(), cx);
     let create_button_bounds = cx.debug_bounds("BUTTON-create-new-branch").unwrap();
     cx.simulate_click(create_button_bounds.center(), Modifiers::default());
 

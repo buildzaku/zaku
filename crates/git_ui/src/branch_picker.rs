@@ -1507,3 +1507,15 @@ impl PickerDelegate for BranchListDelegate {
         Some(footer.into_any_element())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_branch_filter_cycle() {
+        assert!(BranchFilter::All.next() == BranchFilter::Local);
+        assert!(BranchFilter::Local.next() == BranchFilter::Remote);
+        assert!(BranchFilter::Remote.next() == BranchFilter::All);
+    }
+}

@@ -273,7 +273,9 @@
     "use_key_equivalents": true,
     "bindings": {
       "ctrl-shift-backspace": "branch_picker::DeleteBranch",
-      "ctrl-alt-shift-backspace": "branch_picker::ForceDeleteBranch"
+      "ctrl-alt-shift-backspace": "branch_picker::ForceDeleteBranch",
+      "ctrl-shift-i": "branch_picker::CycleBranchFilter",
+      "ctrl-k": "branch_picker::ToggleFilterMenu"
     }
   }
 ]
