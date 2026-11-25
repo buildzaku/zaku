@@ -19,10 +19,10 @@ test = []
 [dependencies]
 anyhow = { workspace = true }
 dirs = { workspace = true }
-dunce = { workspace = true }
 serde = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+dunce = { workspace = true }
 tendril = { workspace = true }
 
 [dev-dependencies]

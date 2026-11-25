@@ -226,7 +226,6 @@ tree-sitter = { version = "0.26" }
 tree-sitter-html = { version = "0.23" }
 tree-sitter-json = { version = "0.24" }
 tree-sitter-xml = { version = "0.7" }
-unicode-segmentation = { version = "1.13" }
 url = { version = "2.5" }
 uuid = { version = "1.24", features = ["v4"] }
 which = { version = "8.0" }
@@ -314,7 +313,6 @@ title_bar = { path = "crates/title_bar" }
 ui = { path = "crates/ui" }
 ui_macros = { path = "crates/ui_macros" }
 updater = { path = "crates/updater" }
-updater_windows = { path = "crates/updater_windows" }
 util = { path = "crates/util" }
 util_macros = { path = "crates/util_macros" }
 variables_panel = { path = "crates/variables_panel" }
