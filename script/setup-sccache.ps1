@@ -1,5 +1,5 @@
 #Requires -Version 7.4
-$SCCACHE_VERSION = "0.17.0"
+$SCCACHE_VERSION = "0.20.1"
 $SCCACHE_DIR = "./target/sccache"
 
 if ($args.Length -gt 0) {
@@ -52,8 +52,8 @@ function Install-Sccache {
         }
         $archive = "sccache-v${SCCACHE_VERSION}-${arch}-pc-windows-msvc.zip"
         $expectedSha256 = switch ($arch) {
-            "aarch64" { "82994d1bc92ccc0556f7e6e0ad6cbd08a41a1e84b461fcae628ac2afc8c372bf" }
-            "x86_64" { "e94cfc5b58cbe439302f586c1d1bd7980c2cd371d47bdf385ade657411e6f3ac" }
+            "aarch64" { "9c289e040e49a2028518614cef410d8d6ccd1a8d74a0889e066a48cdd1459b67" }
+            "x86_64" { "ca500a01139e9af8d5f5a5e69b6a0dd941ed79ed3399a91cc35bba484fe732fa" }
         }
         $basename = "sccache-v${SCCACHE_VERSION}-${arch}-pc-windows-msvc"
         $url = "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}"
