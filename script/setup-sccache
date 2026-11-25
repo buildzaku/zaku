@@ -7,7 +7,7 @@ if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); th
   exit 1
 fi
 
-SCCACHE_VERSION="0.17.0"
+SCCACHE_VERSION="0.20.1"
 SCCACHE_DIR="$(pwd)/target/sccache"
 
 if [[ $# -gt 0 ]]; then
@@ -44,19 +44,19 @@ install_sccache() {
     case "${os}-${arch}" in
     Linux-aarch64)
       archive="sccache-v${SCCACHE_VERSION}-aarch64-unknown-linux-musl.tar.gz"
-      expected_sha256="821a86343191aa1cbab74bd42f9e93c9a63bf85e4742945f40d3ae84193c1c77"
+      expected_sha256="505324daad5fcbb1a3cab5d57d26ef42baf4d10b236df7de93a008196f1f2230"
       ;;
     Linux-x86_64)
       archive="sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz"
-      expected_sha256="67c4a96dd237c1f518f6b36083f270f9976d516f1e57fce891755ea782e50006"
+      expected_sha256="c9f6c5a3ae84d9da0956b28c357a365827bda33f3383647fc0b67484c74a5ea9"
       ;;
     Darwin-arm64)
       archive="sccache-v${SCCACHE_VERSION}-aarch64-apple-darwin.tar.gz"
-      expected_sha256="0c560bfba31aef5bdfb4fb3d2677f6e61d71c5c00952f2a83344f47aa31f00f1"
+      expected_sha256="d2658c9a24bab25a24fdc1917cb5b614b7c20a4ce8f363e5303d37b7e699d5ec"
       ;;
     Darwin-x86_64)
       archive="sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz"
-      expected_sha256="c2144cafbfe3d22e34ae637f9974ce53613543ac19477fdb287df22ea3668261"
+      expected_sha256="9e828824e52e12bd9c164859e893f0fb344cb3811faf7ea708f3c718d108c100"
       ;;
     *)
       echo "Unsupported platform: ${os}-${arch}" >&2
