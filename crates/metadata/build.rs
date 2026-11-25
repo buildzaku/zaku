@@ -13,6 +13,7 @@ struct Manifest {
 #[derive(Deserialize)]
 struct Package {
     description: String,
+    version: String,
     metadata: PackageMetadata,
 }
 
@@ -45,6 +46,7 @@ fn main() {
     println!("cargo:rerun-if-changed={}", git_log_path.display());
     println!("cargo:rustc-env=ZAKU_NAME={}", package.metadata.bundle.name);
     println!("cargo:rustc-env=ZAKU_DESCRIPTION={}", package.description);
+    println!("cargo:rustc-env=ZAKU_VERSION={}", package.version);
     println!(
         "cargo:rustc-env=ZAKU_IDENTIFIER={}",
         package.metadata.bundle.identifier
