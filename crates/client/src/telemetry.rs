@@ -473,12 +473,7 @@ mod tests {
     fn init_test(cx: &mut TestAppContext) {
         cx.update(|cx| {
             settings::init(cx);
-            metadata::init_test(
-                env!("CARGO_PKG_VERSION")
-                    .parse()
-                    .expect("invalid version in Cargo.toml"),
-                cx,
-            );
+            metadata::init_test("26.1-dev".parse().unwrap(), cx);
         });
     }
 

@@ -29,7 +29,7 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-version=$(cargo app-version show)
+version=$(cargo app-version show --package zaku)
 channel=$(cargo app-version show "$version" --channel)
 case "$channel" in
 beta | stable)

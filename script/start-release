@@ -86,7 +86,7 @@ if [[ "$local_sha" != "$remote_main_sha" ]]; then
   exit 1
 fi
 
-source_version=$(cargo app-version show)
+source_version=$(cargo app-version show --package zaku)
 if $bump_year; then
   source_version=$(cargo app-version bump "$source_version" year)
 fi
