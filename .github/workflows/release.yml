@@ -61,7 +61,7 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          source_version=$(cargo app-version show)
+          source_version=$(cargo app-version show --package zaku)
           if [[ "$BUMP_YEAR" == "true" ]]; then
             source_version=$(cargo app-version bump "$source_version" year)
           fi
@@ -88,15 +88,15 @@ jobs:
             exit 1
           fi
 
-          files=(Cargo.toml Cargo.lock)
+          files=(crates/zaku/Cargo.toml Cargo.lock)
           if [[ "$BUMP_YEAR" == "true" ]]; then
-            cargo set-version --workspace "$release_long_version"
+            cargo set-version --package zaku "$release_long_version"
           elif [[ "$CHANNEL" == "beta" ]]; then
-            cargo set-version --workspace --bump beta
+            cargo set-version --package zaku --bump beta
           else
-            cargo set-version --workspace --bump release
+            cargo set-version --package zaku --bump release
           fi
-          actual_version=$(cargo app-version show)
+          actual_version=$(cargo app-version show --package zaku)
           if [[ "$actual_version" != "$release_version" ]]; then
             echo "::error::Expected Zaku $release_version, found $actual_version"
             exit 1
@@ -111,8 +111,8 @@ jobs:
           ./script/gh-commit create "$release_branch" "Zaku $release_version" "${files[@]}" >/dev/null
 
           git restore --source "$source_sha" -- "${files[@]}"
-          cargo set-version --workspace "$main_long_version"
-          actual_version=$(cargo app-version show)
+          cargo set-version --package zaku "$main_long_version"
+          actual_version=$(cargo app-version show --package zaku)
           if [[ "$actual_version" != "$main_version" ]]; then
             echo "::error::Expected Zaku $main_version, found $actual_version"
             exit 1
@@ -173,9 +173,9 @@ jobs:
           gpg --batch --import "${release_keys[@]}"
           git verify-tag "$GITHUB_REF_NAME"
 
-          version=$(cargo app-version show)
+          version=$(cargo app-version show --package zaku)
           if [[ "$GITHUB_REF_NAME" != "$version" ]]; then
-            echo "::error::Release tag $GITHUB_REF_NAME does not match workspace version $version"
+            echo "::error::Release tag $GITHUB_REF_NAME does not match Zaku $version"
             exit 1
           fi
 

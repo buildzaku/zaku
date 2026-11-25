@@ -1,6 +1,5 @@
 [package]
 name = "app_version"
-version.workspace = true
 license.workspace = true
 repository.workspace = true
 edition.workspace = true
@@ -24,3 +23,4 @@ clap = { workspace = true }
 jiff = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }

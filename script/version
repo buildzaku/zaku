@@ -94,7 +94,7 @@ if [[ "$local_sha" != "$remote_branch_sha" ]]; then
   exit 1
 fi
 
-current_version=$(cargo app-version show)
+current_version=$(cargo app-version show --package zaku)
 release_branch=$(cargo app-version show "$current_version" --branch)
 if [[ "$branch" != "$release_branch" ]]; then
   echo "Checked out branch $branch does not match Zaku $current_version; expected $release_branch" >&2

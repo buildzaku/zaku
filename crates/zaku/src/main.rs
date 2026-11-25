@@ -30,6 +30,7 @@ use crash_diagnostics::InitCrashHandler;
 use db::{AppDatabase, kv::KeyValueStore};
 use fs::{Fs, NativeFs};
 use language::LanguageRegistry;
+use metadata::ZAKU_COMMIT_SHA;
 #[cfg(target_os = "windows")]
 use metadata::ZAKU_IDENTIFIER;
 use reqwest_client::ReqwestClient;
@@ -107,7 +108,7 @@ fn main() {
                 app_version: app_version.base().to_string(),
                 binary: "zaku".to_string(),
                 release_channel: release_channel.to_string(),
-                commit_sha: metadata::ZAKU_COMMIT_SHA.to_string(),
+                commit_sha: ZAKU_COMMIT_SHA.to_string(),
             },
             {
                 let background_executor = app.background_executor();

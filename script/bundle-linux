@@ -83,7 +83,7 @@ fi
 
 target="${arch}-unknown-linux-gnu"
 target_directory="${CARGO_TARGET_DIR:-target}"
-version=$(cargo app-version show)
+version=$(cargo app-version show --package zaku)
 
 echo "Compiling Zaku"
 RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-args=-Wl,--disable-new-dtags,-rpath,\$ORIGIN/../lib" cargo build --release --package zaku --target "$target"

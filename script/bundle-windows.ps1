@@ -89,11 +89,11 @@ $developerShell = Join-Path $visualStudioDirectory "Common7/Tools/Launch-VsDevSh
 $visualStudioArch = if ($Arch -ceq "x86_64") { "amd64" } else { "arm64" }
 & $developerShell -Arch $visualStudioArch -HostArch amd64 -SkipAutomaticLocation
 
-$version = cargo app-version show
+$version = cargo app-version show --package zaku
 if ($LASTEXITCODE -ne 0 -or -not $version) {
     throw "Could not read the Zaku package version"
 }
-$longVersion = cargo app-version show --long
+$longVersion = cargo app-version show --package zaku --long
 if ($LASTEXITCODE -ne 0 -or -not $longVersion) {
     throw "Could not read the long Zaku package version"
 }

@@ -1,6 +1,5 @@
 [package]
 name = "updater_windows"
-version.workspace = true
 license.workspace = true
 repository.workspace = true
 edition.workspace = true

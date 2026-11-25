@@ -1,5 +1,6 @@
 use anyhow::Context as _;
 use clap::{Parser, Subcommand};
+use serde::Deserialize;
 use std::process::ExitCode;
 
 use app_version::{AppVersion, Bump, ReleaseChannel, ReleaseSnapshot};
@@ -15,8 +16,8 @@ struct Args {
 enum Command {
     /// Inspect a version.
     Show {
-        /// Version to inspect. Defaults to the checked-out Zaku version.
-        version: Option<AppVersion>,
+        #[command(flatten)]
+        target: ShowTarget,
         /// Print the long version.
         #[arg(long, group = "output")]
         long: bool,
@@ -46,6 +47,27 @@ enum Command {
     },
 }
 
+#[derive(Debug, clap::Args)]
+#[group(required = true, multiple = false)]
+struct ShowTarget {
+    /// Version to inspect.
+    version: Option<AppVersion>,
+    /// Inspect the checked-out version of a workspace package.
+    #[arg(long)]
+    package: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CargoMetadata {
+    packages: Vec<CargoPackage>,
+}
+
+#[derive(Deserialize)]
+struct CargoPackage {
+    name: String,
+    version: AppVersion,
+}
+
 fn main() -> ExitCode {
     match execute(Args::parse()) {
         Ok(output) => {
@@ -62,14 +84,36 @@ fn main() -> ExitCode {
 fn execute(arguments: Args) -> anyhow::Result<String> {
     match arguments.command {
         Command::Show {
-            version,
+            target: ShowTarget { version, package },
             long,
             branch,
             channel,
         } => {
-            let version = match version {
-                Some(version) => version,
-                None => env!("CARGO_PKG_VERSION").parse()?,
+            let version = match package {
+                None => version.expect("clap should require a version without a package"),
+                Some(package) => {
+                    let output = std::process::Command::new("cargo")
+                        .args(["metadata", "--no-deps", "--format-version=1"])
+                        .output()
+                        .context("could not query cargo metadata")?;
+                    if !output.status.success() {
+                        anyhow::bail!(
+                            "cargo metadata failed: {}",
+                            String::from_utf8_lossy(&output.stderr).trim()
+                        );
+                    }
+
+                    let metadata: CargoMetadata = serde_json::from_slice(&output.stdout)
+                        .context("invalid cargo metadata output")?;
+                    metadata
+                        .packages
+                        .into_iter()
+                        .find(|cargo_package| cargo_package.name == package)
+                        .with_context(|| {
+                            format!("{package} package is missing from cargo metadata")
+                        })?
+                        .version
+                }
             };
             if long {
                 Ok(version.long())
@@ -146,13 +190,12 @@ mod tests {
 
     #[test]
     fn test_show_command() {
-        assert_eq!(
-            run_command(&["show"]).unwrap(),
-            env!("CARGO_PKG_VERSION")
-                .parse::<AppVersion>()
-                .unwrap()
-                .to_string()
-        );
+        run_command(&["show", "--package", "zaku"])
+            .unwrap()
+            .parse::<AppVersion>()
+            .unwrap();
+        run_command(&["show"]).unwrap_err();
+        run_command(&["show", "26.1", "--package", "zaku"]).unwrap_err();
         assert_eq!(
             run_command(&["show", "26.1.0-beta.2"]).unwrap(),
             "26.1-beta.2"

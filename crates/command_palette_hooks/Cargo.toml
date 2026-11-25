@@ -1,6 +1,5 @@
 [package]
 name = "command_palette_hooks"
-version.workspace = true
 license.workspace = true
 repository.workspace = true
 edition.workspace = true
