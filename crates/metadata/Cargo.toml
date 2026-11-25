@@ -18,5 +18,4 @@ app_version = { workspace = true }
 gpui = { workspace = true }
 
 [build-dependencies]
-serde = { workspace = true }
-toml = { workspace = true }
+resources = { workspace = true }

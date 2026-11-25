@@ -4252,8 +4252,7 @@ version = "0.0.0"
 dependencies = [
  "app_version",
  "gpui",
- "serde",
- "toml 1.2.2+spec-1.1.0",
+ "resources",
 ]
 
 [[package]]
@@ -6715,9 +6714,12 @@ dependencies = [
 name = "resources"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "embed-resource",
  "indoc",
  "semver",
+ "serde",
+ "toml 1.2.2+spec-1.1.0",
 ]
 
 [[package]]

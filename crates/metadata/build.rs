@@ -1,48 +1,20 @@
-use serde::Deserialize;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{path::PathBuf, process::Command};
 
-#[derive(Deserialize)]
-struct Manifest {
-    package: Package,
-}
-
-#[derive(Deserialize)]
-struct Package {
-    description: String,
-    version: String,
-    metadata: PackageMetadata,
-}
-
-#[derive(Deserialize)]
-struct PackageMetadata {
-    bundle: BundleMetadata,
-}
-
-#[derive(Deserialize)]
-struct BundleMetadata {
-    name: String,
-    identifier: String,
-}
+use resources::ZakuManifest;
 
 fn main() {
-    let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("zaku")
-        .join("Cargo.toml");
     let git_log_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join(".git")
         .join("logs")
         .join("HEAD");
-    let package = manifest_package(&manifest_path);
+    let package = ZakuManifest::load()
+        .expect("failed to read manifest file")
+        .package;
     let commit_sha = commit_sha();
 
-    println!("cargo:rerun-if-changed={}", manifest_path.display());
+    println!("cargo:rerun-if-changed={}", ZakuManifest::PATH);
     println!("cargo:rerun-if-changed={}", git_log_path.display());
     println!("cargo:rustc-env=ZAKU_NAME={}", package.metadata.bundle.name);
     println!("cargo:rustc-env=ZAKU_DESCRIPTION={}", package.description);
@@ -55,13 +27,6 @@ fn main() {
         println!("cargo:rustc-env=ZAKU_BUILD_ID={build_id}");
     }
     println!("cargo:rustc-env=ZAKU_COMMIT_SHA={commit_sha}");
-}
-
-fn manifest_package(path: &Path) -> Package {
-    let content = fs::read_to_string(path).expect("failed to read manifest file");
-    let manifest: Manifest = toml::from_str(&content).expect("failed to parse manifest file");
-
-    manifest.package
 }
 
 fn commit_sha() -> String {

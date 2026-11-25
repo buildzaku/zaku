@@ -1,16 +1,18 @@
 use indoc::formatdoc;
 use semver::Version;
 use std::{
-    env, error,
+    env,
     path::{Path, PathBuf},
 };
 
-pub fn compile(manifest: bool) -> Result<(), Box<dyn error::Error>> {
+use crate::ZakuManifest;
+
+pub fn compile(manifest: bool) -> anyhow::Result<()> {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let icon_path = manifest_dir.join("../zaku/resources/windows/app-icon.ico");
     let manifest_path = manifest_dir.join("windows/manifest.xml");
-    let package_version = env::var("CARGO_PKG_VERSION")?;
-    let version = Version::parse(&package_version)?;
+    let zaku_manifest = ZakuManifest::load()?;
+    let version = Version::parse(&zaku_manifest.package.version)?;
     let mut display_version = if version.patch == 0 {
         format!("{}.{}", version.major, version.minor)
     } else {
@@ -64,6 +66,7 @@ pub fn compile(manifest: bool) -> Result<(), Box<dyn error::Error>> {
 
     println!("cargo:rerun-if-changed={}", icon_path.display());
     println!("cargo:rerun-if-changed={}", manifest_path.display());
+    println!("cargo:rerun-if-changed={}", ZakuManifest::PATH);
 
     std::fs::write(&resource_path, resource)?;
     embed_resource::compile(&resource_path, embed_resource::NONE).manifest_required()?;
