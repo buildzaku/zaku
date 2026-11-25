@@ -1403,14 +1403,13 @@ impl Render for VariablesPanel {
             self.render_header(SharedString::from(root_name), cx)
         });
         let mut entries = worktree_id
-            .map(|worktree_id| {
+            .map_or_default(|worktree_id| {
                 self.entries(cx)
                     .into_iter()
                     .enumerate()
                     .map(|(index, entry)| self.render_entry(index, entry, worktree_id, window, cx))
                     .collect::<Vec<_>>()
             })
-            .unwrap_or_default()
             .into_iter();
         let project_entry = entries.next();
         let environment_entries = entries.collect::<Vec<_>>();

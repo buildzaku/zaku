@@ -1517,9 +1517,7 @@ impl ProjectPanel {
         {
             let worktree = worktree.read(cx);
             let expanded_dir_ids = self.tree_state.expanded_dir_ids.get_or_insert_with(|| {
-                worktree
-                    .root_entry()
-                    .map_or_default(|entry| vec![entry.id])
+                worktree.root_entry().map_or_default(|entry| vec![entry.id])
             });
 
             if let Some(mut entry) = worktree.entry_for_id(entry_id) {
