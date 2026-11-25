@@ -1414,6 +1414,8 @@ impl RequestEditor {
             );
         });
 
+        telemetry::event!("Request Sent", method = request_method.as_str());
+
         let request_started_at = Instant::now();
         let http_client = self.http_client.clone();
         let languages = AppState::global(cx).languages.clone();

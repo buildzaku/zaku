@@ -13,6 +13,7 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use editor::{
@@ -191,6 +192,7 @@ pub struct ProjectPanel {
     project: Entity<Project>,
     workspace: WeakEntity<Workspace>,
     scroll_handle: UniformListScrollHandle,
+    last_reported_update: Instant,
     update_visible_entries_task: UpdateVisibleEntriesTask,
     tree_state: TreeState,
     marked_entries: Vec<SelectedEntry>,
@@ -343,6 +345,7 @@ impl ProjectPanel {
                 project: project.clone(),
                 workspace: workspace_handle.clone(),
                 scroll_handle: UniformListScrollHandle::new(),
+                last_reported_update: Instant::now(),
                 update_visible_entries_task: UpdateVisibleEntriesTask::default(),
                 tree_state: TreeState::default(),
                 marked_entries: Vec::new(),
@@ -519,6 +522,7 @@ impl ProjectPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let now = Instant::now();
         let snapshot = self.snapshot(cx);
 
         if let Some(snapshot) = snapshot.as_ref() {
@@ -624,6 +628,15 @@ impl ProjectPanel {
                 this.tree_state.max_width_item_index = max_width_item_index;
                 if let Some(entry_id) = new_selected_entry {
                     this.selection = Some(SelectedEntry(entry_id));
+                }
+                let elapsed = now.elapsed();
+                if this.last_reported_update.elapsed() > Duration::from_hours(1) {
+                    telemetry::event!(
+                        "Project Panel Updated",
+                        elapsed_ms = elapsed.as_millis(),
+                        worktree_entries = this.tree_state.visible_entries.len(),
+                    );
+                    this.last_reported_update = Instant::now();
                 }
                 if this.update_visible_entries_task.focus_file_name_editor {
                     this.update_visible_entries_task.focus_file_name_editor = false;

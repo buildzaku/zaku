@@ -34,6 +34,7 @@ path = { workspace = true }
 project = { workspace = true }
 response_panel = { workspace = true }
 settings = { workspace = true }
+telemetry = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
 url = { workspace = true }

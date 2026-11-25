@@ -6644,6 +6644,7 @@ dependencies = [
  "response_panel",
  "serde_json",
  "settings",
+ "telemetry",
  "theme",
  "toml 1.2.2+spec-1.1.0",
  "ui",
