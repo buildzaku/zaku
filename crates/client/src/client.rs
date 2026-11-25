@@ -7,6 +7,7 @@ use gpui::App;
 use std::sync::Arc;
 
 use http_client::{HttpClient, HttpClientWithUrl};
+use metadata::ZAKU_SERVER_URL;
 use settings::{RegisterSetting, Settings, SettingsContent};
 
 use crate::telemetry::Telemetry;
@@ -39,10 +40,7 @@ pub struct Client {
 
 impl Client {
     pub fn new(http_client: Arc<dyn HttpClient>, cx: &mut App) -> Arc<Self> {
-        let http_client = Arc::new(HttpClientWithUrl::new(
-            http_client,
-            metadata::ZAKU_SERVER_URL,
-        ));
+        let http_client = Arc::new(HttpClientWithUrl::new(http_client, ZAKU_SERVER_URL));
 
         Arc::new(Self {
             telemetry: Telemetry::new(Arc::new(RealSystemClock), http_client.clone(), cx),

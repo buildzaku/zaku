@@ -1,6 +1,5 @@
 [package]
 name = "syntax_theme"
-version.workspace = true
 license.workspace = true
 repository.workspace = true
 edition.workspace = true

@@ -1,6 +1,5 @@
 [package]
 name = "refineable_derive"
-version.workspace = true
 license.workspace = true
 repository.workspace = true
 edition.workspace = true

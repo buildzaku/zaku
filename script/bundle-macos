@@ -79,8 +79,8 @@ fi
 
 target="${arch}-apple-darwin"
 target_directory="${CARGO_TARGET_DIR:-target}"
-version=$(cargo app-version show)
-long_version=$(cargo app-version show --long)
+version=$(cargo app-version show --package zaku)
+long_version=$(cargo app-version show --package zaku --long)
 long_version_without_prerelease="${long_version%%-*}"
 cargo_bundle_version=$(cargo bundle --version 2>/dev/null || true)
 if [[ "$cargo_bundle_version" != "cargo-bundle v${CARGO_BUNDLE_VERSION}" ]]; then

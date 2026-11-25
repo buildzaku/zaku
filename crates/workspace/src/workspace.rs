@@ -225,9 +225,7 @@ impl AppState {
         let http_client =
             http_client.unwrap_or_else(|| FakeHttpClient::with_response(StatusCode::NOT_FOUND));
         metadata::init_test(
-            env!("CARGO_PKG_VERSION")
-                .parse()
-                .expect("invalid version in Cargo.toml"),
+            "26.1-dev".parse().expect("test version should be valid"),
             cx,
         );
         let client = Client::test_new(http_client, cx);
