@@ -8,7 +8,7 @@ use editor::items::{entry_git_aware_text_color, entry_text_color};
 use path::PathExt;
 use project::{ConfigFileState, ConfigFileType, Project, ProjectConfigBuffer};
 use settings::{GitSettings, Settings};
-use ui::{Color, Icon, IconAsset, IconSize, Text, TextCommon};
+use ui::{Color, Icon, IconAsset, IconSize, LineHeightStyle, Text, TextCommon, TextSize};
 use util::truncate_and_trailoff;
 use workspace::{
     Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, TabContentParams,
@@ -50,8 +50,9 @@ impl Item for ProjectConfigEditor {
         Some(vec![path.into()])
     }
 
-    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
-        self.title(cx)
+    fn tab_content_text(&self, detail: usize, cx: &App) -> SharedString {
+        self.path_for_folder(detail, true, cx)
+            .unwrap_or_else(|| self.title(cx))
     }
 
     fn tab_content(&self, params: TabContentParams, _: &Window, cx: &App) -> AnyElement {
@@ -87,11 +88,12 @@ impl Item for ProjectConfigEditor {
             (ProjectConfigEditorState::Invalid { .. }, _) => Icon::new(IconAsset::WarningCircle)
                 .size(IconSize::Small)
                 .color(Color::Error),
-            (ProjectConfigEditorState::Ready(_), ConfigFileType::Project) => {
-                Icon::new(IconAsset::SquareInset)
-                    .size(IconSize::XSmall)
-                    .color(entry_text_color(params.selected))
-            }
+            (
+                ProjectConfigEditorState::Ready(_),
+                ConfigFileType::Project | ConfigFileType::Folder,
+            ) => Icon::new(IconAsset::SquareInset)
+                .size(IconSize::XSmall)
+                .color(entry_text_color(params.selected)),
             (ProjectConfigEditorState::Ready(_), ConfigFileType::Environment) => {
                 editor::environment_icon(
                     self.environment_color(cx),
@@ -99,6 +101,17 @@ impl Item for ProjectConfigEditor {
                 )
             }
         };
+        let description = params.detail.and_then(|detail| {
+            let path = self.path_for_folder(detail, false, cx)?;
+            let description = ui::utils::replace_control_characters(&path);
+            let description = description.trim();
+
+            if description.is_empty() {
+                return None;
+            }
+
+            Some(truncate_and_trailoff(description, MAX_TAB_TITLE_LEN))
+        });
 
         gpui::div()
             .flex()
@@ -107,6 +120,16 @@ impl Item for ProjectConfigEditor {
             .gap_2()
             .child(gpui::div().flex_none().flex().items_center().child(icon))
             .child(title)
+            .when_some(description, |this, description| {
+                this.child(
+                    Text::new(description)
+                        .single_line()
+                        .size(TextSize::XSmall)
+                        .line_height_style(LineHeightStyle::Compact)
+                        .color(Color::Muted)
+                        .alpha(0.7),
+                )
+            })
             .into_any_element()
     }
 

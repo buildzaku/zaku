@@ -10,8 +10,8 @@ use std::{collections::HashMap, rc::Rc};
 use editor::{Editor, EditorEvent, VariableProvider, VariableProviderDelegate};
 use path::PathStyle;
 use project::{
-    ConfigFile, ConfigFileState, ConfigFileType, EnvironmentColor, Project, ProjectConfigBuffer,
-    ProjectConfigBufferEvent, ProjectPath, Variable,
+    ConfigFile, ConfigFileKind, ConfigFileState, ConfigFileType, EnvironmentColor, Project,
+    ProjectConfigBuffer, ProjectConfigBufferEvent, ProjectPath, Variable,
     project_config_store::{ProjectConfigStoreEvent, VariableScope},
 };
 use theme::GlobalTheme;
@@ -173,27 +173,29 @@ fn scoped_variables(
     let ConfigFileState::Parsed(config_file) = buffer.config_file() else {
         return None;
     };
+    let project_variables = project_config_store.project_file().map(|project_file| {
+        (
+            VariableScope::Project,
+            project_file.request.variables.as_slice(),
+        )
+    });
+    let active_environment_variables = project_config_store.active_environment().and_then(|name| {
+        let environment_file = project_config_store.environment_file(name)?;
+        Some((
+            VariableScope::Environment {
+                name: name.to_string(),
+                color: environment_file.environment.color,
+            },
+            environment_file.environment.variables.as_slice(),
+        ))
+    });
     let scope_variables = match buffer.file_type() {
-        ConfigFileType::Project => [
+        ConfigFileType::Project => vec![
             Some((VariableScope::Project, config_file.variables())),
-            project_config_store.active_environment().and_then(|name| {
-                let environment_file = project_config_store.environment_file(name)?;
-                Some((
-                    VariableScope::Environment {
-                        name: name.to_string(),
-                        color: environment_file.environment.color,
-                    },
-                    environment_file.environment.variables.as_slice(),
-                ))
-            }),
+            active_environment_variables,
         ],
-        ConfigFileType::Environment => [
-            project_config_store.project_file().map(|project_file| {
-                (
-                    VariableScope::Project,
-                    project_file.request.variables.as_slice(),
-                )
-            }),
+        ConfigFileType::Environment => vec![
+            project_variables,
             Some((
                 VariableScope::Environment {
                     name: buffer
@@ -206,12 +208,34 @@ fn scoped_variables(
                         ConfigFile::Environment(environment_file) => {
                             environment_file.environment.color
                         }
-                        ConfigFile::Project(_) => None,
+                        ConfigFile::Project(_) | ConfigFile::Folder(_) => None,
                     },
                 },
                 config_file.variables(),
             )),
         ],
+        ConfigFileType::Folder => {
+            let Some(ConfigFileKind::Folder(folder)) =
+                ConfigFileKind::for_path(&buffer.file().path)
+            else {
+                return None;
+            };
+            let parent_folders = folder.ancestors().skip(1).collect::<Vec<_>>();
+            [project_variables, active_environment_variables]
+                .into_iter()
+                .chain(parent_folders.into_iter().rev().map(|parent_folder| {
+                    let folder_file = project_config_store.folder_file(parent_folder)?;
+                    Some((
+                        VariableScope::Folder(parent_folder.into()),
+                        folder_file.request.variables.as_slice(),
+                    ))
+                }))
+                .chain([Some((
+                    VariableScope::Folder(folder.clone()),
+                    config_file.variables(),
+                ))])
+                .collect()
+        }
     };
     Some(
         scope_variables
@@ -482,7 +506,38 @@ impl ProjectConfigEditor {
                 .path
                 .file_stem()
                 .map_or_default(|name| SharedString::from(name.to_owned())),
+            ConfigFileType::Folder => self.path_for_folder(0, true, cx).unwrap_or_default(),
         }
+    }
+
+    fn path_for_folder(
+        &self,
+        height: usize,
+        include_folder_name: bool,
+        cx: &App,
+    ) -> Option<SharedString> {
+        let Some(ConfigFileKind::Folder(folder)) =
+            ConfigFileKind::for_path(&self.buffer.read(cx).file().path)
+        else {
+            return None;
+        };
+        let path_style = self.path_style(cx);
+        let height = height.saturating_add(1);
+        let mut components = folder.components().collect::<Vec<_>>();
+        let start = components.len().saturating_sub(height);
+        let mut components = components.split_off(start);
+
+        if !include_folder_name {
+            components.pop()?;
+        }
+
+        if components.is_empty() {
+            return None;
+        }
+
+        Some(SharedString::from(
+            components.join(path_style.primary_separator()),
+        ))
     }
 
     fn environment_color(&self, cx: &App) -> Option<EnvironmentColor> {
@@ -490,7 +545,8 @@ impl ProjectConfigEditor {
             ConfigFileState::Parsed(ConfigFile::Environment(environment_file)) => {
                 environment_file.environment.color
             }
-            ConfigFileState::Parsed(ConfigFile::Project(_)) | ConfigFileState::Invalid(_) => None,
+            ConfigFileState::Parsed(ConfigFile::Project(_) | ConfigFile::Folder(_))
+            | ConfigFileState::Invalid(_) => None,
         }
     }
 
@@ -509,6 +565,7 @@ impl ProjectConfigEditor {
                 Text::new(match self.buffer.read(cx).file_type() {
                     ConfigFileType::Project => "Invalid Project Variables",
                     ConfigFileType::Environment => "Invalid Environment",
+                    ConfigFileType::Folder => "Invalid Folder Variables",
                 })
                 .size(TextSize::Large)
                 .color(Color::Error),

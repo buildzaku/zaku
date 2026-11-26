@@ -54,6 +54,7 @@ impl ConfigFileKind {
 pub enum ConfigFileType {
     Project,
     Environment,
+    Folder,
 }
 
 impl ConfigFileType {
@@ -61,7 +62,7 @@ impl ConfigFileType {
         match ConfigFileKind::for_path(path)? {
             ConfigFileKind::Project => Some(Self::Project),
             ConfigFileKind::Environment(_) => Some(Self::Environment),
-            ConfigFileKind::Folder(_) => None,
+            ConfigFileKind::Folder(_) => Some(Self::Folder),
         }
     }
 
@@ -69,6 +70,7 @@ impl ConfigFileType {
         let config_file = match self {
             Self::Project => parse_config_file(contents).map(ConfigFile::Project),
             Self::Environment => parse_config_file(contents).map(ConfigFile::Environment),
+            Self::Folder => parse_config_file(contents).map(ConfigFile::Folder),
         };
 
         match config_file {
@@ -89,6 +91,7 @@ pub enum ConfigFileState {
 pub enum ConfigFile {
     Project(ProjectFile),
     Environment(EnvironmentFile),
+    Folder(FolderFile),
 }
 
 impl ConfigFile {
@@ -96,6 +99,7 @@ impl ConfigFile {
         match self {
             Self::Project(project_file) => &project_file.request.variables,
             Self::Environment(environment_file) => &environment_file.environment.variables,
+            Self::Folder(folder_file) => &folder_file.request.variables,
         }
     }
 
@@ -105,6 +109,7 @@ impl ConfigFile {
             Self::Environment(environment_file) => {
                 environment_file.environment.variables = variables;
             }
+            Self::Folder(folder_file) => folder_file.request.variables = variables,
         }
     }
 }
