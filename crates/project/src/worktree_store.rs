@@ -449,10 +449,11 @@ impl WorktreeStore {
                     let next_entry_id = this.next_entry_id.clone();
                     let scanning_enabled = this.scanning_enabled;
                     let worktree_id = this.next_worktree_id();
+                    let requested_abs_path = requested_abs_path.clone();
                     let abs_path = canonical_abs_path.clone();
-                    let task = cx.spawn(async move |_, cx| {
-                        Worktree::new(
-                            SanitizedPath::cast_arc(abs_path),
+                    let task = cx.spawn(async move |this, cx| {
+                        let worktree = Worktree::new(
+                            SanitizedPath::cast_arc(abs_path.clone()),
                             visible,
                             fs,
                             next_entry_id,
@@ -460,8 +461,34 @@ impl WorktreeStore {
                             worktree_id,
                             cx,
                         )
-                        .await
-                        .map_err(Arc::new)
+                        .await;
+
+                        this.update(cx, |this, cx| {
+                            this.pending_worktree_tasks.remove(&abs_path);
+
+                            let worktree = match worktree {
+                                Ok(worktree) => worktree,
+                                Err(error) => {
+                                    this.update_initial_scan_state(cx);
+                                    return Err(Arc::new(error));
+                                }
+                            };
+
+                            if visible
+                                && this.worktree_path_to_open.as_deref()
+                                    != Some(requested_abs_path.as_ref())
+                                && this.worktree_path_to_open.as_deref() != Some(abs_path.as_ref())
+                            {
+                                this.update_initial_scan_state(cx);
+                                return Err(Arc::new(anyhow!(
+                                    "Worktree open was superseded by a newer request"
+                                )));
+                            }
+
+                            this.add(&worktree, cx);
+                            Ok(worktree)
+                        })
+                        .map_err(Arc::new)?
                     });
                     this.pending_worktree_tasks
                         .insert(canonical_abs_path.clone(), task.shared());
@@ -479,54 +506,22 @@ impl WorktreeStore {
                 Ok(task)
             })??;
 
-            let worktree = match task.await {
-                Ok(worktree) => worktree,
-                Err(error) => {
-                    worktree_store.update(cx, |this, cx| {
-                        this.pending_worktree_tasks.remove(&canonical_abs_path);
-                        this.update_initial_scan_state(cx);
-                    })?;
-
-                    return Err(anyhow!("{error:#}"));
-                }
-            };
+            let worktree = task.await.map_err(|error| anyhow!("{error:#}"))?;
 
             let worktree_opened = worktree_store.update(cx, |this, cx| {
-                this.pending_worktree_tasks.remove(&canonical_abs_path);
-
-                if visible {
-                    let is_current_open_epoch = this.worktree_open_epoch == worktree_open_epoch;
-                    let is_latest_request = this.worktree_path_to_open.as_deref()
-                        == Some(requested_abs_path.as_ref())
-                        || this.worktree_path_to_open.as_deref()
-                            == Some(canonical_abs_path.as_ref());
-                    let is_current_worktree =
-                        this.root_worktree(cx).is_some_and(|current_worktree| {
-                            current_worktree.entity_id() == worktree.entity_id()
-                        });
-                    let is_existing_worktree = this
-                        .worktrees()
-                        .any(|existing| existing.entity_id() == worktree.entity_id());
-
-                    if is_current_open_epoch && is_latest_request && !is_current_worktree {
-                        if !is_existing_worktree {
-                            this.add(&worktree, cx);
-                        }
-                        true
-                    } else if is_current_open_epoch && is_latest_request {
-                        is_current_worktree
-                    } else {
-                        false
-                    }
-                } else {
-                    if !this
-                        .worktrees()
-                        .any(|existing| existing.entity_id() == worktree.entity_id())
-                    {
-                        this.add(&worktree, cx);
-                    }
-                    true
+                if !visible {
+                    return true;
                 }
+
+                let is_current_open_epoch = this.worktree_open_epoch == worktree_open_epoch;
+                let is_latest_request = this.worktree_path_to_open.as_deref()
+                    == Some(requested_abs_path.as_ref())
+                    || this.worktree_path_to_open.as_deref() == Some(canonical_abs_path.as_ref());
+                let is_current_worktree = this.root_worktree(cx).is_some_and(|current_worktree| {
+                    current_worktree.entity_id() == worktree.entity_id()
+                });
+
+                is_current_open_epoch && is_latest_request && is_current_worktree
             })?;
 
             if worktree_opened {
