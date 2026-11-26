@@ -95,15 +95,18 @@ pub fn init(cx: &mut App) {
 pub fn environment_icon(environment_color: Option<EnvironmentColor>, text_color: Color) -> Icon {
     Icon::new(IconAsset::SquareInset)
         .size(IconSize::XSmall)
-        .color(match environment_color {
-            Some(EnvironmentColor::Red) => Color::PaletteRed,
-            Some(EnvironmentColor::Orange) => Color::PaletteOrange,
-            Some(EnvironmentColor::Yellow) => Color::PaletteYellow,
-            Some(EnvironmentColor::Green) => Color::PaletteGreen,
-            Some(EnvironmentColor::Blue) => Color::PaletteBlue,
-            Some(EnvironmentColor::Purple) => Color::PalettePurple,
-            None => text_color,
-        })
+        .color(environment_color.map_or(text_color, self::palette_color))
+}
+
+pub(crate) fn palette_color(environment_color: EnvironmentColor) -> Color {
+    match environment_color {
+        EnvironmentColor::Red => Color::PaletteRed,
+        EnvironmentColor::Orange => Color::PaletteOrange,
+        EnvironmentColor::Yellow => Color::PaletteYellow,
+        EnvironmentColor::Green => Color::PaletteGreen,
+        EnvironmentColor::Blue => Color::PaletteBlue,
+        EnvironmentColor::Purple => Color::PalettePurple,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

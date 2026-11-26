@@ -1,8 +1,8 @@
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
     AnyElement, Context, Entity, FontWeight, ListSizingBehavior, MouseDownEvent, Pixels,
-    ScrollHandle, ScrollStrategy, Size, StyledText, Task, UniformListScrollHandle, Window,
-    prelude::*,
+    ScrollHandle, ScrollStrategy, SharedString, Size, StyledText, Task, UniformListScrollHandle,
+    Window, prelude::*,
 };
 use itertools::Itertools;
 use num_traits::ToPrimitive;
@@ -24,8 +24,8 @@ use multi_buffer::Anchor;
 use project::Completion;
 use theme::ActiveTheme;
 use ui::{
-    Color, ListItem, ListItemSpacing, Popover, ScrollAxes, Scrollbars, Text, TextCommon, TextSize,
-    Toggleable, WithScrollbar,
+    Color, Icon, IconSize, ListItem, ListItemSpacing, Popover, ScrollAxes, Scrollbars, Text,
+    TextCommon, TextSize, Toggleable, WithScrollbar,
 };
 
 use crate::{CompletionId, Editor, EditorStyle, completions::split_words};
@@ -162,23 +162,36 @@ impl CompletionsMenu {
         window: &mut Window,
         cx: &mut Context<Editor>,
     ) -> AnyElement {
-        let widest_completion_index = {
+        let (widest_completion_index, widest_documentation) = {
             let completions = self.completions.borrow();
-            self.entries
-                .borrow()
+            let entries = self.entries.borrow();
+            let widest_completion_index = entries
                 .iter()
                 .enumerate()
                 .max_by_key(|(_, string_match)| {
-                    let completion = completions
+                    completions
                         .get(string_match.candidate_id)
-                        .expect("completion match should have a candidate");
-                    completion.label.text.chars().count()
-                        + completion
-                            .documentation
-                            .as_ref()
-                            .map_or(0, |documentation| documentation.single_line.chars().count())
+                        .expect("completion match should have a candidate")
+                        .label
+                        .text
+                        .chars()
+                        .count()
                 })
-                .map(|(index, _)| index)
+                .map(|(index, _)| index);
+            let widest_documentation = entries
+                .iter()
+                .filter_map(|string_match| {
+                    let documentation = completions
+                        .get(string_match.candidate_id)
+                        .expect("completion match should have a candidate")
+                        .documentation
+                        .as_ref()?;
+                    Some(documentation.single_line.trim())
+                })
+                .max_by_key(|text| text.chars().count())
+                .filter(|text| !text.is_empty())
+                .map(|text| SharedString::from(text.to_string()));
+            (widest_completion_index, widest_documentation)
         };
 
         let selected_item = self.selected_item;
@@ -229,6 +242,11 @@ impl CompletionsMenu {
                                     .size(TextSize::Small)
                                     .color(Color::Muted)
                             });
+                        let start_slot = completion.icon_path.as_ref().map(|path| {
+                            Icon::from_path(path)
+                                .size(IconSize::XSmall)
+                                .color(completion.icon_color.map_or(Color::Muted, Color::Custom))
+                        });
 
                         gpui::div()
                             .min_w(COMPLETION_MENU_MIN_WIDTH)
@@ -238,6 +256,7 @@ impl CompletionsMenu {
                                     .inset(true)
                                     .spacing(ListItemSpacing::Sparse)
                                     .toggle_state(item_index == selected_item)
+                                    .start_slot::<Icon>(start_slot)
                                     .on_hover(cx.listener(move |editor, hovered, _, cx| {
                                         if *hovered
                                             && let Some(menu) =
@@ -264,10 +283,32 @@ impl CompletionsMenu {
                                     .when_some(documentation_label, |this, documentation| {
                                         this.child(
                                             gpui::div()
+                                                .flex()
+                                                .flex_col()
+                                                .items_end()
                                                 .flex_shrink(1.0)
                                                 .ml_auto()
                                                 .min_w_0()
-                                                .child(documentation.truncate()),
+                                                .child(documentation.truncate())
+                                                // Every label column reserves the widest label's
+                                                // width, so labels never reach back over longer names.
+                                                .when_some(
+                                                    widest_documentation.clone(),
+                                                    |this, widest_documentation| {
+                                                        this.child(
+                                                            gpui::div()
+                                                                .h_0()
+                                                                .overflow_hidden()
+                                                                .invisible()
+                                                                .child(
+                                                                    Text::new(widest_documentation)
+                                                                        .ml_4()
+                                                                        .size(TextSize::Small)
+                                                                        .single_line(),
+                                                                ),
+                                                        )
+                                                    },
+                                                ),
                                         )
                                     }),
                             )
@@ -545,6 +586,8 @@ mod tests {
                 new_text: label.to_string(),
                 label: CodeLabel::plain(label.to_string(), None),
                 documentation: None,
+                icon_path: None,
+                icon_color: None,
                 match_start: None,
             }
         }

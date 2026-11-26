@@ -5,6 +5,7 @@ use text::{ToOffset as _, ToPoint as _};
 use language::{Buffer, CodeLabel};
 use path::PathStyle;
 use project::{Completion, CompletionDocumentation, Variable, project_config_store::VariableScope};
+use ui::IconAsset;
 
 use crate::{CompletionProvider, Editor, SemanticsProvider};
 
@@ -66,15 +67,28 @@ impl<T: VariableProviderDelegate> CompletionProvider for VariableProvider<T> {
             ..buffer.anchor_after(variable_completion.source_range.end);
         let completions = resolved_variables
             .into_iter()
-            .map(|(name, (scope, value))| Completion {
-                replace_range: replace_range.clone(),
-                new_text: format!("{name}{}", variable_completion.closing_braces),
-                label: CodeLabel::plain(name, None),
-                documentation: Some(CompletionDocumentation {
-                    single_line: self::scope_label(&scope),
-                    plain_text: value,
-                }),
-                match_start: Some(replace_range.start),
+            .map(|(name, (scope, value))| {
+                let (scope_kind, icon, icon_color) = match scope {
+                    VariableScope::Project => ("Project", IconAsset::SquareInset, None),
+                    VariableScope::Environment { color, .. } => (
+                        "Environment",
+                        IconAsset::SquareInset,
+                        color.map(|color| crate::palette_color(color).color(cx)),
+                    ),
+                    VariableScope::Folder(_) => ("Folder", IconAsset::Folder, None),
+                };
+                Completion {
+                    replace_range: replace_range.clone(),
+                    new_text: format!("{name}{}", variable_completion.closing_braces),
+                    label: CodeLabel::plain(name, None),
+                    documentation: Some(CompletionDocumentation {
+                        single_line: SharedString::from(scope_kind),
+                        plain_text: value,
+                    }),
+                    icon_path: Some(icon.path().into()),
+                    icon_color,
+                    match_start: Some(replace_range.start),
+                }
             })
             .collect();
         Task::ready(Ok(completions))

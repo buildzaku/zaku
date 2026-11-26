@@ -24,7 +24,7 @@ use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
 #[cfg(any(test, feature = "test"))]
 use gpui::TestAppContext;
-use gpui::{App, AppContext, Context, Entity, EventEmitter, SharedString, Task, TaskExt};
+use gpui::{App, AppContext, Context, Entity, EventEmitter, Hsla, SharedString, Task, TaskExt};
 use std::{
     ops::Range,
     path::{Path, PathBuf},
@@ -254,6 +254,8 @@ pub struct Completion {
     pub new_text: String,
     pub label: CodeLabel,
     pub documentation: Option<CompletionDocumentation>,
+    pub icon_path: Option<SharedString>,
+    pub icon_color: Option<Hsla>,
     pub match_start: Option<Anchor>,
 }
 

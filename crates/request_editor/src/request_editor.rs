@@ -4381,8 +4381,8 @@ mod tests {
                 &[
                     ["base_url", "https://api.zaku.dev", "Project"],
                     ["host", "api.zaku.dev", "Project"],
-                    ["token", "test-token", "Dev"],
-                    ["user_id", "1", "foo"],
+                    ["token", "test-token", "Environment"],
+                    ["user_id", "1", "Folder"],
                 ]
             );
         });
@@ -4474,8 +4474,8 @@ mod tests {
                 &[
                     ["base_url", "https://api.zaku.dev", "Project"],
                     ["host", "api.zaku.dev", "Project"],
-                    ["token", "test-token", "Dev"],
-                    ["user_id", "1", "foo"],
+                    ["token", "test-token", "Environment"],
+                    ["user_id", "1", "Folder"],
                 ]
             );
         });
