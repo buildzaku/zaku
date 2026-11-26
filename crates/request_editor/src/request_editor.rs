@@ -723,15 +723,13 @@ fn scoped_variables(
     }
 
     Some(
-        project::ProjectItem::project_path(buffer.read(cx), cx)
-            .map(|request_path| {
-                project_config_store
-                    .scoped_variables_for_request(&request_path)
-                    .into_iter()
-                    .map(|(scope, variable)| (scope, variable.clone()))
-                    .collect()
-            })
-            .unwrap_or_default(),
+        project::ProjectItem::project_path(buffer.read(cx), cx).map_or_default(|request_path| {
+            project_config_store
+                .scoped_variables_for_request(&request_path)
+                .into_iter()
+                .map(|(scope, variable)| (scope, variable.clone()))
+                .collect()
+        }),
     )
 }
 
@@ -1265,16 +1263,13 @@ impl RequestEditor {
             return;
         };
 
-        let variables = self
-            .project_path(cx)
-            .map(|request_path| {
-                self.project
-                    .read(cx)
-                    .project_config_store()
-                    .read(cx)
-                    .variables_for_request(&request_path)
-            })
-            .unwrap_or_default();
+        let variables = self.project_path(cx).map_or_default(|request_path| {
+            self.project
+                .read(cx)
+                .project_config_store()
+                .read(cx)
+                .variables_for_request(&request_path)
+        });
         let request_method = request.http.method.clone();
         let request_url =
             project::substitute_variables_in_str(&request.http.url.read(cx).value(cx), &variables);

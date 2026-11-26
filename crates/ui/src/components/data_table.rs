@@ -1073,9 +1073,7 @@ pub fn render_table_header(
             widths.map(Some)
         });
 
-    let element_id = entity_id
-        .map(|entity| entity.to_string())
-        .unwrap_or_default();
+    let element_id = entity_id.map_or_default(|entity| entity.to_string());
 
     let shared_element_id: SharedString = format!("table-{element_id}").into();
     let use_ui_font = table_cx.use_ui_font;

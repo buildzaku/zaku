@@ -1122,8 +1122,7 @@ impl VariablesPanel {
         let project = self.project.read(cx);
         let git_status = project
             .project_path_git_status(&project_path, cx)
-            .map(|status| status.summary())
-            .unwrap_or_default();
+            .map_or_default(|status| status.summary());
         let is_ignored = project
             .entry_for_path(&project_path, cx)
             .is_some_and(|entry| entry.is_ignored);
@@ -1404,14 +1403,13 @@ impl Render for VariablesPanel {
             self.render_header(SharedString::from(root_name), cx)
         });
         let mut entries = worktree_id
-            .map(|worktree_id| {
+            .map_or_default(|worktree_id| {
                 self.entries(cx)
                     .into_iter()
                     .enumerate()
                     .map(|(index, entry)| self.render_entry(index, entry, worktree_id, window, cx))
                     .collect::<Vec<_>>()
             })
-            .unwrap_or_default()
             .into_iter();
         let project_entry = entries.next();
         let environment_entries = entries.collect::<Vec<_>>();

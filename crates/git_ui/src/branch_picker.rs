@@ -121,8 +121,7 @@ impl BranchList {
     ) -> Self {
         let all_branches = repository
             .as_ref()
-            .map(|repository| process_branches(&repository.read(cx).branch_list))
-            .unwrap_or_default();
+            .map_or_default(|repository| process_branches(&repository.read(cx).branch_list));
         let branch_list_error = repository
             .as_ref()
             .and_then(|repository| repository.read(cx).branch_list_error.clone());
