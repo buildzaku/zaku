@@ -88,17 +88,21 @@ impl Item for ProjectConfigEditor {
             (ProjectConfigEditorState::Invalid { .. }, _) => Icon::new(IconAsset::WarningCircle)
                 .size(IconSize::Small)
                 .color(Color::Error),
-            (
-                ProjectConfigEditorState::Ready(_),
-                ConfigFileType::Project | ConfigFileType::Folder,
-            ) => Icon::new(IconAsset::SquareInset)
-                .size(IconSize::XSmall)
-                .color(entry_text_color(params.selected)),
+            (ProjectConfigEditorState::Ready(_), ConfigFileType::Project) => {
+                Icon::new(IconAsset::SquareInset)
+                    .size(IconSize::XSmall)
+                    .color(entry_text_color(params.selected))
+            }
             (ProjectConfigEditorState::Ready(_), ConfigFileType::Environment) => {
                 editor::environment_icon(
                     self.environment_color(cx),
                     entry_text_color(params.selected),
                 )
+            }
+            (ProjectConfigEditorState::Ready(_), ConfigFileType::Folder) => {
+                Icon::new(IconAsset::Folder)
+                    .size(IconSize::XSmall)
+                    .color(entry_text_color(params.selected))
             }
         };
         let description = params.detail.and_then(|detail| {

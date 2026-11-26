@@ -929,6 +929,9 @@ impl ProjectPanel {
 
         self.selection = Some(SelectedEntry(entry_id));
         let has_pasteable_content = self.has_pasteable_content();
+        let is_dir = self
+            .selected_entry_handle(cx)
+            .is_some_and(|(_, entry)| entry.is_dir());
 
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
@@ -939,6 +942,12 @@ impl ProjectPanel {
                     ui::utils::reveal_in_file_manager_title(),
                     Box::new(actions::project_panel::RevealInFileManager),
                 )
+                .when(is_dir && !is_root, |menu| {
+                    menu.separator().action(
+                        "Folder Variables",
+                        Box::new(actions::project_panel::OpenFolderVariables),
+                    )
+                })
                 .separator()
                 .when(!is_root, |menu| {
                     menu.action("Cut", Box::new(actions::project_panel::Cut))
@@ -1475,6 +1484,37 @@ impl ProjectPanel {
             self.project
                 .update(cx, |project, cx| project.reveal_path(&path, cx));
         }
+    }
+
+    fn open_folder_variables(
+        &mut self,
+        _: &actions::project_panel::OpenFolderVariables,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((worktree, entry)) = self.selected_entry_handle(cx) else {
+            return;
+        };
+        let folder = if entry.is_dir() {
+            Some(entry.path.as_ref())
+        } else {
+            entry.path.parent()
+        };
+        let Some(folder) = folder.filter(|folder| !folder.is_empty()) else {
+            return;
+        };
+
+        let project_path = ProjectPath {
+            worktree_id: worktree.read(cx).id(),
+            path: folder.join(path::project_folder_file_relative_path()),
+        };
+        self.workspace
+            .update(cx, |workspace, cx| {
+                workspace
+                    .open_path(project_path, None, true, window, cx)
+                    .detach_and_log_err(cx);
+            })
+            .log_err();
     }
 
     fn add_entry(&mut self, is_dir: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -2801,6 +2841,7 @@ impl Render for ProjectPanel {
             .on_action(cx.listener(Self::copy_path))
             .on_action(cx.listener(Self::copy_relative_path))
             .on_action(cx.listener(Self::reveal_in_file_manager))
+            .on_action(cx.listener(Self::open_folder_variables))
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::cancel))
             .on_action(cx.listener(Self::open))
