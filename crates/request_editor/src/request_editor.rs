@@ -3998,7 +3998,7 @@ mod tests {
                         headers = [{ name = "Authorization", value = "Bearer {{token}}" }]
                     "#}
                 },
-                "users": {
+                "bar": {
                     ".zaku": {
                         "folder.toml": indoc! {r#"
                             [meta]
@@ -4117,7 +4117,7 @@ mod tests {
             .update(cx, |project, cx| {
                 project.rename_entry(
                     entry_id,
-                    (worktree_id, rel_path("users/req1.toml")).into(),
+                    (worktree_id, rel_path("bar/req1.toml")).into(),
                     cx,
                 )
             })
@@ -4381,8 +4381,8 @@ mod tests {
                 &[
                     ["base_url", "https://api.zaku.dev", "Project"],
                     ["host", "api.zaku.dev", "Project"],
-                    ["token", "test-token", "Dev"],
-                    ["user_id", "1", "foo"],
+                    ["token", "test-token", "Environment"],
+                    ["user_id", "1", "Folder"],
                 ]
             );
         });
@@ -4474,8 +4474,8 @@ mod tests {
                 &[
                     ["base_url", "https://api.zaku.dev", "Project"],
                     ["host", "api.zaku.dev", "Project"],
-                    ["token", "test-token", "Dev"],
-                    ["user_id", "1", "foo"],
+                    ["token", "test-token", "Environment"],
+                    ["user_id", "1", "Folder"],
                 ]
             );
         });

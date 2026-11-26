@@ -204,8 +204,10 @@ impl TitleBar {
         let repository = repository.clone();
         let text_color = if self.branch_picker_handle.is_deployed() {
             Color::Accent
-        } else {
+        } else if is_detached_head {
             Color::Muted
+        } else {
+            Color::Default
         };
         let (icon, label) = if is_detached_head {
             (IconAsset::GitBranchPlus, "Create Branch".to_string())
