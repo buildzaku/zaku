@@ -71,8 +71,6 @@ pub struct WorktreeStore {
     next_worktree_id: WorktreeIdCounter,
     worktrees: Vec<WorktreeHandle>,
     initial_scan_complete: (watch::Sender<bool>, watch::Receiver<bool>),
-    worktree_path_to_open: Option<Arc<SanitizedPath>>,
-    worktree_open_epoch: usize,
     scanning_enabled: bool,
     pending_worktree_tasks: HashMap<
         Arc<SanitizedPath>,
@@ -88,8 +86,6 @@ impl WorktreeStore {
             next_worktree_id,
             worktrees: Vec::new(),
             initial_scan_complete: watch::channel(true),
-            worktree_path_to_open: None,
-            worktree_open_epoch: 0,
             scanning_enabled: true,
             pending_worktree_tasks: HashMap::default(),
             fs,
@@ -396,10 +392,6 @@ impl WorktreeStore {
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<(Entity<Worktree>, Arc<RelPath>)>> {
         let abs_path = abs_path.as_ref();
-        if visible {
-            self.worktree_path_to_open = Some(SanitizedPath::new_arc(abs_path));
-        }
-
         if let Some((worktree, relative_path)) = self.find_worktree(abs_path, cx) {
             Task::ready(Ok((worktree, relative_path)))
         } else {
@@ -417,10 +409,6 @@ impl WorktreeStore {
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<Entity<Worktree>>> {
         let requested_abs_path = SanitizedPath::new_arc(abs_path.as_ref());
-        let worktree_open_epoch = self.worktree_open_epoch;
-        if visible {
-            self.worktree_path_to_open = Some(requested_abs_path.clone());
-        }
         let fs = self.fs.clone();
 
         cx.spawn(async move |worktree_store, cx| {
@@ -430,10 +418,6 @@ impl WorktreeStore {
             };
 
             let task = worktree_store.update(cx, |this, cx| {
-                if visible && this.worktree_open_epoch != worktree_open_epoch {
-                    return Err(anyhow!("Worktree open was superseded by a newer request"));
-                }
-
                 if let Some((worktree, relative_path)) =
                     this.find_worktree(canonical_abs_path.as_path(), cx)
                     && relative_path.is_empty()
@@ -449,7 +433,6 @@ impl WorktreeStore {
                     let next_entry_id = this.next_entry_id.clone();
                     let scanning_enabled = this.scanning_enabled;
                     let worktree_id = this.next_worktree_id();
-                    let requested_abs_path = requested_abs_path.clone();
                     let abs_path = canonical_abs_path.clone();
                     let task = cx.spawn(async move |this, cx| {
                         let worktree = Worktree::new(
@@ -474,17 +457,6 @@ impl WorktreeStore {
                                 }
                             };
 
-                            if visible
-                                && this.worktree_path_to_open.as_deref()
-                                    != Some(requested_abs_path.as_ref())
-                                && this.worktree_path_to_open.as_deref() != Some(abs_path.as_ref())
-                            {
-                                this.update_initial_scan_state(cx);
-                                return Err(Arc::new(anyhow!(
-                                    "Worktree open was superseded by a newer request"
-                                )));
-                            }
-
                             this.add(&worktree, cx);
                             Ok(worktree)
                         })
@@ -506,29 +478,7 @@ impl WorktreeStore {
                 Ok(task)
             })??;
 
-            let worktree = task.await.map_err(|error| anyhow!("{error:#}"))?;
-
-            let worktree_opened = worktree_store.update(cx, |this, cx| {
-                if !visible {
-                    return true;
-                }
-
-                let is_current_open_epoch = this.worktree_open_epoch == worktree_open_epoch;
-                let is_latest_request = this.worktree_path_to_open.as_deref()
-                    == Some(requested_abs_path.as_ref())
-                    || this.worktree_path_to_open.as_deref() == Some(canonical_abs_path.as_ref());
-                let is_current_worktree = this.root_worktree(cx).is_some_and(|current_worktree| {
-                    current_worktree.entity_id() == worktree.entity_id()
-                });
-
-                is_current_open_epoch && is_latest_request && is_current_worktree
-            })?;
-
-            if worktree_opened {
-                Ok(worktree)
-            } else {
-                Err(anyhow!("Worktree open was superseded by a newer request"))
-            }
+            task.await.map_err(|error| anyhow!("{error:#}"))
         })
     }
 
@@ -591,24 +541,6 @@ impl WorktreeStore {
             Self::observe_worktree_scan_completion(worktree, cx);
         }
         cx.emit(WorktreeStoreEvent::WorktreeAdded(worktree.clone()));
-    }
-
-    pub fn remove_worktree(&mut self, cx: &mut Context<Self>) {
-        self.worktrees.retain(|handle| {
-            let Some(worktree) = handle.upgrade() else {
-                return false;
-            };
-            if worktree.read(cx).is_visible() {
-                let worktree_id = worktree.read(cx).id();
-                cx.emit(WorktreeStoreEvent::WorktreeRemoved(worktree_id));
-                false
-            } else {
-                true
-            }
-        });
-        self.worktree_path_to_open = None;
-        self.worktree_open_epoch = self.worktree_open_epoch.wrapping_add(1);
-        self.update_initial_scan_state(cx);
     }
 }
 
