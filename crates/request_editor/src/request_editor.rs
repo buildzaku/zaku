@@ -3998,7 +3998,7 @@ mod tests {
                         headers = [{ name = "Authorization", value = "Bearer {{token}}" }]
                     "#}
                 },
-                "users": {
+                "bar": {
                     ".zaku": {
                         "folder.toml": indoc! {r#"
                             [meta]
@@ -4117,7 +4117,7 @@ mod tests {
             .update(cx, |project, cx| {
                 project.rename_entry(
                     entry_id,
-                    (worktree_id, rel_path("users/req1.toml")).into(),
+                    (worktree_id, rel_path("bar/req1.toml")).into(),
                     cx,
                 )
             })

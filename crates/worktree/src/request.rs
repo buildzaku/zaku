@@ -467,14 +467,14 @@ mod tests {
 
     #[test]
     fn test_is_request_path() {
-        assert!(is_request_path(rel_path("foo.toml")));
-        assert!(is_request_path(rel_path("users/bar.toml")));
-        assert!(is_request_path(rel_path("users/baz.TOML")));
+        assert!(is_request_path(rel_path("req1.toml")));
+        assert!(is_request_path(rel_path("foo/req2.toml")));
+        assert!(is_request_path(rel_path("foo/req3.TOML")));
 
         assert!(!is_request_path(rel_path("README.md")));
         assert!(!is_request_path(rel_path(".gitignore")));
         assert!(!is_request_path(rel_path(".zaku/project.toml")));
         assert!(!is_request_path(rel_path(".zaku/environments/Dev.toml")));
-        assert!(!is_request_path(rel_path("users/.zaku/folder.toml")));
+        assert!(!is_request_path(rel_path("foo/.zaku/folder.toml")));
     }
 }

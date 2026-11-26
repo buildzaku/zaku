@@ -906,7 +906,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_save_creates_project_file(cx: &mut TestAppContext) {
+    async fn test_save_creates_config_files(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
@@ -914,7 +914,12 @@ mod tests {
 
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), json!({}));
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "foo": {},
+            }),
+        );
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
@@ -922,7 +927,7 @@ mod tests {
         let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
         let (workspace, cx) = build_workspace(&project, cx);
 
-        let project_config_editor = workspace
+        let project_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(
                     (worktree_id, rel_path(".zaku/project.toml")).into(),
@@ -937,13 +942,13 @@ mod tests {
             .downcast::<ProjectConfigEditor>()
             .unwrap();
 
-        project_config_editor.read_with(cx, |editor, cx| {
+        project_editor.read_with(cx, |editor, cx| {
             assert!(!editor.is_dirty(cx));
         });
 
         let add_button_bounds = cx.debug_bounds("BUTTON-variable-add").unwrap();
         cx.simulate_click(add_button_bounds.center(), Modifiers::default());
-        project_config_editor.update_in(cx, |editor, window, cx| {
+        project_editor.update_in(cx, |editor, window, cx| {
             let ProjectConfigEditorState::Ready(rows) = &editor.state else {
                 panic!("expected project config editor to be ready");
             };
@@ -956,7 +961,7 @@ mod tests {
             });
         });
 
-        project_config_editor.read_with(cx, |editor, cx| {
+        project_editor.read_with(cx, |editor, cx| {
             assert!(editor.is_dirty(cx));
         });
 
@@ -968,7 +973,7 @@ mod tests {
             .unwrap();
         worktree.flush_fs_events(cx).await;
 
-        project_config_editor.read_with(cx, |editor, cx| {
+        project_editor.read_with(cx, |editor, cx| {
             assert!(!editor.is_dirty(cx));
         });
         assert_eq!(
@@ -982,6 +987,69 @@ mod tests {
 
                 [request]
                 variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+            "#}
+        );
+
+        let foo_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path("foo/.zaku/folder.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        foo_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+        });
+
+        let add_button_bounds = cx.debug_bounds("BUTTON-variable-add").unwrap();
+        cx.simulate_click(add_button_bounds.center(), Modifiers::default());
+        foo_editor.update_in(cx, |editor, window, cx| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            let row = rows.first().unwrap();
+            row.name.update(cx, |editor, cx| {
+                editor.set_text("user_id", window, cx);
+            });
+            row.value.update(cx, |editor, cx| {
+                editor.set_text("1", window, cx);
+            });
+        });
+
+        foo_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_dirty(cx));
+        });
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.save_active_item(actions::pane::SaveIntent::Save, window, cx)
+            })
+            .await
+            .unwrap();
+        worktree.flush_fs_events(cx).await;
+
+        foo_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+        });
+        assert_eq!(
+            temp_fs
+                .load("project/foo/.zaku/folder.toml".as_ref())
+                .await
+                .unwrap(),
+            indoc! {r#"
+                [meta]
+                version = 1
+
+                [request]
+                variables = [{ name = "user_id", value = "1" }]
             "#}
         );
     }
@@ -1503,6 +1571,34 @@ mod tests {
                             ]
                         "#}
                     }
+                },
+                "foo": {
+                    ".zaku": {
+                        "folder.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [request]
+                            variables = [
+                              { name = "channel", value = "stable" },
+                              { name = "target", value = "linux-x86_64" }
+                            ]
+                        "#}
+                    },
+                    "bar": {
+                        ".zaku": {
+                            "folder.toml": indoc! {r#"
+                                [meta]
+                                version = 1
+
+                                [request]
+                                variables = [
+                                  { name = "target", value = "macos-aarch64" },
+                                  { name = "release", value = "{{channel}}/latest/{{target}}" }
+                                ]
+                            "#}
+                        }
+                    }
                 }
             }),
         );
@@ -1589,6 +1685,53 @@ mod tests {
             assert_eq!(
                 editor.hover_state.info_popovers[0].hover.variable,
                 expected_variable
+            );
+        });
+
+        let bar_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path("foo/bar/.zaku/folder.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+        let bar_value_editor = bar_editor.read_with(cx, |editor, _| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            rows[1].value.clone()
+        });
+
+        editor::test::trigger_hover(&bar_value_editor, 4, cx);
+        cx.run_until_parked();
+
+        bar_value_editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.hover_state.info_popovers[0].hover.variable,
+                Some((
+                    VariableScope::Folder(rel_path("foo").into()),
+                    SharedString::from("stable")
+                ))
+            );
+        });
+
+        editor::test::trigger_hover(&bar_value_editor, 21, cx);
+        cx.run_until_parked();
+
+        bar_value_editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.hover_state.info_popovers[0].hover.variable,
+                Some((
+                    VariableScope::Folder(rel_path("foo/bar").into()),
+                    SharedString::from("macos-aarch64")
+                ))
             );
         });
     }
