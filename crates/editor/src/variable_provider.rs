@@ -3,7 +3,6 @@ use std::{collections::HashMap, ops::Range};
 use text::{ToOffset as _, ToPoint as _};
 
 use language::{Buffer, CodeLabel};
-use path::PathStyle;
 use project::{Completion, CompletionDocumentation, Variable, project_config_store::VariableScope};
 use ui::IconAsset;
 
@@ -68,21 +67,20 @@ impl<T: VariableProviderDelegate> CompletionProvider for VariableProvider<T> {
         let completions = resolved_variables
             .into_iter()
             .map(|(name, (scope, value))| {
-                let (scope_kind, icon, icon_color) = match scope {
-                    VariableScope::Project => ("Project", IconAsset::SquareInset, None),
+                let (icon, icon_color) = match &scope {
+                    VariableScope::Project => (IconAsset::SquareInset, None),
                     VariableScope::Environment { color, .. } => (
-                        "Environment",
                         IconAsset::SquareInset,
                         color.map(|color| crate::palette_color(color).color(cx)),
                     ),
-                    VariableScope::Folder(_) => ("Folder", IconAsset::Folder, None),
+                    VariableScope::Folder(_) => (IconAsset::Folder, None),
                 };
                 Completion {
                     replace_range: replace_range.clone(),
                     new_text: format!("{name}{}", variable_completion.closing_braces),
                     label: CodeLabel::plain(name, None),
                     documentation: Some(CompletionDocumentation {
-                        single_line: SharedString::from(scope_kind),
+                        single_line: self::scope_label(&scope),
                         plain_text: value,
                     }),
                     icon_path: Some(icon.path().into()),
@@ -188,9 +186,7 @@ impl VariableCompletion {
 pub(crate) fn scope_label(scope: &VariableScope) -> SharedString {
     match scope {
         VariableScope::Project => SharedString::from("Project"),
-        VariableScope::Environment { name, .. } => SharedString::from(name.clone()),
-        VariableScope::Folder(folder) => {
-            SharedString::from(folder.display(PathStyle::local()).into_owned())
-        }
+        VariableScope::Environment { .. } => SharedString::from("Environment"),
+        VariableScope::Folder(_) => SharedString::from("Folder"),
     }
 }
