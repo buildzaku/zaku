@@ -514,7 +514,7 @@ dependencies = [
 [[package]]
 name = "async-task"
 version = "4.7.1"
-source = "git+https://github.com/smol-rs/async-task?rev=b4486cd71e#b4486cd71e4e94fbda54ce6302444de14f4d190e"
+source = "git+https://github.com/smol-rs/async-task?rev=41fd3359c7#41fd3359c75e221bd8b187a8ee361aa309c1714c"
 
 [[package]]
 name = "async-trait"
@@ -678,12 +678,6 @@ dependencies = [
 
 [[package]]
 name = "base64"
-version = "0.22.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
-
-[[package]]
-name = "base64"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
@@ -691,7 +685,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 [[package]]
 name = "bench_metrics"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "anyhow",
  "criterion",
@@ -738,12 +732,6 @@ name = "bit_field"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb2907cc03d08cdb1c6724ad0670ce67c4a71e1c45a6d7635224011714cfc4b1"
-
-[[package]]
-name = "bitflags"
-version = "1.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
@@ -929,7 +917,7 @@ version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43b32313e937c8721c9d17ee9bf60699a6402b4b7c2cb6ac1bee0ffcaa4b4e5e"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "polling",
  "rustix",
  "tracing",
@@ -1146,7 +1134,7 @@ dependencies = [
 [[package]]
 name = "clock"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "parking_lot",
  "serde",
@@ -1185,7 +1173,7 @@ dependencies = [
 [[package]]
 name = "collections"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "gpui_util",
  "indexmap",
@@ -1387,7 +1375,7 @@ version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa95a34622365fa5bbf40b20b75dba8dfa8c94c734aea8ac9a5ca38af14316f1"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "core-foundation 0.10.1",
  "core-graphics-types",
  "foreign-types",
@@ -1400,7 +1388,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d44a101f213f6c4cdc1853d4b78aef6db6bdfa3468798cc1d9912f4735013eb"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "core-foundation 0.10.1",
  "libc",
 ]
@@ -1438,9 +1426,9 @@ version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be17b688510d934ce13f48a2beba700e11583e281e0fda99c22bb256a14eda73"
 dependencies = [
- "bitflags 2.13.2",
- "fontdb",
- "harfrust",
+ "bitflags",
+ "fontdb 0.23.0",
+ "harfrust 0.5.2",
  "linebender_resource_handle",
  "log",
  "rangemap",
@@ -1709,7 +1697,7 @@ dependencies = [
 [[package]]
 name = "derive_refineable"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1771,7 +1759,7 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e0e367e4e7da84520dedcac1901e4da967309406d1e51017ae1abfb97adbd38"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.6.2",
  "objc2 0.6.5",
 ]
@@ -2234,6 +2222,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "fontdb"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2660c5e9157bf76d2db1294e4a9feba604ef610819a3b591088d0d8392a3290f"
+dependencies = [
+ "fontconfig-parser",
+ "log",
+ "memmap2",
+ "slotmap",
+ "tinyvec",
+]
+
+[[package]]
 name = "foreign-types"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2427,7 +2428,7 @@ dependencies = [
 [[package]]
 name = "fuzzy"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "gpui",
  "gpui_util",
@@ -2438,7 +2439,7 @@ dependencies = [
 [[package]]
 name = "fuzzy_nucleo"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "fuzzy",
  "gpui",
@@ -2643,7 +2644,7 @@ dependencies = [
 [[package]]
 name = "gpui"
 version = "0.2.2"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -2651,7 +2652,7 @@ dependencies = [
  "async-task",
  "backtrace",
  "bench_metrics",
- "bitflags 2.13.2",
+ "bitflags",
  "chrono",
  "collections 0.1.0",
  "derive_more",
@@ -2714,7 +2715,7 @@ dependencies = [
 [[package]]
 name = "gpui_apple"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "anyhow",
  "async-task",
@@ -2753,7 +2754,7 @@ dependencies = [
 [[package]]
 name = "gpui_ios"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "anyhow",
  "block2 0.6.2",
@@ -2774,7 +2775,7 @@ dependencies = [
 [[package]]
 name = "gpui_linux"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -2818,7 +2819,7 @@ dependencies = [
 [[package]]
 name = "gpui_macos"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -2861,7 +2862,7 @@ dependencies = [
 [[package]]
 name = "gpui_macros"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -2872,7 +2873,7 @@ dependencies = [
 [[package]]
 name = "gpui_platform"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -2887,7 +2888,7 @@ dependencies = [
 [[package]]
 name = "gpui_shared_string"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "schemars",
  "serde",
@@ -2897,7 +2898,7 @@ dependencies = [
 [[package]]
 name = "gpui_util"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "anyhow",
  "log",
@@ -2907,7 +2908,7 @@ dependencies = [
 [[package]]
 name = "gpui_web"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -2936,7 +2937,7 @@ dependencies = [
 [[package]]
 name = "gpui_wgpu"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2963,7 +2964,7 @@ dependencies = [
 [[package]]
 name = "gpui_windows"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -3042,10 +3043,22 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9da2e5ae821f6e96664977bf974d6d6a2d6682f9ccee23e62ec1d134246845f9"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "bytemuck",
  "core_maths",
  "read-fonts 0.37.0",
+ "smallvec",
+]
+
+[[package]]
+name = "harfrust"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c03d949a14aa089bbb282f7dd76a498a7f684428e4257202efc119ec010376f9"
+dependencies = [
+ "bitflags",
+ "bytemuck",
+ "read-fonts 0.41.0",
  "smallvec",
 ]
 
@@ -3196,7 +3209,7 @@ dependencies = [
 [[package]]
 name = "http_client"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "anyhow",
  "bytes",
@@ -3268,7 +3281,7 @@ version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddc03d96684f9226b8a787cdb71488417b53ab5ea8fdb1dac946cb9431cc8bff"
 dependencies = [
- "base64 0.23.1",
+ "base64",
  "bytes",
  "futures-channel",
  "futures-util",
@@ -3492,7 +3505,7 @@ dependencies = [
  "image-webp",
  "moxcms",
  "num-traits",
- "png 0.18.1",
+ "png",
  "qoi",
  "ravif",
  "rayon",
@@ -3513,9 +3526,9 @@ dependencies = [
 
 [[package]]
 name = "imagesize"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09e54e57b4c48b40f7aec75635392b12b3421fa26fe8b4332e63138ed278459c"
+checksum = "65b27460c2c92b037f3f94c538ed9a3342f3fdf923606781629ccb35f82d042a"
 
 [[package]]
 name = "imara-diff"
@@ -3593,7 +3606,7 @@ version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cc00ea907cab49550b7da656f80ebb97be1b997d931fbcd28d39734e17ce592"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "inotify-sys",
  "libc",
 ]
@@ -3900,7 +3913,7 @@ version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07293a4e297ac234359b510362495713f75ea345d5307140414f20c69ffeb087"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "libc",
 ]
 
@@ -4299,7 +4312,7 @@ version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e16d10087ae9e375bad7a40e8ef5504bc08e808ccc6019067ff9de42a84570f"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "debugid",
  "num-derive",
  "num-traits",
@@ -4314,7 +4327,7 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f742d7445a9d4c63826d302dadbbcb607745560108e88b21c4014a9724d09dbe"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "byteorder",
  "cfg-if",
  "crash-context",
@@ -4440,7 +4453,7 @@ source = "git+https://github.com/gfx-rs/wgpu?rev=cddb2f5d80dc0009b2ef6767635140c
 dependencies = [
  "arrayvec",
  "bit-set 0.11.1",
- "bitflags 2.13.2",
+ "bitflags",
  "cfg-if",
  "cfg_aliases",
  "codespan-reporting",
@@ -4490,7 +4503,7 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "cfg-if",
  "cfg_aliases",
  "libc",
@@ -4502,7 +4515,7 @@ version = "0.31.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bc81ce8148d3b4f3274da811f11cdd824ae661ee4ef732cdb229825cf5be7f7"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "cfg-if",
  "cfg_aliases",
  "libc",
@@ -4544,7 +4557,7 @@ version = "8.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c41a04a5f59df9322cc657286dd2d79f90816119b22c5f847607c850110205ab"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "inotify",
  "kqueue",
  "libc",
@@ -4577,7 +4590,7 @@ version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cbd044e85df3d939d8e32a1c35a3b737c7d0a4eeb7acd737bd207644e00f4e5f"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
 ]
 
 [[package]]
@@ -4775,7 +4788,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4e89ad9e3d7d297152b17d39ed92cd50ca8063a89a9fa569046d41568891eff"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.5.1",
  "libc",
  "objc2 0.5.3",
@@ -4791,7 +4804,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.6.2",
  "objc2 0.6.5",
  "objc2-core-foundation",
@@ -4817,7 +4830,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a89f2ec274a0cf4a32642b2991e8b351a404d290da87bb6a9a9d8632490bd1c"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "objc2 0.6.5",
 ]
 
@@ -4827,7 +4840,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "617fbf49e071c178c0b24c080767db52958f716d9eabdf0890523aeae54773ef"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.5.1",
  "objc2 0.5.3",
  "objc2-foundation 0.2.2",
@@ -4839,7 +4852,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.6.2",
  "dispatch2",
  "libc",
@@ -4852,7 +4865,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "dispatch2",
  "objc2 0.6.5",
  "objc2-core-foundation",
@@ -4877,7 +4890,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05ec576860167a15dd9fce7fbee7512beb4e31f532159d3482d1f9c6caedf31d"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "dispatch2",
  "objc2 0.6.5",
  "objc2-core-audio",
@@ -4902,7 +4915,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cde0dfb48d25d2b4862161a4d5fcc0e3c24367869ad306b0c9ec0073bfed92d"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "objc2-core-foundation",
 ]
 
@@ -4912,7 +4925,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d425caf1df73233f29fd8a5c3e5edbc30d2d4307870f802d18f00d83dc5141a6"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "objc2 0.6.5",
  "objc2-core-foundation",
  "objc2-core-graphics",
@@ -4932,7 +4945,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ee638a5da3799329310ad4cfa62fbf045d5f56e3ef5ba4149e7452dcf89d5a8"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.5.1",
  "libc",
  "objc2 0.5.3",
@@ -4944,7 +4957,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.6.2",
  "libc",
  "objc2 0.6.5",
@@ -4967,7 +4980,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "180788110936d59bab6bd83b6060ffdfffb3b922ba1396b312ae795e1de9d81d"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "objc2 0.6.5",
  "objc2-core-foundation",
 ]
@@ -4978,7 +4991,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd0cba1276f6023976a406a14ffa85e1fdd19df6b0f737b063b95f6c8c7aadd6"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.5.1",
  "objc2 0.5.3",
  "objc2-foundation 0.2.2",
@@ -4990,7 +5003,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0125f776a10d00af4152d74616409f0d4a2053a6f57fa5b7d6aa2854ac04794"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.6.2",
  "dispatch2",
  "objc2 0.6.5",
@@ -5014,7 +5027,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e42bee7bff906b14b167da2bac5efe6b6a07e6f7c0a21a7308d40c960242dc7a"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.5.1",
  "objc2 0.5.3",
  "objc2-foundation 0.2.2",
@@ -5027,7 +5040,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96c1358452b371bf9f104e21ec536d37a650eb10f7ee379fff67d2e08d537f1f"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "objc2 0.6.5",
  "objc2-core-foundation",
  "objc2-core-graphics",
@@ -5064,7 +5077,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d87d638e33c06f577498cbcc50491496a3ed4246998a7fbba7ccb98b1e7eab22"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.6.2",
  "objc2 0.6.5",
  "objc2-core-foundation",
@@ -5088,7 +5101,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9df9128cbbfef73cda168416ccf7f837b62737d748333bfe9ab71c245d76613e"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.6.2",
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",
@@ -5212,7 +5225,7 @@ name = "oxc_ast"
 version = "0.148.0"
 source = "git+https://github.com/oxc-project/oxc?rev=ca7104f775#ca7104f775bd372e834845c96218db57b0cb5314"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "oxc_allocator",
  "oxc_ast_macros",
  "oxc_data_structures",
@@ -5330,7 +5343,7 @@ name = "oxc_parser"
 version = "0.148.0"
 source = "git+https://github.com/oxc-project/oxc?rev=ca7104f775#ca7104f775bd372e834845c96218db57b0cb5314"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "cow-utils",
  "memchr",
  "num-bigint 0.5.1",
@@ -5353,7 +5366,7 @@ name = "oxc_regular_expression"
 version = "0.148.0"
 source = "git+https://github.com/oxc-project/oxc?rev=ca7104f775#ca7104f775bd372e834845c96218db57b0cb5314"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "oxc_allocator",
  "oxc_ast_macros",
  "oxc_diagnostics",
@@ -5392,7 +5405,7 @@ name = "oxc_syntax"
 version = "0.148.0"
 source = "git+https://github.com/oxc-project/oxc?rev=ca7104f775#ca7104f775bd372e834845c96218db57b0cb5314"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "cow-utils",
  "dragonbox_ecma",
  "nonmax",
@@ -5507,7 +5520,7 @@ dependencies = [
 [[package]]
 name = "path"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "anyhow",
  "dunce",
@@ -5559,7 +5572,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "perf"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "collections 0.1.0",
  "serde",
@@ -5571,7 +5584,7 @@ version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "575828d9d7d205188048eb1508560607a03d21eafdbba47b8cade1736c1c28e1"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "c-enum",
  "perf-event-open-sys2",
 ]
@@ -5592,7 +5605,7 @@ version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0939b8fad77dfaeb29ebbd35faaeaadbf833167f30975f1b8993bbba09ea0a0f"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "c-enum",
  "libc",
  "memmap2",
@@ -5797,24 +5810,11 @@ dependencies = [
 
 [[package]]
 name = "png"
-version = "0.17.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82151a2fc869e011c153adc57cf2789ccb8d9906ce52c0b39a6b5697749d7526"
-dependencies = [
- "bitflags 1.3.2",
- "crc32fast",
- "fdeflate",
- "flate2",
- "miniz_oxide 0.8.9",
-]
-
-[[package]]
-name = "png"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60769b8b31b2a9f263dae2776c37b1b28ae246943cf719eb6946a1db05128a61"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "crc32fast",
  "fdeflate",
  "flate2",
@@ -5997,7 +5997,7 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6401bf7b6af22f78b563665d15a22e9aef27775b79b149a66ca022468a4e405"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "hex",
  "serde",
 ]
@@ -6116,7 +6116,7 @@ checksum = "b8530004ccb15eae51c7e40009fbe317f341f804db54dc033eec1c50be28cfa0"
 dependencies = [
  "bit-set 0.11.1",
  "bit-vec 0.10.2",
- "bitflags 2.13.2",
+ "bitflags",
  "chacha20",
  "core_detect",
  "num-traits",
@@ -6517,7 +6517,7 @@ version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
 ]
 
 [[package]]
@@ -6560,7 +6560,7 @@ dependencies = [
 [[package]]
 name = "refineable"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "derive_refineable",
 ]
@@ -6661,7 +6661,7 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029"
 dependencies = [
- "base64 0.23.1",
+ "base64",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -6745,10 +6745,11 @@ dependencies = [
 
 [[package]]
 name = "resvg"
-version = "0.46.0"
+version = "0.49.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b563218631706d614e23059436526d005b50ab5f2d506b55a17eb65c5eb83419"
+checksum = "1572844b6727a1bf842190e9947641a68ac44bed83f50afb4bd1407a2564bee8"
 dependencies = [
+ "bytemuck",
  "gif",
  "image-webp",
  "log",
@@ -6792,7 +6793,7 @@ checksum = "3582f63211428f83597b51b2ddb88e2a91a9d52d12831f9d08f5e624e8977422"
 [[package]]
 name = "rope"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "gpui_util",
  "heapless",
@@ -6890,7 +6891,7 @@ version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "errno",
  "libc",
  "linux-raw-sys",
@@ -6991,24 +6992,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustybuzz"
-version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd3c7c96f8a08ee34eff8857b11b49b07d71d1c3f4e88f8a88d4c9e9f90b1702"
-dependencies = [
- "bitflags 2.13.2",
- "bytemuck",
- "core_maths",
- "log",
- "smallvec",
- "ttf-parser",
- "unicode-bidi-mirroring",
- "unicode-ccc",
- "unicode-properties",
- "unicode-script",
-]
-
-[[package]]
 name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7035,7 +7018,7 @@ dependencies = [
 [[package]]
 name = "scheduler"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "async-task",
  "backtrace",
@@ -7118,7 +7101,7 @@ version = "3.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7f4bc775c73d9a02cde8bf7b2ec4c9d12743edf609006c7facc23998404cd1d"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "libc",
@@ -7559,7 +7542,7 @@ version = "0.4.0+sdk-1.4.341.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
 ]
 
 [[package]]
@@ -7664,7 +7647,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sum_tree"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "heapless",
  "rayon",
@@ -7800,7 +7783,7 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a13f3d0daba03132c0aa9767f98351b3488edc2c100cda2d2ec2b04f3d8d3c8b"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "core-foundation 0.9.4",
  "system-configuration-sys",
 ]
@@ -7908,7 +7891,7 @@ dependencies = [
 [[package]]
 name = "text"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "anyhow",
  "clock",
@@ -8083,24 +8066,24 @@ dependencies = [
 
 [[package]]
 name = "tiny-skia"
-version = "0.11.4"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83d13394d44dae3207b52a326c0c85a8bf87f1541f23b0d143811088497b09ab"
+checksum = "47ffee5eaaf5527f630fb0e356b90ebdec84d5d18d937c5e440350f88c5a91ea"
 dependencies = [
  "arrayref",
  "arrayvec",
  "bytemuck",
  "cfg-if",
  "log",
- "png 0.17.16",
+ "png",
  "tiny-skia-path",
 ]
 
 [[package]]
 name = "tiny-skia-path"
-version = "0.11.4"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c9e7fc0c2e86a30b117d0462aa261b72b7a99b7ebd7deb3a14ceda95c5bdc93"
+checksum = "edca365c3faccca67d06593c5980fa6c57687de727a03131735bb85f01fdeeb9"
 dependencies = [
  "arrayref",
  "bytemuck",
@@ -8742,7 +8725,7 @@ version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cfcf7e2740e6fc6d4d688b4ef00650406bb94adf4731e43c096c3a19fe40840"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "bytes",
  "futures-util",
  "http",
@@ -8936,18 +8919,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c1cb5db39152898a79168971543b1cb5020dff7fe43c8dc468b0885f5e29df5"
 
 [[package]]
-name = "unicode-bidi-mirroring"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5dfa6e8c60bb66d49db113e0125ee8711b7647b5579dc7f5f19c42357ed039fe"
-
-[[package]]
-name = "unicode-ccc"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce61d488bcdc9bc8b5d1772c404828b17fc481c0a582b5581e95fb233aef503e"
-
-[[package]]
 name = "unicode-id-start"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9065,22 +9036,23 @@ dependencies = [
 
 [[package]]
 name = "usvg"
-version = "0.46.0"
+version = "0.49.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e419dff010bb12512b0ae9e3d2f318dfbdf0167fde7eb05465134d4e8756076f"
+checksum = "d09b73ee83641d390ad7ffd9000f347b16eb128e437675b6ff277ea5c7fcf22c"
 dependencies = [
- "base64 0.22.1",
+ "base64",
  "data-url",
  "flate2",
- "fontdb",
+ "fontdb 0.24.0",
+ "harfrust 0.12.0",
  "imagesize",
  "kurbo",
  "log",
  "pico-args",
  "roxmltree 0.21.2",
- "rustybuzz",
  "simplecss",
  "siphasher",
+ "skrifa 0.44.0",
  "strict-num",
  "svgtypes",
  "tiny-skia-path",
@@ -9125,7 +9097,7 @@ dependencies = [
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "anyhow",
  "async-fs",
@@ -9174,7 +9146,7 @@ dependencies = [
 [[package]]
 name = "util_macros"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "perf",
  "quote",
@@ -9411,7 +9383,7 @@ version = "0.31.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3c36a0f861ad76d0901f2800b46321410d9f73f2ea88aac0650d86c32688073"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "rustix",
  "wayland-backend",
  "wayland-scanner",
@@ -9434,7 +9406,7 @@ version = "0.32.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23d0c813de3daa2ed6520af85a3bd49b0e722a3078506899aa9686fea58dc4b6"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "wayland-backend",
  "wayland-client",
  "wayland-scanner",
@@ -9446,7 +9418,7 @@ version = "0.3.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b6d8cf1eb2c1c31ed1f5643c88a6e53538129d4af80030c8cabd1f9fa884d91"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
@@ -9459,7 +9431,7 @@ version = "0.3.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb04e52f7836d7c7976c78ca0250d61e33873c34156a2a1fc9474828ec268234"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
@@ -9530,7 +9502,7 @@ version = "30.0.0"
 source = "git+https://github.com/gfx-rs/wgpu?rev=cddb2f5d80dc0009b2ef6767635140cacf90a007#cddb2f5d80dc0009b2ef6767635140cacf90a007"
 dependencies = [
  "arrayvec",
- "bitflags 2.13.2",
+ "bitflags",
  "bytemuck",
  "cfg-if",
  "cfg_aliases",
@@ -9560,7 +9532,7 @@ dependencies = [
  "arrayvec",
  "bit-set 0.11.1",
  "bit-vec 0.10.2",
- "bitflags 2.13.2",
+ "bitflags",
  "bytemuck",
  "cfg_aliases",
  "document-features",
@@ -9636,7 +9608,7 @@ dependencies = [
  "arrayvec",
  "ash",
  "bit-set 0.11.1",
- "bitflags 2.13.2",
+ "bitflags",
  "block2 0.6.2",
  "bytemuck",
  "cfg-if",
@@ -9706,7 +9678,7 @@ name = "wgpu-types"
 version = "30.0.0"
 source = "git+https://github.com/gfx-rs/wgpu?rev=cddb2f5d80dc0009b2ef6767635140cacf90a007#cddb2f5d80dc0009b2ef6767635140cacf90a007"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "bytemuck",
  "js-sys",
  "log",
@@ -10284,7 +10256,7 @@ version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6c2ad15e0e922856ee89afe862b8992334bbe7953adad56cd1199358cb30566"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "libc",
  "quick-xml",
  "x11",
@@ -10309,7 +10281,7 @@ name = "xim-parser"
 version = "0.2.1"
 source = "git+https://github.com/zed-industries/xim-rs.git?rev=16f35a2c881b815a2b6cdfd6687988e84f8447d8#16f35a2c881b815a2b6cdfd6687988e84f8447d8"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
 ]
 
 [[package]]
@@ -10501,7 +10473,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a7f9f5dd97fa527c1202ba1cb35d48e07f77d4de8542317c854f7aef22b0668"
 dependencies = [
  "async-trait",
- "bitflags 2.13.2",
+ "bitflags",
  "endi",
  "futures-core",
  "hex",
@@ -10622,7 +10594,7 @@ name = "zed-font-kit"
 version = "0.14.1-zed"
 source = "git+https://github.com/zed-industries/font-kit?rev=94b0f28166665e8fd2f53ff6d268a14955c82269#94b0f28166665e8fd2f53ff6d268a14955c82269"
 dependencies = [
- "bitflags 2.13.2",
+ "bitflags",
  "byteorder",
  "core-foundation 0.10.1",
  "core-graphics",
@@ -10845,7 +10817,7 @@ dependencies = [
 [[package]]
 name = "ztracing"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 dependencies = [
  "tracing",
  "ztracing_macro",
@@ -10854,7 +10826,7 @@ dependencies = [
 [[package]]
 name = "ztracing_macro"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=f4fe0be1f8#f4fe0be1f8c7974db07e01c5cd05bee0cf4eb8d9"
+source = "git+https://github.com/zed-industries/zed?rev=e4fa164225#e4fa16422543ab77b129d7f4ad825630b993ecdd"
 
 [[package]]
 name = "zune-core"
