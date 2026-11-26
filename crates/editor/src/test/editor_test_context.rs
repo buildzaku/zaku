@@ -287,15 +287,14 @@ impl EditorTestContext {
                     .collect::<Vec<_>>();
                 let ranges = editor
                     .text_highlights(key, cx)
-                    .map(|(_, ranges)| {
+                    .map_or_default(|(_, ranges)| {
                         ranges
                             .iter()
                             .map(|range| {
                                 range.start.to_offset(&snapshot).0..range.end.to_offset(&snapshot).0
                             })
                             .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
+                    });
                 pretty_assertions::assert_eq!(
                     ranges,
                     expected_ranges,

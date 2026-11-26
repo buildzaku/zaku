@@ -481,8 +481,7 @@ impl ProjectConfigEditor {
                 .file()
                 .path
                 .file_stem()
-                .map(|name| SharedString::from(name.to_owned()))
-                .unwrap_or_default(),
+                .map_or_default(|name| SharedString::from(name.to_owned())),
         }
     }
 

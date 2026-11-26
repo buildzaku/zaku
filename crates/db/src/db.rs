@@ -283,14 +283,14 @@ mod tests {
 
     #[gpui::test]
     async fn test_db_corruption(cx: &mut TestAppContext) {
-        enum CorruptedDb {}
+        struct CorruptedDb;
 
         impl Domain for CorruptedDb {
             const NAME: &str = "db_tests";
             const MIGRATIONS: &[&str] = &[sql!(CREATE TABLE test(value TEXT) STRICT)];
         }
 
-        enum GoodDb {}
+        struct GoodDb;
 
         impl Domain for GoodDb {
             const NAME: &str = "db_tests";

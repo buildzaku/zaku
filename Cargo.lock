@@ -9119,7 +9119,6 @@ dependencies = [
  "log",
  "rand 0.10.4",
  "rust-embed",
- "serde",
  "smol",
 ]
 
