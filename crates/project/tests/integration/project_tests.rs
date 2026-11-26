@@ -189,7 +189,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                     },
                 },
             },
-            "users": {
+            "foo": {
                 ".zaku": {
                     "folder.toml": indoc! {r#"
                         [meta]
@@ -202,7 +202,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
                         "Staging.toml": staging_env,
                     },
                 },
-                "foo.toml": "",
+                "req1.toml": "",
             },
         }),
     );
@@ -268,7 +268,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
             ]
         );
         assert_eq!(
-            project_config_store.folder_file(rel_path("users")),
+            project_config_store.folder_file(rel_path("foo")),
             Some(&FolderFile {
                 meta: ConfigFileMeta {
                     version: SCHEMA_VERSION,
@@ -313,7 +313,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
         .unwrap();
     temp_fs
         .write(
-            &project_path.join(path!("users/.zaku/folder.toml")),
+            &project_path.join(path!("foo/.zaku/folder.toml")),
             indoc! {br#"
                 [meta]
                 version = 1
@@ -384,7 +384,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
             ]
         );
         assert_eq!(
-            project_config_store.folder_file(rel_path("users")),
+            project_config_store.folder_file(rel_path("foo")),
             Some(&FolderFile {
                 meta: ConfigFileMeta {
                     version: SCHEMA_VERSION,
@@ -476,7 +476,7 @@ async fn test_project_config_files(cx: &mut TestAppContext) {
             vec![]
         );
         assert_eq!(
-            project_config_store.folder_file(rel_path("users")),
+            project_config_store.folder_file(rel_path("foo")),
             Some(&FolderFile {
                 meta: ConfigFileMeta {
                     version: SCHEMA_VERSION,
@@ -666,7 +666,7 @@ async fn test_request_variables(cx: &mut TestAppContext) {
                     "#},
                 },
             },
-            "users": {
+            "foo": {
                 ".zaku": {
                     "folder.toml": indoc! {r#"
                         [meta]
@@ -676,7 +676,7 @@ async fn test_request_variables(cx: &mut TestAppContext) {
                         variables = [{ name = "user_id", value = "1" }]
                     "#},
                 },
-                "admins": {
+                "bar": {
                     ".zaku": {
                         "folder.toml": indoc! {r#"
                             [meta]
@@ -689,9 +689,9 @@ async fn test_request_variables(cx: &mut TestAppContext) {
                             ]
                         "#},
                     },
-                    "baz.toml": "",
+                    "req2.toml": "",
                 },
-                "bar.toml": "",
+                "req1.toml": "",
             },
         }),
     );
@@ -709,7 +709,7 @@ async fn test_request_variables(cx: &mut TestAppContext) {
                 .read(cx)
                 .variables_for_request(&ProjectPath {
                     worktree_id,
-                    path: Arc::from(rel_path("users/bar.toml")),
+                    path: Arc::from(rel_path("foo/req1.toml")),
                 })
                 .iter()
                 .map(|(name, value)| (name.as_str(), value.as_str()))
@@ -732,7 +732,7 @@ async fn test_request_variables(cx: &mut TestAppContext) {
                 .read(cx)
                 .variables_for_request(&ProjectPath {
                     worktree_id,
-                    path: Arc::from(rel_path("users/admins/baz.toml")),
+                    path: Arc::from(rel_path("foo/bar/req2.toml")),
                 })
                 .iter()
                 .map(|(name, value)| (name.as_str(), value.as_str()))
@@ -758,7 +758,7 @@ async fn test_request_variables(cx: &mut TestAppContext) {
                 .read(cx)
                 .variables_for_request(&ProjectPath {
                     worktree_id,
-                    path: Arc::from(rel_path("users/admins/baz.toml")),
+                    path: Arc::from(rel_path("foo/bar/req2.toml")),
                 })
                 .iter()
                 .map(|(name, value)| (name.as_str(), value.as_str()))
@@ -1208,8 +1208,8 @@ async fn test_edit_request_buffer_while_it_reloads(cx: &mut TestAppContext) {
     temp_fs.insert_tree(
         path!("project"),
         json!({
-            "users": {
-                "get-user.toml": indoc! {r#"
+            "foo": {
+                "req1.toml": indoc! {r#"
                     [meta]
                     version = 1
 
@@ -1229,7 +1229,7 @@ async fn test_edit_request_buffer_while_it_reloads(cx: &mut TestAppContext) {
         .update(|cx| {
             <RequestBuffer as ProjectItem>::try_open(
                 &project,
-                &(worktree_id, rel_path("users/get-user.toml")).into(),
+                &(worktree_id, rel_path("foo/req1.toml")).into(),
                 cx,
             )
             .unwrap()
@@ -1239,7 +1239,7 @@ async fn test_edit_request_buffer_while_it_reloads(cx: &mut TestAppContext) {
 
     temp_fs
         .write(
-            &project_path.join(path!("users/get-user.toml")),
+            &project_path.join(path!("foo/req1.toml")),
             indoc! {br#"
                 [meta]
                 version = 1
@@ -1286,8 +1286,8 @@ async fn test_edit_request_buffer_while_it_saves(cx: &mut TestAppContext) {
     temp_fs.insert_tree(
         path!("project"),
         json!({
-            "users": {
-                "get-user.toml": indoc! {r#"
+            "foo": {
+                "req1.toml": indoc! {r#"
                     [meta]
                     version = 1
 
@@ -1307,7 +1307,7 @@ async fn test_edit_request_buffer_while_it_saves(cx: &mut TestAppContext) {
         .update(|cx| {
             <RequestBuffer as ProjectItem>::try_open(
                 &project,
-                &(worktree_id, rel_path("users/get-user.toml")).into(),
+                &(worktree_id, rel_path("foo/req1.toml")).into(),
                 cx,
             )
             .unwrap()
@@ -1361,7 +1361,7 @@ async fn test_edit_request_buffer_while_it_saves(cx: &mut TestAppContext) {
     });
     assert_eq!(
         temp_fs
-            .load("project/users/get-user.toml".as_ref())
+            .load("project/foo/req1.toml".as_ref())
             .await
             .unwrap(),
         indoc! {r#"

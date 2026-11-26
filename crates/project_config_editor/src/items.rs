@@ -8,7 +8,7 @@ use editor::items::{entry_git_aware_text_color, entry_text_color};
 use path::PathExt;
 use project::{ConfigFileState, ConfigFileType, Project, ProjectConfigBuffer};
 use settings::{GitSettings, Settings};
-use ui::{Color, Icon, IconAsset, IconSize, Text, TextCommon};
+use ui::{Color, Icon, IconAsset, IconSize, LineHeightStyle, Text, TextCommon, TextSize};
 use util::truncate_and_trailoff;
 use workspace::{
     Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, TabContentParams,
@@ -50,8 +50,9 @@ impl Item for ProjectConfigEditor {
         Some(vec![path.into()])
     }
 
-    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
-        self.title(cx)
+    fn tab_content_text(&self, detail: usize, cx: &App) -> SharedString {
+        self.path_for_folder(detail, true, cx)
+            .unwrap_or_else(|| self.title(cx))
     }
 
     fn tab_content(&self, params: TabContentParams, _: &Window, cx: &App) -> AnyElement {
@@ -98,7 +99,23 @@ impl Item for ProjectConfigEditor {
                     entry_text_color(params.selected),
                 )
             }
+            (ProjectConfigEditorState::Ready(_), ConfigFileType::Folder) => {
+                Icon::new(IconAsset::Folder)
+                    .size(IconSize::XSmall)
+                    .color(entry_text_color(params.selected))
+            }
         };
+        let description = params.detail.and_then(|detail| {
+            let path = self.path_for_folder(detail, false, cx)?;
+            let description = ui::utils::replace_control_characters(&path);
+            let description = description.trim();
+
+            if description.is_empty() {
+                return None;
+            }
+
+            Some(truncate_and_trailoff(description, MAX_TAB_TITLE_LEN))
+        });
 
         gpui::div()
             .flex()
@@ -107,6 +124,16 @@ impl Item for ProjectConfigEditor {
             .gap_2()
             .child(gpui::div().flex_none().flex().items_center().child(icon))
             .child(title)
+            .when_some(description, |this, description| {
+                this.child(
+                    Text::new(description)
+                        .single_line()
+                        .size(TextSize::XSmall)
+                        .line_height_style(LineHeightStyle::Compact)
+                        .color(Color::Muted)
+                        .alpha(0.7),
+                )
+            })
             .into_any_element()
     }
 
@@ -483,6 +510,60 @@ mod tests {
                 project_path
                     .join(path!(".zaku/environments/Dev.toml"))
                     .display()
+            )
+        );
+    }
+
+    #[gpui::test]
+    async fn test_deserialize_missing_folder(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(path!("project"), json!({}));
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let project_config_editor_db = cx.update(|_, cx| ProjectConfigEditorDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let item_id: ItemId = 1;
+        let serialized_project_config_editor = SerializedProjectConfigEditor {
+            absolute_path: project_path.join(path!("foo/.zaku/folder.toml")),
+        };
+
+        project_config_editor_db
+            .save_serialized_project_config_editor(
+                item_id,
+                workspace_id,
+                serialized_project_config_editor,
+            )
+            .await
+            .unwrap();
+
+        let weak_workspace = workspace.downgrade();
+        let error = workspace
+            .update_in(cx, |_, window, cx| {
+                ProjectConfigEditor::deserialize(
+                    project.clone(),
+                    weak_workspace.clone(),
+                    workspace_id,
+                    item_id,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "failed to read file {}",
+                project_path.join(path!("foo/.zaku/folder.toml")).display()
             )
         );
     }

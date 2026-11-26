@@ -929,6 +929,9 @@ impl ProjectPanel {
 
         self.selection = Some(SelectedEntry(entry_id));
         let has_pasteable_content = self.has_pasteable_content();
+        let is_dir = self
+            .selected_entry_handle(cx)
+            .is_some_and(|(_, entry)| entry.is_dir());
 
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
@@ -939,6 +942,12 @@ impl ProjectPanel {
                     ui::utils::reveal_in_file_manager_title(),
                     Box::new(actions::project_panel::RevealInFileManager),
                 )
+                .when(is_dir && !is_root, |menu| {
+                    menu.separator().action(
+                        "Folder Variables",
+                        Box::new(actions::project_panel::OpenFolderVariables),
+                    )
+                })
                 .separator()
                 .when(!is_root, |menu| {
                     menu.action("Cut", Box::new(actions::project_panel::Cut))
@@ -1475,6 +1484,37 @@ impl ProjectPanel {
             self.project
                 .update(cx, |project, cx| project.reveal_path(&path, cx));
         }
+    }
+
+    fn open_folder_variables(
+        &mut self,
+        _: &actions::project_panel::OpenFolderVariables,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((worktree, entry)) = self.selected_entry_handle(cx) else {
+            return;
+        };
+        let folder = if entry.is_dir() {
+            Some(entry.path.as_ref())
+        } else {
+            entry.path.parent()
+        };
+        let Some(folder) = folder.filter(|folder| !folder.is_empty()) else {
+            return;
+        };
+
+        let project_path = ProjectPath {
+            worktree_id: worktree.read(cx).id(),
+            path: folder.join(path::project_folder_file_relative_path()),
+        };
+        self.workspace
+            .update(cx, |workspace, cx| {
+                workspace
+                    .open_path(project_path, None, true, window, cx)
+                    .detach_and_log_err(cx);
+            })
+            .log_err();
     }
 
     fn add_entry(&mut self, is_dir: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -2801,6 +2841,7 @@ impl Render for ProjectPanel {
             .on_action(cx.listener(Self::copy_path))
             .on_action(cx.listener(Self::copy_relative_path))
             .on_action(cx.listener(Self::reveal_in_file_manager))
+            .on_action(cx.listener(Self::open_folder_variables))
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::cancel))
             .on_action(cx.listener(Self::open))
@@ -3292,6 +3333,7 @@ mod tests {
     use fs::{Fs, TempFs};
     use path::rel_path;
     use project::{Project, ProjectEvent, ProjectPath};
+    use project_config_editor::ProjectConfigEditor;
     use request_editor::RequestEditor;
     use settings::SettingsStore;
     use theme::LoadThemes;
@@ -3824,6 +3866,100 @@ mod tests {
         workspace.update_in(cx, |workspace, _, cx| {
             assert!(workspace.active_item_as::<RequestEditor>(cx).is_some());
         });
+    }
+
+    #[gpui::test]
+    async fn test_open_folder_variables(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "foo": {
+                    "req1.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/users/1"
+                    "#},
+                },
+                "req2.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "POST"
+                    url = "https://api.zaku.dev/users/2"
+                "#},
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        cx.run_until_parked();
+
+        select_path(&panel, "project/foo", cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open_folder_variables(&actions::project_panel::OpenFolderVariables, window, cx);
+        });
+        pane.condition::<PaneEvent>(cx, |pane, cx| {
+            pane.active_item()
+                .and_then(|item| item.project_path(cx))
+                .is_some_and(|project_path| {
+                    project_path.path.as_ref() == rel_path("foo/.zaku/folder.toml")
+                })
+        })
+        .await;
+
+        let folder_variables_editor = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.active_item_as::<ProjectConfigEditor>(cx).unwrap()
+        });
+        assert!(
+            temp_fs
+                .metadata("project/foo/.zaku/folder.toml".as_ref())
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        toggle_expand_dir(&panel, "project/foo", cx);
+        select_path(&panel, "project/foo/req1.toml", cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open_folder_variables(&actions::project_panel::OpenFolderVariables, window, cx);
+        });
+        cx.run_until_parked();
+
+        workspace.update_in(cx, |workspace, _, cx| {
+            assert_eq!(
+                workspace.active_item_as::<ProjectConfigEditor>(cx),
+                Some(folder_variables_editor.clone())
+            );
+        });
+        assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 1);
+
+        select_path(&panel, "project/req2.toml", cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open_folder_variables(&actions::project_panel::OpenFolderVariables, window, cx);
+        });
+        cx.run_until_parked();
+
+        workspace.update_in(cx, |workspace, _, cx| {
+            assert_eq!(
+                workspace.active_item_as::<ProjectConfigEditor>(cx),
+                Some(folder_variables_editor)
+            );
+        });
+        assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 1);
     }
 
     #[gpui::test]
@@ -4946,13 +5082,13 @@ mod tests {
                         "Dev.toml": "",
                     },
                 },
-                "users": {
+                "foo": {
                     ".zaku": {
                         "folder.toml": "",
                     },
-                    "foo.toml": "",
+                    "req1.toml": "",
                 },
-                "bar.toml": "",
+                "req2.toml": "",
             }),
         );
 
@@ -4962,11 +5098,11 @@ mod tests {
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
-        toggle_expand_dir(&panel, "project/users", cx);
+        toggle_expand_dir(&panel, "project/foo", cx);
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
-            &["v users  <== selected", "      foo", "  bar"]
+            &["v foo  <== selected", "      req1", "  req2"]
         );
     }
 }

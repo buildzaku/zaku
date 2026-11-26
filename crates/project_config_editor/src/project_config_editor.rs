@@ -10,8 +10,8 @@ use std::{collections::HashMap, rc::Rc};
 use editor::{Editor, EditorEvent, VariableProvider, VariableProviderDelegate};
 use path::PathStyle;
 use project::{
-    ConfigFile, ConfigFileState, ConfigFileType, EnvironmentColor, Project, ProjectConfigBuffer,
-    ProjectConfigBufferEvent, ProjectPath, Variable,
+    ConfigFile, ConfigFileKind, ConfigFileState, ConfigFileType, EnvironmentColor, Project,
+    ProjectConfigBuffer, ProjectConfigBufferEvent, ProjectPath, Variable,
     project_config_store::{ProjectConfigStoreEvent, VariableScope},
 };
 use theme::GlobalTheme;
@@ -173,27 +173,29 @@ fn scoped_variables(
     let ConfigFileState::Parsed(config_file) = buffer.config_file() else {
         return None;
     };
+    let project_variables = project_config_store.project_file().map(|project_file| {
+        (
+            VariableScope::Project,
+            project_file.request.variables.as_slice(),
+        )
+    });
+    let active_environment_variables = project_config_store.active_environment().and_then(|name| {
+        let environment_file = project_config_store.environment_file(name)?;
+        Some((
+            VariableScope::Environment {
+                name: name.to_string(),
+                color: environment_file.environment.color,
+            },
+            environment_file.environment.variables.as_slice(),
+        ))
+    });
     let scope_variables = match buffer.file_type() {
-        ConfigFileType::Project => [
+        ConfigFileType::Project => vec![
             Some((VariableScope::Project, config_file.variables())),
-            project_config_store.active_environment().and_then(|name| {
-                let environment_file = project_config_store.environment_file(name)?;
-                Some((
-                    VariableScope::Environment {
-                        name: name.to_string(),
-                        color: environment_file.environment.color,
-                    },
-                    environment_file.environment.variables.as_slice(),
-                ))
-            }),
+            active_environment_variables,
         ],
-        ConfigFileType::Environment => [
-            project_config_store.project_file().map(|project_file| {
-                (
-                    VariableScope::Project,
-                    project_file.request.variables.as_slice(),
-                )
-            }),
+        ConfigFileType::Environment => vec![
+            project_variables,
             Some((
                 VariableScope::Environment {
                     name: buffer
@@ -206,12 +208,34 @@ fn scoped_variables(
                         ConfigFile::Environment(environment_file) => {
                             environment_file.environment.color
                         }
-                        ConfigFile::Project(_) => None,
+                        ConfigFile::Project(_) | ConfigFile::Folder(_) => None,
                     },
                 },
                 config_file.variables(),
             )),
         ],
+        ConfigFileType::Folder => {
+            let Some(ConfigFileKind::Folder(folder)) =
+                ConfigFileKind::for_path(&buffer.file().path)
+            else {
+                return None;
+            };
+            let parent_folders = folder.ancestors().skip(1).collect::<Vec<_>>();
+            [project_variables, active_environment_variables]
+                .into_iter()
+                .chain(parent_folders.into_iter().rev().map(|parent_folder| {
+                    let folder_file = project_config_store.folder_file(parent_folder)?;
+                    Some((
+                        VariableScope::Folder(parent_folder.into()),
+                        folder_file.request.variables.as_slice(),
+                    ))
+                }))
+                .chain([Some((
+                    VariableScope::Folder(folder.clone()),
+                    config_file.variables(),
+                ))])
+                .collect()
+        }
     };
     Some(
         scope_variables
@@ -482,7 +506,38 @@ impl ProjectConfigEditor {
                 .path
                 .file_stem()
                 .map_or_default(|name| SharedString::from(name.to_owned())),
+            ConfigFileType::Folder => self.path_for_folder(0, true, cx).unwrap_or_default(),
         }
+    }
+
+    fn path_for_folder(
+        &self,
+        height: usize,
+        include_folder_name: bool,
+        cx: &App,
+    ) -> Option<SharedString> {
+        let Some(ConfigFileKind::Folder(folder)) =
+            ConfigFileKind::for_path(&self.buffer.read(cx).file().path)
+        else {
+            return None;
+        };
+        let path_style = self.path_style(cx);
+        let height = height.saturating_add(1);
+        let mut components = folder.components().collect::<Vec<_>>();
+        let start = components.len().saturating_sub(height);
+        let mut components = components.split_off(start);
+
+        if !include_folder_name {
+            components.pop()?;
+        }
+
+        if components.is_empty() {
+            return None;
+        }
+
+        Some(SharedString::from(
+            components.join(path_style.primary_separator()),
+        ))
     }
 
     fn environment_color(&self, cx: &App) -> Option<EnvironmentColor> {
@@ -490,7 +545,8 @@ impl ProjectConfigEditor {
             ConfigFileState::Parsed(ConfigFile::Environment(environment_file)) => {
                 environment_file.environment.color
             }
-            ConfigFileState::Parsed(ConfigFile::Project(_)) | ConfigFileState::Invalid(_) => None,
+            ConfigFileState::Parsed(ConfigFile::Project(_) | ConfigFile::Folder(_))
+            | ConfigFileState::Invalid(_) => None,
         }
     }
 
@@ -509,6 +565,7 @@ impl ProjectConfigEditor {
                 Text::new(match self.buffer.read(cx).file_type() {
                     ConfigFileType::Project => "Invalid Project Variables",
                     ConfigFileType::Environment => "Invalid Environment",
+                    ConfigFileType::Folder => "Invalid Folder Variables",
                 })
                 .size(TextSize::Large)
                 .color(Color::Error),
@@ -849,7 +906,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_save_creates_project_file(cx: &mut TestAppContext) {
+    async fn test_save_creates_config_files(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
@@ -857,7 +914,12 @@ mod tests {
 
         init_test(app_state, cx);
 
-        temp_fs.insert_tree(path!("project"), json!({}));
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "foo": {},
+            }),
+        );
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
@@ -865,7 +927,7 @@ mod tests {
         let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
         let (workspace, cx) = build_workspace(&project, cx);
 
-        let project_config_editor = workspace
+        let project_editor = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(
                     (worktree_id, rel_path(".zaku/project.toml")).into(),
@@ -880,13 +942,13 @@ mod tests {
             .downcast::<ProjectConfigEditor>()
             .unwrap();
 
-        project_config_editor.read_with(cx, |editor, cx| {
+        project_editor.read_with(cx, |editor, cx| {
             assert!(!editor.is_dirty(cx));
         });
 
         let add_button_bounds = cx.debug_bounds("BUTTON-variable-add").unwrap();
         cx.simulate_click(add_button_bounds.center(), Modifiers::default());
-        project_config_editor.update_in(cx, |editor, window, cx| {
+        project_editor.update_in(cx, |editor, window, cx| {
             let ProjectConfigEditorState::Ready(rows) = &editor.state else {
                 panic!("expected project config editor to be ready");
             };
@@ -899,7 +961,7 @@ mod tests {
             });
         });
 
-        project_config_editor.read_with(cx, |editor, cx| {
+        project_editor.read_with(cx, |editor, cx| {
             assert!(editor.is_dirty(cx));
         });
 
@@ -911,7 +973,7 @@ mod tests {
             .unwrap();
         worktree.flush_fs_events(cx).await;
 
-        project_config_editor.read_with(cx, |editor, cx| {
+        project_editor.read_with(cx, |editor, cx| {
             assert!(!editor.is_dirty(cx));
         });
         assert_eq!(
@@ -925,6 +987,69 @@ mod tests {
 
                 [request]
                 variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+            "#}
+        );
+
+        let foo_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path("foo/.zaku/folder.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+
+        foo_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+        });
+
+        let add_button_bounds = cx.debug_bounds("BUTTON-variable-add").unwrap();
+        cx.simulate_click(add_button_bounds.center(), Modifiers::default());
+        foo_editor.update_in(cx, |editor, window, cx| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            let row = rows.first().unwrap();
+            row.name.update(cx, |editor, cx| {
+                editor.set_text("user_id", window, cx);
+            });
+            row.value.update(cx, |editor, cx| {
+                editor.set_text("1", window, cx);
+            });
+        });
+
+        foo_editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_dirty(cx));
+        });
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.save_active_item(actions::pane::SaveIntent::Save, window, cx)
+            })
+            .await
+            .unwrap();
+        worktree.flush_fs_events(cx).await;
+
+        foo_editor.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+        });
+        assert_eq!(
+            temp_fs
+                .load("project/foo/.zaku/folder.toml".as_ref())
+                .await
+                .unwrap(),
+            indoc! {r#"
+                [meta]
+                version = 1
+
+                [request]
+                variables = [{ name = "user_id", value = "1" }]
             "#}
         );
     }
@@ -1446,6 +1571,34 @@ mod tests {
                             ]
                         "#}
                     }
+                },
+                "foo": {
+                    ".zaku": {
+                        "folder.toml": indoc! {r#"
+                            [meta]
+                            version = 1
+
+                            [request]
+                            variables = [
+                              { name = "channel", value = "stable" },
+                              { name = "target", value = "linux-x86_64" }
+                            ]
+                        "#}
+                    },
+                    "bar": {
+                        ".zaku": {
+                            "folder.toml": indoc! {r#"
+                                [meta]
+                                version = 1
+
+                                [request]
+                                variables = [
+                                  { name = "target", value = "macos-aarch64" },
+                                  { name = "release", value = "{{channel}}/latest/{{target}}" }
+                                ]
+                            "#}
+                        }
+                    }
                 }
             }),
         );
@@ -1532,6 +1685,53 @@ mod tests {
             assert_eq!(
                 editor.hover_state.info_popovers[0].hover.variable,
                 expected_variable
+            );
+        });
+
+        let bar_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path("foo/bar/.zaku/folder.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<ProjectConfigEditor>()
+            .unwrap();
+        let bar_value_editor = bar_editor.read_with(cx, |editor, _| {
+            let ProjectConfigEditorState::Ready(rows) = &editor.state else {
+                panic!("expected project config editor to be ready");
+            };
+            rows[1].value.clone()
+        });
+
+        editor::test::trigger_hover(&bar_value_editor, 4, cx);
+        cx.run_until_parked();
+
+        bar_value_editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.hover_state.info_popovers[0].hover.variable,
+                Some((
+                    VariableScope::Folder(rel_path("foo").into()),
+                    SharedString::from("stable")
+                ))
+            );
+        });
+
+        editor::test::trigger_hover(&bar_value_editor, 21, cx);
+        cx.run_until_parked();
+
+        bar_value_editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.hover_state.info_popovers[0].hover.variable,
+                Some((
+                    VariableScope::Folder(rel_path("foo/bar").into()),
+                    SharedString::from("macos-aarch64")
+                ))
             );
         });
     }

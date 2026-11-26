@@ -12,11 +12,11 @@ pub use git_store::{
 pub use project_config_buffer::{ProjectConfigBuffer, ProjectConfigBufferEvent};
 pub use request_buffer::{RequestBuffer, RequestBufferEvent};
 pub use worktree::{
-    ConfigFile, ConfigFileState, ConfigFileType, Entry, EntryKind, EnvironmentColor, File,
-    ProjectEntryId, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileFormField,
-    RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState,
-    Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet, UpdatedGitRepository, Variable,
-    Worktree, WorktreeId, is_variable_name_char, request_method_short_name,
+    ConfigFile, ConfigFileKind, ConfigFileState, ConfigFileType, Entry, EntryKind,
+    EnvironmentColor, File, ProjectEntryId, RequestFile, RequestFileBody, RequestFileBodyType,
+    RequestFileFormField, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
+    RequestFileState, Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet, UpdatedGitRepository,
+    Variable, Worktree, WorktreeId, is_variable_name_char, request_method_short_name,
     substitute_variables_in_str, variable_ranges_in_str,
 };
 
@@ -24,7 +24,7 @@ use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
 #[cfg(any(test, feature = "test"))]
 use gpui::TestAppContext;
-use gpui::{App, AppContext, Context, Entity, EventEmitter, SharedString, Task, TaskExt};
+use gpui::{App, AppContext, Context, Entity, EventEmitter, Hsla, SharedString, Task, TaskExt};
 use std::{
     ops::Range,
     path::{Path, PathBuf},
@@ -40,7 +40,7 @@ use language::{
 };
 use path::{PathStyle, RelPath};
 use util::ResultExt;
-use worktree::{EnvironmentFile, ProjectFile};
+use worktree::{EnvironmentFile, FolderFile, ProjectFile};
 
 use crate::{
     buffer_store::{BufferStore, BufferStoreEvent, is_not_found_error},
@@ -254,6 +254,8 @@ pub struct Completion {
     pub new_text: String,
     pub label: CodeLabel,
     pub documentation: Option<CompletionDocumentation>,
+    pub icon_path: Option<SharedString>,
+    pub icon_color: Option<Hsla>,
     pub match_start: Option<Anchor>,
 }
 
@@ -931,6 +933,9 @@ impl Project {
                 }
                 Some(ConfigFileType::Environment) => {
                     worktree::to_pretty_toml(&EnvironmentFile::default()).await?
+                }
+                Some(ConfigFileType::Folder) => {
+                    worktree::to_pretty_toml(&FolderFile::default()).await?
                 }
                 None => worktree::to_pretty_toml(&RequestFile::default()).await?,
             };

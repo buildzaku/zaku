@@ -49,6 +49,8 @@ gpui::actions!(
         Rename,
         /// Open the selected entry.
         Open,
+        /// Open the variables of the selected folder.
+        OpenFolderVariables,
         /// Toggle focus on the project panel.
         ToggleFocus
     ]
