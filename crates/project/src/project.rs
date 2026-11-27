@@ -739,12 +739,6 @@ impl Project {
         })
     }
 
-    pub fn remove_worktree(&mut self, cx: &mut Context<Self>) {
-        self.worktree_store.update(cx, |store, cx| {
-            store.remove_worktree(cx);
-        });
-    }
-
     pub fn entry_for_path<'a>(&'a self, path: &ProjectPath, cx: &'a App) -> Option<&'a Entry> {
         self.worktree_store.read(cx).entry_for_path(path, cx)
     }
