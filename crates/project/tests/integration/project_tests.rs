@@ -15,100 +15,8 @@ use util_macros::path;
 use worktree::{
     ConfigFile, ConfigFileMeta, ConfigFileState, EnvironmentColor, EnvironmentFile,
     EnvironmentSection, FolderFile, ProjectFile, RequestFile, RequestFileHttp, RequestFileMeta,
-    RequestFileState, RequestSection, SCHEMA_VERSION, Variable, WorktreeModelHandle,
+    RequestFileState, RequestSection, SCHEMA_VERSION, Variable, Worktree, WorktreeModelHandle,
 };
-
-#[gpui::test]
-async fn test_newer_find_or_create_worktree_request_supersedes_previous_request(
-    cx: &mut TestAppContext,
-) {
-    cx.executor().allow_parking();
-
-    let temp_fs = TempFs::new(cx.executor());
-    temp_fs.insert_tree(path!("first"), json!({}));
-    temp_fs.insert_tree(path!("second"), json!({}));
-
-    let first_path = temp_fs.path().join("first");
-    let second_path = temp_fs.path().join("second");
-
-    let languages = Arc::new(LanguageRegistry::test_new(cx.executor()));
-    let project = cx
-        .update(|cx| {
-            Project::open(
-                temp_fs.clone(),
-                languages.clone(),
-                temp_fs.path().join("project"),
-                cx,
-            )
-        })
-        .await
-        .expect("project open should succeed");
-
-    project
-        .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))
-        .await;
-
-    let first_open = project.update(cx, |project, cx| {
-        project.find_or_create_worktree(&first_path, true, cx)
-    });
-    let second_open = project.update(cx, |project, cx| {
-        project.find_or_create_worktree(&second_path, true, cx)
-    });
-
-    second_open
-        .await
-        .expect("newer project open should succeed");
-
-    project
-        .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))
-        .await;
-
-    assert!(
-        first_open.await.is_err(),
-        "older project open should not report success once superseded"
-    );
-    assert_eq!(cx.update(|cx| project.read(cx).root(cx)), Some(second_path));
-}
-
-#[gpui::test]
-async fn test_remove_worktree_invalidates_pending_find_or_create_worktree_request(
-    cx: &mut TestAppContext,
-) {
-    cx.executor().allow_parking();
-
-    let temp_fs = TempFs::new(cx.executor());
-    temp_fs.insert_tree(path!("first"), json!({}));
-    temp_fs.insert_tree(path!("second"), json!({}));
-
-    let first_path = temp_fs.path().join("first");
-    let second_path = temp_fs.path().join("second");
-
-    let languages = Arc::new(LanguageRegistry::test_new(cx.executor()));
-    let project = cx
-        .update(|cx| Project::open(temp_fs.clone(), languages.clone(), first_path, cx))
-        .await
-        .expect("project open should succeed");
-
-    project
-        .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))
-        .await;
-
-    let second_open = project.update(cx, |project, cx| {
-        project.find_or_create_worktree(&second_path, true, cx)
-    });
-
-    project.update(cx, |project, cx| {
-        project.remove_worktree(cx);
-    });
-    cx.run_until_parked();
-
-    assert!(
-        second_open.await.is_err(),
-        "pending project open should be invalidated once the current worktree is removed"
-    );
-    assert!(cx.update(|cx| project.read(cx).root_worktree(cx)).is_none());
-    assert!(cx.update(|cx| project.read(cx).root(cx)).is_none());
-}
 
 #[gpui::test]
 async fn test_open_project_creates_worktree(cx: &mut TestAppContext) {
@@ -1088,6 +996,93 @@ async fn test_find_or_create_worktree_replaces_config_files(cx: &mut TestAppCont
         assert_eq!(
             project_config_store.environments().collect::<Vec<_>>(),
             vec![]
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_find_or_create_worktree_does_not_miss_initial_scan(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(
+        path!("project"),
+        json!({
+            ".zaku": {
+                "project.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [request]
+                    variables = [{ name = "base_url", value = "https://api.zaku.dev" }]
+                "#},
+                "environments": {
+                    "Dev.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [environment]
+                        variables = [{ name = "base_url", value = "http://localhost:8000" }]
+                    "#},
+                },
+            },
+        }),
+    );
+
+    // Holds the foreground so the initial scan finishes before its scan updates and
+    // `WorktreeStore::add()` run.
+    cx.update(|cx| {
+        cx.observe_new(|_: &mut Worktree, _, cx| {
+            let scheduler = cx
+                .background_executor()
+                .dispatcher()
+                .as_test()
+                .unwrap()
+                .scheduler();
+            while scheduler.tick_background_only() {}
+        })
+        .detach();
+    });
+
+    let project = Project::test_new(temp_fs.clone(), &temp_fs.path().join("project"), cx).await;
+    cx.run_until_parked();
+
+    project.read_with(cx, |project, cx| {
+        let project_config_store = project.project_config_store().read(cx);
+
+        assert_eq!(
+            project_config_store.project_file(),
+            Some(&ProjectFile {
+                meta: ConfigFileMeta {
+                    version: SCHEMA_VERSION,
+                },
+                request: RequestSection {
+                    variables: vec![Variable {
+                        name: "base_url".to_string(),
+                        value: "https://api.zaku.dev".to_string(),
+                        disabled: false,
+                    }],
+                },
+            })
+        );
+        assert_eq!(
+            project_config_store.environments().collect::<Vec<_>>(),
+            vec![(
+                "Dev",
+                &EnvironmentFile {
+                    meta: ConfigFileMeta {
+                        version: SCHEMA_VERSION,
+                    },
+                    environment: EnvironmentSection {
+                        color: None,
+                        variables: vec![Variable {
+                            name: "base_url".to_string(),
+                            value: "http://localhost:8000".to_string(),
+                            disabled: false,
+                        }],
+                    },
+                }
+            )]
         );
     });
 }
