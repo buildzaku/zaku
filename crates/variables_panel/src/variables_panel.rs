@@ -56,6 +56,7 @@ impl SelectedEntry {
                 let entry_id = worktree.read(cx).entry_for_path(path)?.id;
                 Some(Self::Environment(entry_id))
             }
+            ConfigFileType::Folder => None,
         }
     }
 }

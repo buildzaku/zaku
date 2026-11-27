@@ -383,6 +383,8 @@ mod tests {
                     new_text: completion_text.to_string(),
                     label: CodeLabel::plain(completion_text.to_string(), None),
                     documentation: None,
+                    icon_path: None,
+                    icon_color: None,
                     match_start: None,
                 })
                 .collect()))

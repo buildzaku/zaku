@@ -373,16 +373,16 @@ async fn test_gitignored_config_dirs_are_scanned(cx: &mut TestAppContext) {
                     "Dev.toml": "",
                 },
             },
-            "users": {
+            "foo": {
                 ".zaku": {
                     "folder.toml": "",
                 },
-                "foo.toml": "",
+                "req1.toml": "",
             },
             "private": {
-                "bar.toml": "",
+                "req2.toml": "",
             },
-            "baz.toml": "",
+            "req3.toml": "",
         }),
     );
 
@@ -413,12 +413,12 @@ async fn test_gitignored_config_dirs_are_scanned(cx: &mut TestAppContext) {
                 (rel_path(".zaku/environments"), true, false),
                 (rel_path(".zaku/environments/Dev.toml"), true, false),
                 (rel_path(".zaku/project.toml"), true, false),
-                (rel_path("baz.toml"), false, true),
+                (rel_path("foo"), false, false),
+                (rel_path("foo/.zaku"), true, false),
+                (rel_path("foo/.zaku/folder.toml"), true, false),
+                (rel_path("foo/req1.toml"), false, true),
                 (rel_path("private"), true, false),
-                (rel_path("users"), false, false),
-                (rel_path("users/.zaku"), true, false),
-                (rel_path("users/.zaku/folder.toml"), true, false),
-                (rel_path("users/foo.toml"), false, true),
+                (rel_path("req3.toml"), false, true),
             ]
         );
     });

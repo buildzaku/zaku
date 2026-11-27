@@ -11,8 +11,9 @@ use path::RelPath;
 use project_config_buffer::ProjectConfigBuffer;
 use util::debug_panic;
 use worktree::{
-    ConfigFile, ConfigFileState, ConfigFileType, DiskState, EnvironmentColor, EnvironmentFile,
-    File, PathChange, ProjectEntryId, ProjectFile, Snapshot, Worktree, WorktreeEvent,
+    ConfigFile, ConfigFileKind, ConfigFileState, ConfigFileType, DiskState, EnvironmentColor,
+    EnvironmentFile, File, FolderFile, PathChange, ProjectEntryId, ProjectFile, Snapshot, Worktree,
+    WorktreeEvent,
 };
 
 use crate::{
@@ -82,34 +83,42 @@ impl ProjectConfigBufferStore {
                     return Task::ready(Err(anyhow!("no such worktree")));
                 };
 
+                let new_config_file = match ConfigFileKind::for_path(&path) {
+                    Some(ConfigFileKind::Project) => {
+                        Some(ConfigFile::Project(ProjectFile::default()))
+                    }
+                    // A deleted folder's file doesn't open, so saving can't recreate the folder.
+                    Some(ConfigFileKind::Folder(folder))
+                        if worktree
+                            .read(cx)
+                            .entry_for_path(&folder)
+                            .is_some_and(|entry| entry.is_dir()) =>
+                    {
+                        Some(ConfigFile::Folder(FolderFile::default()))
+                    }
+                    Some(ConfigFileKind::Environment(_) | ConfigFileKind::Folder(_)) | None => None,
+                };
                 let load_file_task =
                     worktree.update(cx, |worktree, cx| worktree.load_file(path.as_ref(), cx));
                 let open_task = cx.spawn(async move |this, cx| {
-                    let (file, config_file) = match load_file_task.await {
-                        Ok(loaded) => {
+                    let (file, config_file) = match (load_file_task.await, new_config_file) {
+                        (Ok(loaded), _) => {
                             let file = loaded.file;
                             let text = loaded.text;
                             let parse_task =
                                 cx.background_spawn(async move { file_type.parse(&text) });
                             (file, parse_task.await)
                         }
-                        Err(error)
-                            if file_type == ConfigFileType::Project
-                                && is_not_found_error(&error) =>
-                        {
-                            (
-                                Arc::new(File {
-                                    worktree,
-                                    path,
-                                    disk_state: DiskState::New,
-                                    entry_id: None,
-                                }),
-                                ConfigFileState::Parsed(
-                                    ConfigFile::Project(ProjectFile::default()),
-                                ),
-                            )
-                        }
-                        Err(error) => return Err(error),
+                        (Err(error), Some(new_config_file)) if is_not_found_error(&error) => (
+                            Arc::new(File {
+                                worktree,
+                                path,
+                                disk_state: DiskState::New,
+                                entry_id: None,
+                            }),
+                            ConfigFileState::Parsed(new_config_file),
+                        ),
+                        (Err(error), _) => return Err(error),
                     };
                     let reservation = cx.reserve_entity::<ProjectConfigBuffer>();
                     let buffer_id = BufferId::from(reservation.entity_id().as_non_zero_u64());
