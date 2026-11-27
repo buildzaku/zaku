@@ -65,8 +65,7 @@ impl Item for ProjectConfigEditor {
                     let entry = project.entry_for_path(&project_path, cx)?;
                     let git_status = project
                         .project_path_git_status(&project_path, cx)
-                        .map(|status| status.summary())
-                        .unwrap_or_default();
+                        .map_or_default(|status| status.summary());
 
                     Some(entry_git_aware_text_color(
                         git_status,
